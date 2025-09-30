@@ -26,18 +26,31 @@ include("DataLoaders.jl")
 # Phase 2モジュールのインクルード
 include("solvers/DHCPSolver.jl")
 
+# Phase 3モジュールのインクルード
+include("solvers/AdjointSolver.jl")
+
+# Phase 4モジュールのインクルード
+include("solvers/StoppingCriteria.jl")
+include("solvers/CGMSolver.jl")
+
 # 再エクスポート
 using .ThermalProperties
 using .DataLoaders
 using .DHCPSolver
+using .AdjointSolver
+using .StoppingCriteria
+using .CGMSolver
 
 export polyval_numba, thermal_properties_calculator
 export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
 export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index
+export build_adjoint_system!, assemble_adjoint_matrix, solve_adjoint!, adjoint_index
+export check_discrepancy, check_plateau, check_stopping_criteria, StoppingStatus
+export solve_cgm!, compute_gradient!, compute_sensitivity!, compute_step_size
 
 # バージョン情報
-const VERSION = v"0.2.0"
-const PHASE = "Phase 2: 直接解法（DHCP）"
+const VERSION = v"0.4.0"
+const PHASE = "Phase 4: 共役勾配法（CGM）"
 
 """
   version_info()
@@ -55,10 +68,11 @@ function version_info()
   println("  ✓ 熱物性値計算 (ThermalProperties.jl)")
   println("  ✓ データ読み込み (DataLoaders.jl)")
   println("  ✓ 直接解法 DHCP (DHCPSolver.jl)")
+  println("  ✓ 随伴解法 Adjoint (AdjointSolver.jl)")
+  println("  ✓ 停止判定 (StoppingCriteria.jl)")
+  println("  ✓ 共役勾配法 CGM (CGMSolver.jl)")
   println("")
   println("今後の実装予定:")
-  println("  ⏳ Phase 3: 随伴解法（Adjoint）")
-  println("  ⏳ Phase 4: 共役勾配法（CGM）")
   println("  ⏳ Phase 5: スライディングウィンドウ計算")
   println("="^60)
 end
