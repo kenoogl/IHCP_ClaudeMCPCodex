@@ -59,21 +59,18 @@ end
 3D温度配列から比熱cpと熱伝導率kを計算
 
 # 引数
-- `Temperature`: 3D温度配列 (nk, nj, ni) [K]
+- `Temperature`: 3D温度配列 (ni, nj, nk) [K] ← Pythonと同じ順序
 - `cp_coeffs`: 比熱の多項式係数 [a, b, c, d]
 - `k_coeffs`: 熱伝導率の多項式係数 [a, b, c, d]
 
 # 戻り値
-- `cp`: 比熱配列 (nk, nj, ni) [J/(kg·K)]
-- `k`: 熱伝導率配列 (nk, nj, ni) [W/(m·K)]
+- `cp`: 比熱配列 (ni, nj, nk) [J/(kg·K)]
+- `k`: 熱伝導率配列 (ni, nj, nk) [W/(m·K)]
 
 # 配列順序の注意
-PythonとJuliaで配列の格納順序が異なる:
-- Python: 行優先 (i, j, k) → メモリ上でk方向が最も密
-- Julia: 列優先 (k, j, i) → メモリ上でk方向が最も密
-
-この実装では、Julia標準の列優先で処理するため、
-配列形状を(nk, nj, ni)として扱う。
+Pythonとの互換性のため、配列形状は(ni, nj, nk)とする。
+- Python: (ni, nj, nk) → Temperature[i, j, k]
+- Julia: (ni, nj, nk) → Temperature[i, j, k]
 
 # 並列処理
 Julia標準の型推論による最適化を利用
@@ -84,23 +81,23 @@ function thermal_properties_calculator(
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64}
 )
-  nk, nj, ni = size(Temperature)
+  ni, nj, nk = size(Temperature)  # ← 修正: Pythonと同じ (ni, nj, nk)
 
   # 出力配列の事前確保
-  cp = Array{Float64, 3}(undef, nk, nj, ni)
-  k = Array{Float64, 3}(undef, nk, nj, ni)
+  cp = Array{Float64, 3}(undef, ni, nj, nk)
+  k = Array{Float64, 3}(undef, ni, nj, nk)
 
   # 3重ループで全格子点の熱物性値を計算
   # Juliaの列優先に合わせてループ順序を最適化
-  for i in 1:ni
+  for k_idx in 1:nk
     for j in 1:nj
-      for k_idx in 1:nk
-        # 現在の格子点温度
-        T_current = Temperature[k_idx, j, i]
+      for i in 1:ni
+        # 現在の格子点温度（Pythonと同じインデックス順）
+        T_current = Temperature[i, j, k_idx]
 
         # 多項式評価で比熱と熱伝導率を計算
-        cp[k_idx, j, i] = polyval_numba(cp_coeffs, T_current)
-        k[k_idx, j, i] = polyval_numba(k_coeffs, T_current)
+        cp[i, j, k_idx] = polyval_numba(cp_coeffs, T_current)
+        k[i, j, k_idx] = polyval_numba(k_coeffs, T_current)
       end
     end
   end

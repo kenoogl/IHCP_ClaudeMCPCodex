@@ -6,11 +6,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 逆熱伝導問題（IHCP）をコンジュゲートグラディエント法（CGM）で解く数値計算プロジェクト。IRカメラからの温度測定データを使用してSUS304材の表面熱流束を逆解析する。
 
 ## 実行方法
-### メインプログラム実行
+
+### Python版（オリジナル）
 ```bash
 cd python/original/
 python IHCP_CGM_Sliding_Window_Calculation_ver2.py
 ```
+
+### Julia版（移植版、Phase 1-3完了）
+```bash
+cd julia/
+julia --project=. -e 'using Pkg; Pkg.test()'  # 全テスト実行
+```
+
+**Julia実装状況**:
+- ✅ Phase 1: 熱物性値計算（全25テストパス）
+- ✅ Phase 2: DHCP直接ソルバー（全298テストパス）
+- ✅ Phase 3: Adjoint随伴ソルバー（全13テストパス）
+- ⏳ Phase 4: CGM最適化（未実装）
+- ⏳ Phase 5: スライディングウィンドウ（未実装）
 
 ### 必須データファイルの配置
 - `shared/data/metal_thermal_properties.csv`: SUS304熱物性値データ（540B）
@@ -98,11 +112,42 @@ TrialClaudeMCPCodex/
     └── CLAUDE.md     # プロジェクト指示書
 ```
 
-### 将来の拡張予定ディレクトリ（Julia移植用）
-- `julia/src/`: Juliaソースコード
-- `julia/test/`: Juliaテスト
-- `julia/benchmarks/`: 性能測定
-- `docs/`: 変換ログ・レビュー報告書
+### Julia移植実装済みディレクトリ
+```
+julia/
+├── src/
+│   ├── IHCP_CGM.jl                    # メインモジュール（v0.2.0）
+│   ├── ThermalProperties.jl           # Phase 1: 熱物性値計算 ✅
+│   ├── DataLoaders.jl                 # Phase 1: データ読み込み ✅
+│   ├── solvers/
+│   │   ├── DHCPSolver.jl             # Phase 2: 直接解法 ✅
+│   │   └── AdjointSolver.jl          # Phase 3: 随伴解法 ✅
+│   └── utils/
+│       └── json_helpers.jl           # JSON型変換ヘルパー ✅
+├── test/
+│   ├── runtests.jl                   # テストランナー
+│   ├── test_thermal_properties.jl    # Phase 1テスト（25項目）✅
+│   ├── test_dhcp_solver.jl           # Phase 2テスト（298項目）✅
+│   └── test_adjoint_solver.jl        # Phase 3テスト（13項目）✅
+├── data/
+│   ├── generate_reference_data.py    # Phase 1参照データ
+│   ├── generate_phase2_reference.py  # Phase 2参照データ
+│   ├── generate_phase3_reference.py  # Phase 3参照データ
+│   └── phase*_reference_*.json       # 各Phaseのゴールデンデータ
+└── Project.toml                       # 依存管理
+
+docs/
+├── plans/
+│   └── julia_migration_plan.md       # 14週間移植計画書
+├── logs/
+│   ├── phase1_implementation.md      # Phase 1完了ログ
+│   ├── phase2_implementation.md      # Phase 2完了ログ
+│   ├── phase2_json_fix_and_test_results.md
+│   ├── phase3_implementation.md      # Phase 3完了ログ
+│   └── phase3_bug_fix_and_test_results.md
+└── reviews/
+    └── python_code_structure.md      # Pythonコード分析
+```
 
 ## Git操作ガイドライン
 - **大容量ファイル**: 1MB以上のファイルはステージング前に必ず確認
@@ -110,6 +155,7 @@ TrialClaudeMCPCodex/
 - **コミット単位**: TDDサイクルに従い、テスト作成→実装完了で適切に分割
 
 ## トラブルシューティング
+
 ### データファイルが見つからない
 - `shared/data/metal_thermal_properties.csv`と`T_measure_700um_1ms.npy`が必要
 - `T_measure_700um_1ms.npy`は1.1GBのため別途取得が必要（gitignore済み）
@@ -118,6 +164,48 @@ TrialClaudeMCPCodex/
 - フルスケール計算には8GB以上のメモリが必要
 - 計算ウィンドウサイズを縮小して段階的に実行
 
-### Numba関連エラー
+### Numba関連エラー（Python）
 - `@njit`デコレータ付き関数では型チェックが厳格
 - NumPyの配列形状と型を事前に確認
+
+### Julia配列インデックスエラー
+- **重要**: 配列形状は常に`(ni, nj, nk)`とする
+- Pythonと同じインデックス順序: `Temperature[i, j, k]`
+- 0始まり（Python）→ 1始まり（Julia）のインデックス変換に注意
+
+### Juliaテスト実行エラー
+```bash
+# 個別テスト実行
+julia --project=. test/test_thermal_properties.jl
+julia --project=. test/test_dhcp_solver.jl
+julia --project=. test/test_adjoint_solver.jl
+
+# 全テスト実行
+julia --project=. -e 'using Pkg; Pkg.test()'
+```
+
+## Julia移植のベストプラクティス
+
+### 配列順序の統一
+- **Python**: `(ni, nj, nk)` 形状、アクセス: `arr[i, j, k]`
+- **Julia**: `(ni, nj, nk)` 形状、アクセス: `arr[i, j, k]`（同じ）
+- **理由**: Phase 1バグ修正で統一済み
+
+### 多項式係数の扱い
+- `polyval_numba(coeffs, x)`: `coeffs = [a, b, c, d]` → `a*x^3 + b*x^2 + c*x + d`
+- NumPyの`polyfit`と同じ係数順序
+
+### JSON参照データの使用
+- `json_helpers.jl`を使用して型変換
+- `reshape_json_array(data, dims, Float64)`でPython-Julia配列順序を変換
+
+## 既知の問題と解決済み事項
+
+### ✅ 解決済み
+1. **Phase 1配列インデックスバグ**: `(nk, nj, ni)` → `(ni, nj, nk)`に修正
+2. **Phase 2 JSON型変換問題**: `json_helpers.jl`で解決
+3. **Phase 3随伴場の異常値**: 配列インデックス修正で解決（精度15桁改善）
+
+### ⏳ 未実装
+1. **Phase 4（CGM）**: 共役勾配法本体、ライン検索
+2. **Phase 5（スライディングウィンドウ）**: 全時間領域計算
