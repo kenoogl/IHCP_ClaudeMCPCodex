@@ -8,9 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 実行方法
 ### メインプログラム実行
 ```bash
-cd org/
+cd python/original/
 python IHCP_CGM_Sliding_Window_Calculation_ver2.py
 ```
+
+### 必須データファイルの配置
+- `shared/data/metal_thermal_properties.csv`: SUS304熱物性値データ（540B）
+- `shared/data/T_measure_700um_1ms.npy`: 測定温度データ（1.1GB、gitignore済み）
 
 ### 必要な依存関係
 - Python 3.x
@@ -56,10 +60,11 @@ python IHCP_CGM_Sliding_Window_Calculation_ver2.py
 - **関数名**: 英語（snake_case形式）
 
 ## コーディング規約
-- **インデント**: スペース4文字
+- **インデント**: スペース2文字（TDD方針に準拠）
 - **最適化**: Numba @njitデコレータで高速化
 - **並列処理**: prange使用で性能向上
 - **エラー処理**: 数値計算の収束性とメモリ制限を考慮
+- **テスト**: pytest使用、段階的テスト（基本→DHCP→Adjoint→CGM→実データ）
 
 ## 重要な注意事項
 - **大容量データ**: T_measure_700um_1ms.npy（1.1GB）の取り扱いに注意
@@ -67,41 +72,52 @@ python IHCP_CGM_Sliding_Window_Calculation_ver2.py
 - **メモリ使用**: 大規模問題では8GB以上のメモリが必要
 - **数値精度**: 逆問題の性質上、収束判定とステップサイズ調整が重要
 
-## MCPによるcodexとの連携
-- Task toolを使って、Codexと連携する
-- あなたの役割は、タスク全体の計画と進捗管理、ユーザーとのコミュニケーション、Codexへの指示出しと結果のレビューです
-- Codexには、詳細な調査作業、コードの実装、ファイル検索や分析を担当してもらってください
-- Juliaの実行環境やテスト実行についてcodexでうまくいかない場合には、あなたがサポートしてください
-- 私があなたに出した依頼事項を元に、あなたはcodexにプロンプトを渡します。その内容とcodexからのレポートを一つのタスクの記録として、適切な名称をつけて、ログに保存してください。
+## MCP連携とワークフロー
+### Codex MCPとの連携方針
+- **連携確認**: セッション開始時にCodex MCP接続状態を確認
+- **役割分担**:
+  - Claude Code: タスク計画・進捗管理・ユーザー対話・レビュー
+  - Codex MCP: 詳細調査・コード実装・ファイル分析
+- **作業ログ**: Codexへの指示と結果レポートを`docs/logs/`に記録
 
-## Claude codeのコンテキスト圧縮後
-- /Users/Daily/Development/IHCP/TrialClaudeMCPCodex/.claude/CLAUDE.mdを読み、開発方針の確認をする
-
-## codexセッション再開時
-- セッション毎に、Codex MCPとの連携を確認し、未連携の場合には連携処理をする
+### コンテキスト管理
+- セッション開始時に本CLAUDE.mdを参照して開発方針を確認
+- コンテキスト圧縮後も本ファイルから方針を再確認
 
 ## ディレクトリ構成
- IHCP/TrialClaude2MCPcodex/
- ├── docs/          # ドキュメント類
- │  ├── reviews/      # レビュー・報告書
- │  ├── plans/       # 計画・方針文書
- │  └── logs/        # 変換ログ・進捗記録
- ├── python/         # Python関連
- │  ├── original/      # オリジナルPythonコード
- │  ├── improved/      # 改善済みPythonコード
- │  ├── tests/       # Pythonテスト
- │  └── data/        # Python用データ
- ├── julia/         # Julia関連
- │  ├── src/        # Juliaソースコード
- │  ├── test/        # Juliaテスト
- │  ├── data/        # Julia用データ
- │  ├── benchmarks/     # 性能測定
- │  └── examples/      # 使用例
- ├── shared/         # 共通リソース
- │  ├── data/        # 共通データファイル
- │  ├── configs/      # 設定ファイル
- │  └── scripts/      # ユーティリティスクリプト
- └── .claude/        # Claude設定（既存）
+```
+TrialClaudeMCPCodex/
+├── python/           # Python関連
+│   └── original/     # オリジナルPythonコード
+│       └── IHCP_CGM_Sliding_Window_Calculation_ver2.py (メインプログラム)
+├── shared/           # 共通リソース
+│   └── data/         # 共通データファイル
+│       ├── metal_thermal_properties.csv (熱物性値データ)
+│       └── T_measure_700um_1ms.npy (測定温度データ、1.1GB、gitignore済み)
+└── .claude/          # Claude Code設定
+    └── CLAUDE.md     # プロジェクト指示書
+```
 
- ## git操作
- - 1MB以上のファイルはステージングするかどうか、常に確認すること
+### 将来の拡張予定ディレクトリ（Julia移植用）
+- `julia/src/`: Juliaソースコード
+- `julia/test/`: Juliaテスト
+- `julia/benchmarks/`: 性能測定
+- `docs/`: 変換ログ・レビュー報告書
+
+## Git操作ガイドライン
+- **大容量ファイル**: 1MB以上のファイルはステージング前に必ず確認
+- **除外ファイル**: `T_measure_700um_1ms.npy`（1.1GB）はgitignore済み
+- **コミット単位**: TDDサイクルに従い、テスト作成→実装完了で適切に分割
+
+## トラブルシューティング
+### データファイルが見つからない
+- `shared/data/metal_thermal_properties.csv`と`T_measure_700um_1ms.npy`が必要
+- `T_measure_700um_1ms.npy`は1.1GBのため別途取得が必要（gitignore済み）
+
+### メモリ不足エラー
+- フルスケール計算には8GB以上のメモリが必要
+- 計算ウィンドウサイズを縮小して段階的に実行
+
+### Numba関連エラー
+- `@njit`デコレータ付き関数では型チェックが厳格
+- NumPyの配列形状と型を事前に確認
