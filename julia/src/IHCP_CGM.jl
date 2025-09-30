@@ -23,16 +23,21 @@ module IHCP_CGM
 include("ThermalProperties.jl")
 include("DataLoaders.jl")
 
+# Phase 2モジュールのインクルード
+include("solvers/DHCPSolver.jl")
+
 # 再エクスポート
 using .ThermalProperties
 using .DataLoaders
+using .DHCPSolver
 
 export polyval_numba, thermal_properties_calculator
 export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
+export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index
 
 # バージョン情報
-const VERSION = v"0.1.0"
-const PHASE = "Phase 1: 基盤構築"
+const VERSION = v"0.2.0"
+const PHASE = "Phase 2: 直接解法（DHCP）"
 
 """
   version_info()
@@ -49,9 +54,9 @@ function version_info()
   println("実装済み機能:")
   println("  ✓ 熱物性値計算 (ThermalProperties.jl)")
   println("  ✓ データ読み込み (DataLoaders.jl)")
+  println("  ✓ 直接解法 DHCP (DHCPSolver.jl)")
   println("")
   println("今後の実装予定:")
-  println("  ⏳ Phase 2: 直接解法（DHCP）")
   println("  ⏳ Phase 3: 随伴解法（Adjoint）")
   println("  ⏳ Phase 4: 共役勾配法（CGM）")
   println("  ⏳ Phase 5: スライディングウィンドウ計算")
