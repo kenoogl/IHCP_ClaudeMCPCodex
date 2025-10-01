@@ -13,7 +13,7 @@ cd python/original/
 python IHCP_CGM_Sliding_Window_Calculation_ver2.py
 ```
 
-### Julia版（移植版、Phase 1-3完了）
+### Julia版（移植版、Phase 1-5実装完了）
 ```bash
 cd julia/
 julia --project=. -e 'using Pkg; Pkg.test()'  # 全テスト実行
@@ -23,8 +23,8 @@ julia --project=. -e 'using Pkg; Pkg.test()'  # 全テスト実行
 - ✅ Phase 1: 熱物性値計算（全25テストパス）
 - ✅ Phase 2: DHCP直接ソルバー（全298テストパス）
 - ✅ Phase 3: Adjoint随伴ソルバー（全13テストパス）
-- ⏳ Phase 4: CGM最適化（未実装）
-- ⏳ Phase 5: スライディングウィンドウ（未実装）
+- ✅ Phase 4: CGM最適化（18テストパス）
+- 🔄 Phase 5: スライディングウィンドウ（実装完了、テスト実行待ち）
 
 ### 必須データファイルの配置
 - `shared/data/metal_thermal_properties.csv`: SUS304熱物性値データ（540B）
@@ -116,23 +116,30 @@ TrialClaudeMCPCodex/
 ```
 julia/
 ├── src/
-│   ├── IHCP_CGM.jl                    # メインモジュール（v0.2.0）
+│   ├── IHCP_CGM.jl                    # メインモジュール（v0.5.0）
 │   ├── ThermalProperties.jl           # Phase 1: 熱物性値計算 ✅
 │   ├── DataLoaders.jl                 # Phase 1: データ読み込み ✅
 │   ├── solvers/
 │   │   ├── DHCPSolver.jl             # Phase 2: 直接解法 ✅
-│   │   └── AdjointSolver.jl          # Phase 3: 随伴解法 ✅
+│   │   ├── AdjointSolver.jl          # Phase 3: 随伴解法 ✅
+│   │   ├── StoppingCriteria.jl       # Phase 4: 停止判定 ✅
+│   │   ├── CGMSolver.jl              # Phase 4: 共役勾配法 ✅
+│   │   └── SlidingWindowSolver.jl    # Phase 5: スライディングウィンドウ 🔄
 │   └── utils/
 │       └── json_helpers.jl           # JSON型変換ヘルパー ✅
 ├── test/
 │   ├── runtests.jl                   # テストランナー
 │   ├── test_thermal_properties.jl    # Phase 1テスト（25項目）✅
 │   ├── test_dhcp_solver.jl           # Phase 2テスト（298項目）✅
-│   └── test_adjoint_solver.jl        # Phase 3テスト（13項目）✅
+│   ├── test_adjoint_solver.jl        # Phase 3テスト（13項目）✅
+│   ├── test_cgm_solver.jl            # Phase 4テスト（18項目）✅
+│   └── test_sliding_window.jl        # Phase 5テスト（実装完了、実行待ち）🔄
 ├── data/
 │   ├── generate_reference_data.py    # Phase 1参照データ
 │   ├── generate_phase2_reference.py  # Phase 2参照データ
 │   ├── generate_phase3_reference.py  # Phase 3参照データ
+│   ├── generate_phase4_reference.py  # Phase 4参照データ
+│   ├── generate_phase5_reference.py  # Phase 5参照データ 🔄
 │   └── phase*_reference_*.json       # 各Phaseのゴールデンデータ
 └── Project.toml                       # 依存管理
 
@@ -144,7 +151,8 @@ docs/
 │   ├── phase2_implementation.md      # Phase 2完了ログ
 │   ├── phase2_json_fix_and_test_results.md
 │   ├── phase3_implementation.md      # Phase 3完了ログ
-│   └── phase3_bug_fix_and_test_results.md
+│   ├── phase3_bug_fix_and_test_results.md
+│   └── phase4_implementation.md      # Phase 4完了ログ
 └── reviews/
     └── python_code_structure.md      # Pythonコード分析
 ```
@@ -206,6 +214,5 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 2. **Phase 2 JSON型変換問題**: `json_helpers.jl`で解決
 3. **Phase 3随伴場の異常値**: 配列インデックス修正で解決（精度15桁改善）
 
-### ⏳ 未実装
-1. **Phase 4（CGM）**: 共役勾配法本体、ライン検索
-2. **Phase 5（スライディングウィンドウ）**: 全時間領域計算
+### 🔄 実装中
+1. **Phase 5（スライディングウィンドウ）**: 実装完了、テスト実行待ち（242行）
