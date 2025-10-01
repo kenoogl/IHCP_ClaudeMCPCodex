@@ -42,6 +42,9 @@ include("solvers/CGMSolver.jl")
 # Phase 5モジュールのインクルード
 include("solvers/SlidingWindowSolver.jl")
 
+# Phase 6モジュールのインクルード
+include("utils/validators.jl")
+
 # 再エクスポート
 using .ThermalProperties
 using .DataLoaders
@@ -50,6 +53,7 @@ using .AdjointSolver
 using .StoppingCriteria
 using .CGMSolver
 using .SlidingWindowSolver
+using .Validators
 
 export polyval_numba, thermal_properties_calculator
 export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
@@ -58,6 +62,9 @@ export build_adjoint_system!, assemble_adjoint_matrix, solve_adjoint!, adjoint_i
 export check_discrepancy, check_plateau, check_stopping_criteria, StoppingStatus
 export solve_cgm!, compute_gradient!, compute_sensitivity!, compute_step_size
 export solve_sliding_window_cgm, WindowInfo
+export check_field_finite, check_temperature_range, check_flux_range
+export check_gradient_magnitude, detect_numerical_anomalies
+export check_temperature_field, check_flux_field, check_adjoint_field
 
 # バージョン情報
 const VERSION = v"0.5.0"
