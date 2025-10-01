@@ -109,11 +109,37 @@ Y_obs_file = "data/Y_obs.npy"
 # 出力設定
 # ============================================================================
 [output]
-# 出力形式
-save_format = "jld2"  # jld2 または npz
+# 出力形式（jld2/npz/both）
+save_format = "jld2"
 
 # ウィンドウ情報を保存
 save_windows_info = true
 
 # 収束履歴を保存
 save_convergence_history = true
+
+# ============================================================================
+# 可視化設定
+# ============================================================================
+[visualization]
+# 可視化を有効化
+enabled = true
+
+# 熱流束の時間変化プロット
+plot_heat_flux = true
+
+# ヒートマップ
+plot_heatmap = true
+
+# CGM収束履歴
+plot_convergence = true
+
+# 出力ディレクトリ
+output_dir = "plots/"
+
+# 画像形式（png/pdf/svg）
+format = "png"
+
+# ヒートマップの時刻指定（秒単位）
+# 空配列の場合、中間時刻のみプロット
+heatmap_times = [0.1, 0.25, 0.5]

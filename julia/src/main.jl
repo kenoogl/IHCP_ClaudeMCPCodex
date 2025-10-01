@@ -27,6 +27,7 @@ using .IHCP_CGM
 
 include("utils/config.jl")
 include("utils/io.jl")
+include("utils/visualization.jl")
 
 """
     parse_commandline() -> Dict
@@ -289,8 +290,85 @@ function run_full_calculation(config::Dict, output_file::String)
 
         # 結果保存
         println("\n" * "-"^60)
-        save_results(output_file, q_global, windows_info, config)
+        @info "結果を保存中..."
+
+        # 保存形式の取得（デフォルト: jld2）
+        save_format = get(get(config, "output", Dict()), "save_format", "jld2")
+
+        if save_format == "jld2" || save_format == "both"
+            # JLD2形式で保存
+            jld2_file = replace(output_file, ".npz" => ".jld2")
+            if !endswith(jld2_file, ".jld2")
+                jld2_file = splitext(output_file)[1] * ".jld2"
+            end
+            save_results(jld2_file, q_global, windows_info, config)
+        end
+
+        if save_format == "npz" || save_format == "both"
+            # NPZ形式で保存
+            npz_file = replace(output_file, ".jld2" => ".npz")
+            if !endswith(npz_file, ".npz")
+                npz_file = splitext(output_file)[1] * ".npz"
+            end
+            save_results_npz(npz_file, q_global, windows_info, config)
+        end
+
         println("-"^60)
+
+        # 可視化機能
+        viz_config = get(config, "visualization", Dict())
+        if get(viz_config, "enabled", false)
+            println("\n" * "-"^60)
+            @info "可視化を実行中..."
+
+            # 出力ディレクトリの設定
+            output_dir = get(viz_config, "output_dir", "plots/")
+            mkpath(output_dir)
+
+            # 画像形式
+            format_str = get(viz_config, "format", "png")
+            format_sym = Symbol(format_str)
+
+            # 1. 熱流束の時間変化プロット
+            if get(viz_config, "plot_heat_flux", false)
+                plot_file = joinpath(output_dir, "heat_flux.$format_str")
+                plot_heat_flux(q_global, config; save_path=plot_file)
+            end
+
+            # 2. ヒートマップ
+            if get(viz_config, "plot_heatmap", false)
+                nt_minus_1 = size(q_global, 1)
+
+                # 指定時刻のヒートマップ
+                heatmap_times = get(viz_config, "heatmap_times", Float64[])
+                if !isempty(heatmap_times)
+                    dt = config["problem"]["dt"]
+                    for t_sec in heatmap_times
+                        t_idx = round(Int, t_sec / dt) + 1
+                        if t_idx >= 1 && t_idx <= nt_minus_1
+                            plot_file = joinpath(output_dir, "heatmap_$(t_sec)s.$format_str")
+                            plot_flux_heatmap(q_global, config, t_idx; save_path=plot_file)
+                        else
+                            @warn "指定時刻が範囲外です: $(t_sec)s (index=$t_idx, 有効範囲: 1:$nt_minus_1)"
+                        end
+                    end
+                else
+                    # デフォルト: 中間時刻のヒートマップ
+                    mid_index = div(nt_minus_1, 2)
+                    plot_file = joinpath(output_dir, "heatmap_mid.$format_str")
+                    plot_flux_heatmap(q_global, config, mid_index; save_path=plot_file)
+                end
+            end
+
+            # 3. CGM収束履歴
+            if get(viz_config, "plot_convergence", false)
+                plot_file = joinpath(output_dir, "convergence.$format_str")
+                plot_cgm_convergence(windows_info; save_path=plot_file)
+            end
+
+            @info "✓ 可視化完了: $output_dir"
+            println("-"^60)
+        end
 
         println("\n✓ 全時間領域計算が正常に完了しました")
         println("="^60)
