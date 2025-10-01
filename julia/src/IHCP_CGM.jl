@@ -44,6 +44,7 @@ include("solvers/SlidingWindowSolver.jl")
 
 # Phase 6モジュールのインクルード
 include("utils/validators.jl")
+include("utils/data_loaders.jl")
 
 # 再エクスポート
 using .ThermalProperties
@@ -55,6 +56,10 @@ using .CGMSolver
 using .SlidingWindowSolver
 using .Validators
 
+# Phase 6 C-1: 実データ読込機能のインポート
+# 注意: DataLoaders（CSV用）とMATDataLoaders（MAT用）を区別
+using .MATDataLoaders
+
 export polyval_numba, thermal_properties_calculator
 export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
 export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index
@@ -65,10 +70,11 @@ export solve_sliding_window_cgm, WindowInfo
 export check_field_finite, check_temperature_range, check_flux_range
 export check_gradient_magnitude, detect_numerical_anomalies
 export check_temperature_field, check_flux_field, check_adjoint_field
+export extract_sorted_mat_files, load_region_temperature
 
 # バージョン情報
-const VERSION = v"0.5.0"
-const PHASE = "Phase 5: スライディングウィンドウ計算"
+const VERSION = v"0.6.0"
+const PHASE = "Phase 6: 基本機能完成（C-1: 実データ読込）"
 
 """
   version_info()
@@ -90,8 +96,10 @@ function version_info()
   println("  ✓ 停止判定 (StoppingCriteria.jl)")
   println("  ✓ 共役勾配法 CGM (CGMSolver.jl)")
   println("  ✓ スライディングウィンドウ計算 (SlidingWindowSolver.jl)")
+  println("  ✓ 検証器関数群 (Validators.jl)")
+  println("  ✓ 実データ読込 (MATDataLoaders.jl)")
   println("")
-  println("全Phase完了!")
+  println("Phase 6 完了! 全機能実装済み")
   println("="^60)
 end
 
