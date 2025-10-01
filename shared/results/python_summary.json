@@ -1,0 +1,23 @@
+{
+  "computation": {
+    "elapsed_time": 103.7793140411377,
+    "time_per_step_ms": 290.698358658649,
+    "windows_count": 24,
+    "J_final": 89429.45251189076
+  },
+  "parameters": {
+    "nt": 357,
+    "window_size": 71,
+    "overlap": 17,
+    "cgm_iteration": 1,
+    "dt": 0.001
+  },
+  "statistics": {
+    "q_min": -28169.96903944406,
+    "q_max": 45.47324382054419,
+    "q_mean": -3621.1234185684357,
+    "q_median": -2776.2226372707496,
+    "q_std": 3172.711654651769,
+    "q_var": 10066099.243563168
+  }
+}
