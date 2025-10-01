@@ -16,8 +16,10 @@ using JSON
 # モジュールのパスを追加
 push!(LOAD_PATH, joinpath(@__DIR__, "../src"))
 
-# モジュール読み込み
-include("../src/IHCP_CGM.jl")
+# モジュール読み込み（重複定義を回避）
+if !isdefined(Main, :IHCP_CGM)
+  include("../src/IHCP_CGM.jl")
+end
 
 using .IHCP_CGM
 
