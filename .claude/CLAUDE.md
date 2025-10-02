@@ -16,8 +16,33 @@ python IHCP_CGM_Sliding_Window_Calculation_ver2.py
 ### Julia版（移植版、Phase 1-6完了✅）
 ```bash
 cd julia/
-julia --project=. -e 'using Pkg; Pkg.test()'  # 全テスト実行（505項目）
-julia --project=. src/main.jl --config config/test.toml --output results.jld2  # メイン実行
+
+# 全テスト実行（505項目）
+julia --project=. -e 'using Pkg; Pkg.test()'
+
+# 個別Phaseテスト実行
+julia --project=. test/test_thermal_properties.jl  # Phase 1
+julia --project=. test/test_dhcp_solver.jl         # Phase 2
+julia --project=. test/test_adjoint_solver.jl      # Phase 3
+julia --project=. test/test_cgm_solver.jl          # Phase 4
+julia --project=. test/test_sliding_window.jl      # Phase 5
+julia --project=. test/test_validators.jl          # Phase 6
+
+# メイン実行（設定ファイル指定）
+julia --project=. src/main.jl --config config/test.toml --output results.jld2
+julia --project=. src/main.jl --config config/example.toml --output results.jld2
+```
+
+### 完全一致検証の実行
+```bash
+# 1. Python版実行
+python python/validation/run_exact_match.py
+
+# 2. Julia版実行
+julia julia/examples/run_exact_match.jl
+
+# 3. 結果比較
+python python/validation/compare_exact_match.py
 ```
 
 **Julia実装完了**:
@@ -106,16 +131,37 @@ julia --project=. src/main.jl --config config/test.toml --output results.jld2  #
 - セッション開始時に本CLAUDE.mdを参照して開発方針を確認
 - コンテキスト圧縮後も本ファイルから方針を再確認
 
+## ドキュメント
+
+### 主要ドキュメント索引
+- [ドキュメント索引](docs/INDEX.md): 全ドキュメントへのゲートウェイ
+- [完成度チェックリスト](docs/FINAL_CHECKLIST.md): プロジェクト完成度の詳細確認
+- [プロジェクト完成報告](docs/PROJECT_COMPLETION.md): プロジェクト完了の公式記録
+
+### 技術ドキュメント
+- [Julia移行計画](docs/plans/julia_migration_plan.md): 14週間移植計画
+- [Pythonコード構造レビュー](docs/reviews/python_code_structure.md)
+- [Phase 1-6実装ログ](docs/logs/): 時系列の実装記録
+
 ## ディレクトリ構成
 ```
 TrialClaudeMCPCodex/
 ├── python/           # Python関連
-│   └── original/     # オリジナルPythonコード
-│       └── IHCP_CGM_Sliding_Window_Calculation_ver2.py (メインプログラム)
+│   ├── original/     # オリジナルPythonコード
+│   │   └── IHCP_CGM_Sliding_Window_Calculation_ver2.py (メインプログラム)
+│   └── validation/   # 検証スクリプト
 ├── shared/           # 共通リソース
-│   └── data/         # 共通データファイル
-│       ├── metal_thermal_properties.csv (熱物性値データ)
-│       └── T_measure_700um_1ms.npy (測定温度データ、1.1GB、gitignore済み)
+│   ├── data/         # 共通データファイル
+│   │   ├── metal_thermal_properties.csv (熱物性値データ)
+│   │   └── T_measure_700um_1ms.npy (測定温度データ、1.1GB、gitignore済み)
+│   ├── config/       # 共通設定
+│   └── results/      # 計算結果・検証データ
+├── docs/             # ドキュメント
+│   ├── INDEX.md      # ドキュメント索引
+│   ├── logs/         # 実装ログ（Phase 1-6）
+│   ├── reports/      # 分析・検証レポート
+│   ├── reviews/      # コードレビュー
+│   └── plans/        # 計画書
 └── .claude/          # Claude Code設定
     └── CLAUDE.md     # プロジェクト指示書
 ```
@@ -201,15 +247,9 @@ docs/
 - 0始まり（Python）→ 1始まり（Julia）のインデックス変換に注意
 
 ### Juliaテスト実行エラー
-```bash
-# 個別テスト実行
-julia --project=. test/test_thermal_properties.jl
-julia --project=. test/test_dhcp_solver.jl
-julia --project=. test/test_adjoint_solver.jl
-
-# 全テスト実行
-julia --project=. -e 'using Pkg; Pkg.test()'
-```
+- 個別Phaseのテスト実行コマンドは「実行方法」セクションを参照
+- 全テスト実行: `julia --project=. -e 'using Pkg; Pkg.test()'`
+- テストが失敗した場合、該当Phaseのログ（`docs/logs/phase*/`）を確認
 
 ## Julia移植のベストプラクティス
 
@@ -256,6 +296,11 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 **実行日**: 2025年10月2日
 
+**検証スクリプト**:
+- Python版: `python/validation/run_exact_match.py`
+- Julia版: `julia/examples/run_exact_match.jl`
+- 比較: `python/validation/compare_exact_match.py`
+
 **検証内容**:
 - PythonオリジナルコードとJulia移植版で完全に同一のパラメータ・データを使用
 - スライディングウィンドウCGM計算を実行（356ステップ、window_size=71）
@@ -267,4 +312,34 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 **判定**: Python-Julia実用的完全一致を達成 ✅
 
-詳細は`shared/results/validation/FINAL_VERIFICATION_SUMMARY.md`を参照
+**詳細ドキュメント**:
+- `shared/results/validation/FINAL_VERIFICATION_SUMMARY.md`: 最終検証サマリー
+- `shared/results/validation/README_EXACT_MATCH.md`: 実行手順書
+- `shared/results/validation/exact_match_comparison_report.md`: 詳細比較レポート
+
+## 性能改善タスク
+
+### 現在のベンチマーク（356ステップ、window_size=71）
+- **Python版**: 106秒（CGM: 92秒、検証: 14秒）
+- **Julia版**: 1516秒（CGM: 1179秒、検証: 337秒）
+- **改善目標**: Julia版をPython版と同等以下の実行時間に
+
+### 性能改善候補
+- 並列化（マルチスレッド、分散処理）
+- メモリアロケーション最適化
+- 型安定性の改善
+- GPU対応の検討
+
+### 性能評価コマンド
+```bash
+# Python版ベンチマーク
+python python/validation/run_exact_match.py
+
+# Julia版ベンチマーク
+julia --project=. julia/examples/run_exact_match.jl
+
+# 詳細プロファイリング
+julia --project=. --track-allocation=user src/main.jl --config config/test.toml
+```
+
+**重要**: 性能改善時は必ず数値精度を再検証し、計算結果の一致を確認すること
