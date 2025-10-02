@@ -450,4 +450,36 @@ function solve_dhcp!(
 end
 
 
+"""
+    solve_dhcp_multiple_timesteps(...)
+
+solve_dhcp!のエイリアス関数（完全一致検証スクリプト用）
+
+Python版のmultiple_time_step_solver_DHCPに対応する名前で呼び出せるようにします。
+"""
+function solve_dhcp_multiple_timesteps(
+  T_initial::Array{Float64,3},
+  q_surface::Array{Float64,3},
+  nt::Int,
+  rho::Float64,
+  cp_coeffs::Vector{Float64},
+  k_coeffs::Vector{Float64},
+  dx::Float64,
+  dy::Float64,
+  dz::Vector{Float64},
+  dz_b::Vector{Float64},
+  dz_t::Vector{Float64},
+  dt::Float64;
+  rtol::Float64=1e-8,
+  maxiter::Int=1000,
+  verbose::Bool=false
+)
+  return solve_dhcp!(
+    T_initial, q_surface, nt, rho, cp_coeffs, k_coeffs,
+    dx, dy, dz, dz_b, dz_t, dt;
+    rtol=rtol, maxiter=maxiter, verbose=verbose
+  )
+end
+
+
 end  # module DHCPSolver

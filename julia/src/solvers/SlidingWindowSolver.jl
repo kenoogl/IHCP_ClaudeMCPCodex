@@ -95,7 +95,11 @@ function solve_sliding_window_cgm(
   Y_obs::Array{Float64,3}, T0::Array{Float64,3},
   dx::Float64, dy::Float64, dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64}, dt::Float64,
   rho::Float64, cp_coeffs::Vector{Float64}, k_coeffs::Vector{Float64},
-  window_size::Int, overlap::Int, q_init_value::Float64, cgm_iteration::Int
+  window_size::Int, overlap::Int, q_init_value::Float64, cgm_iteration::Int;
+  rtol_dhcp::Float64=1e-6,
+  maxiter_dhcp::Int=20000,
+  rtol_adjoint::Float64=1e-8,
+  maxiter_adjoint::Int=20000
 )
 
   nt = size(Y_obs, 1)
@@ -158,7 +162,14 @@ function solve_sliding_window_cgm(
 
     # CGM実行（Pythonオリジナル: 1595-1598行）
     # paramsでCGM反復数を指定
-    cgm_params = (max_iter=cgm_iteration, verbose=false)
+    cgm_params = (
+      max_iter=cgm_iteration,
+      verbose=false,
+      rtol_dhcp=rtol_dhcp,
+      maxiter_dhcp=maxiter_dhcp,
+      rtol_adjoint=rtol_adjoint,
+      maxiter_adjoint=maxiter_adjoint
+    )
     q_win, T_cal_win, J_hist = solve_cgm!(
       T_init, Y_obs_win, q_init_win, dx, dy, dz, dz_b, dz_t, dt,
       rho, cp_coeffs, k_coeffs; params=cgm_params

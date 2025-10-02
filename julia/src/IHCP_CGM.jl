@@ -62,7 +62,7 @@ using .MATDataLoaders
 
 export polyval_numba, thermal_properties_calculator
 export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
-export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index
+export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index, solve_dhcp_multiple_timesteps
 export build_adjoint_system!, assemble_adjoint_matrix, solve_adjoint!, adjoint_index
 export check_discrepancy, check_plateau, check_stopping_criteria, StoppingStatus
 export solve_cgm!, compute_gradient!, compute_sensitivity!, compute_step_size

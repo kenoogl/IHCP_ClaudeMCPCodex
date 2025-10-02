@@ -52,6 +52,7 @@ docs/
 
 ### プロジェクト全体
 - [プロジェクト初期化ログ（2025年9月30日）](logs/project/initialization.md)
+- [ドキュメント整理完了レポート（2025年10月2日）](logs/project/documentation_reorganization_report.md)
 
 ---
 
@@ -98,6 +99,7 @@ docs/
 ### 実装関連
 - [Phase 1〜6 全実装ログ](#-実装ログ)
 - [プロジェクト初期化](logs/project/initialization.md)
+- [ドキュメント整理完了レポート](logs/project/documentation_reorganization_report.md)
 
 ### 分析・検証関連
 - [ベンチマークレポート](#ベンチマーク)
