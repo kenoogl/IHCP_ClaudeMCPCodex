@@ -207,3 +207,16 @@ marimo/_lsp/
 __marimo__/
 T_measure_700um_1ms.npy
 settings.local.json
+
+# デバッグ・一時ファイル
+julia/test/debug_*.jl
+julia/test_output.jld2
+temp_*.npy
+
+# テスト用データ（大容量）
+julia/data/test_*.npy
+shared/results/validation/*.npz
+shared/results/validation/*.png
+
+# プロット画像（大容量）
+julia/plots/
