@@ -75,8 +75,8 @@ end
   ここでJは目的関数（残差二乗和）
 
 Args:
-  T_cal: DHCP計算温度場 (nt, ni, nj, nk)
-  Y_obs: 観測温度（底面） (nt, ni, nj) [K]
+  T_cal: DHCP計算温度場 (ni, nj, nk, nt) ※Phase 2.2: 時間次元を最後に配置
+  Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数
   k_coeffs: 熱伝導率多項式係数
@@ -89,7 +89,7 @@ Args:
   maxiter: CG最大反復数
 
 Returns:
-  gradient: 勾配場 (nt-1, ni, nj)
+  gradient: 勾配場 (ni, nj, nt-1) ※Phase 2.2: 時間次元を最後に配置
 """
 function compute_gradient!(
   T_cal::Array{Float64,4},
@@ -103,7 +103,7 @@ function compute_gradient!(
   rtol::Float64=1e-8,
   maxiter::Int=20000
 )
-  nt, ni, nj, nk = size(T_cal)
+  ni, nj, nk, nt = size(T_cal)
 
   # 随伴場求解（Phase 3）
   lambda_field, cg_iters = solve_adjoint!(
@@ -112,10 +112,10 @@ function compute_gradient!(
     rtol=rtol, maxiter=maxiter, verbose=false
   )
 
-  # 勾配抽出（表面 k=nk での随伴場）
-  gradient = zeros(nt - 1, ni, nj)
+  # 勾配抽出（表面 k=nk での随伴場、メモリレイアウト最適化: Phase 2.2）
+  gradient = zeros(ni, nj, nt - 1)
   for n in 1:(nt - 1)
-    gradient[n, :, :] = lambda_field[n, :, :, nk]  # 表面（上端）
+    gradient[:, :, n] = lambda_field[:, :, nk, n]  # 表面（上端）
   end
 
   return gradient
@@ -136,7 +136,7 @@ end
 
 Args:
   T_init: 初期温度場（ゼロ） (ni, nj, nk)
-  p_n: 探索方向（熱流束の方向） (nt-1, ni, nj)
+  p_n: 探索方向（熱流束の方向） (ni, nj, nt-1) ※Phase 2.2: 時間次元を最後に配置
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数
   k_coeffs: 熱伝導率多項式係数
@@ -149,7 +149,7 @@ Args:
   maxiter: CG最大反復数
 
 Returns:
-  dT: 感度場（温度応答） (nt, ni, nj, nk)
+  dT: 感度場（温度応答） (ni, nj, nk, nt) ※Phase 2.2: 時間次元を最後に配置
 """
 function compute_sensitivity!(
   T_init::Array{Float64,3},
@@ -189,8 +189,8 @@ end
   Sp: 感度場の底面値（dT[:, :, :, 1]）
 
 Args:
-  res_T: 残差場 (nt-1, ni, nj) [K]
-  Sp: 感度場の底面値 (nt-1, ni, nj) [K]
+  res_T: 残差場 (ni, nj, nt-1) [K] ※Phase 2.2: 時間次元を最後に配置
+  Sp: 感度場の底面値 (ni, nj, nt-1) [K] ※Phase 2.2: 時間次元を最後に配置
   eps: ゼロ除算防止の微小値（デフォルト1e-12）
 
 Returns:
@@ -230,8 +230,8 @@ CGMアルゴリズム（ポラック・リビエール型）:
 
 Args:
   T_init: 初期温度場 (ni, nj, nk) [K]
-  Y_obs: 観測温度（底面） (nt, ni, nj) [K]
-  q_init: 初期熱流束推定 (nt-1, ni, nj) [W/m²]
+  Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
+  q_init: 初期熱流束推定 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
   dx, dy: x, y方向格子幅 [m]
   dz: z方向格子幅配列 (nk,) [m]
   dz_b: 下側界面距離 (nk,) [m]
@@ -255,8 +255,8 @@ Args:
     - verbose: 詳細出力フラグ（デフォルトtrue）
 
 Returns:
-  q_final: 最終逆解析熱流束 (nt-1, ni, nj) [W/m²]
-  T_cal_final: 最終温度場 (nt, ni, nj, nk) [K]
+  q_final: 最終逆解析熱流束 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
+  T_cal_final: 最終温度場 (ni, nj, nk, nt) [K] ※Phase 2.2: 時間次元を最後に配置
   J_hist: 目的関数履歴 (vector)
 """
 function solve_cgm!(
@@ -285,8 +285,8 @@ function solve_cgm!(
   beta_max = get(params, :beta_max, 1e8)
   verbose = get(params, :verbose, true)
 
-  # 問題サイズ
-  nt, ni, nj = size(Y_obs)
+  # 問題サイズ（メモリレイアウト最適化: Phase 2.2）
+  ni, nj, nt = size(Y_obs)
   nk = size(T_init, 3)
 
   # 初期化
@@ -296,9 +296,9 @@ function solve_cgm!(
   M = ni * nj
   epsilon = M * (sigma^2) * (nt - 1)  # Discrepancy基準値
 
-  grad = zeros(nt - 1, ni, nj)
-  grad_last = zeros(nt - 1, ni, nj)
-  p_n_last = zeros(nt - 1, ni, nj)
+  grad = zeros(ni, nj, nt - 1)
+  grad_last = zeros(ni, nj, nt - 1)
+  p_n_last = zeros(ni, nj, nt - 1)
 
   bottom_idx = 1   # Julia 1-indexed（底面）
   top_idx = nk     # Julia 1-indexed（表面）
@@ -324,8 +324,8 @@ function solve_cgm!(
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
     )
 
-    # Step 2: 目的関数計算
-    res_T = T_cal[2:nt, :, :, bottom_idx] .- Y_obs[2:nt, :, :]  # (nt-1, ni, nj)
+    # Step 2: 目的関数計算（メモリレイアウト最適化: Phase 2.2）
+    res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1)
     J = tensor_dot(res_T, res_T)
     push!(J_hist, J)
 
@@ -374,8 +374,8 @@ function solve_cgm!(
       rtol_adjoint, maxiter_cg
     )
 
-    # Step 6: ステップサイズ計算
-    Sp = dT[2:nt, :, :, bottom_idx]  # (nt-1, ni, nj)
+    # Step 6: ステップサイズ計算（メモリレイアウト最適化: Phase 2.2）
+    Sp = dT[:, :, bottom_idx, 2:nt]  # (ni, nj, nt-1)
     beta = compute_step_size(res_T, Sp, eps)
 
     # ステップサイズ制限（初回のみ）

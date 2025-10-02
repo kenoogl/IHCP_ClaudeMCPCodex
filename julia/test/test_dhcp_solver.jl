@@ -59,7 +59,7 @@ using .JSONHelpers
 
     # 初期条件と境界条件
     T_initial = fill(300.0, ni, nj, nk)
-    q_surface = fill(1000.0, ni, nj)
+    q_surface = fill(1000.0, ni, nj)  # Phase 2.2: 2D配列（時間インデックスなし）
 
     # 係数構築
     a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = build_dhcp_system!(
@@ -118,7 +118,7 @@ using .JSONHelpers
     k = fill(15.0, ni, nj, nk)
 
     T_initial = fill(300.0, ni, nj, nk)
-    q_surface = fill(5000.0, ni, nj)
+    q_surface = fill(5000.0, ni, nj)  # Phase 2.2: 2D配列（時間インデックスなし）
 
     # 係数構築と行列組み立て
     a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = build_dhcp_system!(
@@ -208,8 +208,8 @@ using .JSONHelpers
     # 初期条件（JSON配列を型変換してreshape）
     T_initial = reshape_json_array(data["T_initial"], (ni, nj, nk), Float64)
 
-    # 境界条件
-    q_surface = fill(q, nt-1, ni, nj)
+    # 境界条件（メモリレイアウト最適化: Phase 2.2）
+    q_surface = fill(q, ni, nj, nt-1)
 
     # Julia実装で求解
     T_all = solve_dhcp!(
@@ -219,7 +219,9 @@ using .JSONHelpers
     )
 
     # Python結果との比較（JSON配列を型変換してreshape）
-    T_all_py_reshaped = reshape_json_array(data["T_all"], (nt, ni, nj, nk), Float64)
+    # Phase 2.2: Python形状(nt,ni,nj,nk) → Julia形状(ni,nj,nk,nt)に変換
+    T_all_py_tmp = reshape_json_array(data["T_all"], (nt, ni, nj, nk), Float64)
+    T_all_py_reshaped = permutedims(T_all_py_tmp, (2, 3, 4, 1))  # (nt,ni,nj,nk) → (ni,nj,nk,nt)
 
     diff = abs.(T_all .- T_all_py_reshaped)
     max_diff = maximum(diff)
@@ -231,7 +233,8 @@ using .JSONHelpers
 
     # 解析解との比較
     T_analytical = json_to_array(data["T_analytical"], Float64)
-    T_final_julia = T_all[end, 1, 1, :]
+    # Phase 2.2: メモリレイアウト変更 T_all[ni,nj,nk,nt] → 最終時刻の1D温度プロファイル
+    T_final_julia = T_all[1, 1, :, end]  # (i=1, j=1, k=1:nk, t=end)
     analytical_error = abs.(T_final_julia .- T_analytical)
 
     @test maximum(analytical_error) < 10.0  # Python参照と同等の誤差（解析解は粗い格子）
@@ -276,7 +279,9 @@ using .JSONHelpers
     T_initial = reshape_json_array(data["T_initial"], (ni, nj, nk), Float64)
 
     # 境界条件（空間変動、JSON配列を型変換してreshape）
-    q_surface = reshape_json_array(data["q_surface"], (nt-1, ni, nj), Float64)
+    # Phase 2.2: Python形状(nt-1,ni,nj) → Julia形状(ni,nj,nt-1)に変換
+    q_surface_tmp = reshape_json_array(data["q_surface"], (nt-1, ni, nj), Float64)
+    q_surface = permutedims(q_surface_tmp, (2, 3, 1))  # (nt-1,ni,nj) → (ni,nj,nt-1)
 
     # Julia実装で求解
     T_all = solve_dhcp!(
@@ -286,7 +291,9 @@ using .JSONHelpers
     )
 
     # Python結果との比較（JSON配列を型変換してreshape）
-    T_all_py_reshaped = reshape_json_array(data["T_all"], (nt, ni, nj, nk), Float64)
+    # Phase 2.2: Python形状(nt,ni,nj,nk) → Julia形状(ni,nj,nk,nt)に変換
+    T_all_py_tmp = reshape_json_array(data["T_all"], (nt, ni, nj, nk), Float64)
+    T_all_py_reshaped = permutedims(T_all_py_tmp, (2, 3, 4, 1))  # (nt,ni,nj,nk) → (ni,nj,nk,nt)
 
     diff = abs.(T_all .- T_all_py_reshaped)
     max_diff = maximum(diff)
@@ -330,7 +337,7 @@ using .JSONHelpers
     T_initial = fill(300.0, ni, nj, nk)
 
     nt = 11
-    q_surface = fill(5000.0, nt-1, ni, nj)
+    q_surface = fill(5000.0, ni, nj, nt-1)
 
     # 詳細ログ有効で実行
     T_all = solve_dhcp!(
@@ -366,7 +373,7 @@ using .JSONHelpers
     T_initial = fill(300.0, ni, nj, nk)
 
     nt = 6
-    q_surface = fill(1000.0, nt-1, ni, nj)
+    q_surface = fill(1000.0, ni, nj, nt-1)
 
     # 実行（内部でホットスタート使用）
     T_all = solve_dhcp!(
@@ -375,7 +382,8 @@ using .JSONHelpers
       rtol=1e-8, maxiter=1000, verbose=false
     )
 
-    @test size(T_all) == (nt, ni, nj, nk)
+    # Phase 2.2: メモリレイアウト最適化により形状変更
+    @test size(T_all) == (ni, nj, nk, nt)
 
     println("✓ ホットスタート機能が動作")
     println("  （詳細な反復回数記録は solve_dhcp! の実装次第）")
