@@ -80,11 +80,16 @@ using .JSONHelpers
   println("時間: nt=$nt, dt=$dt s")
 
   # DHCP結果と観測データ（Python参照）
-  T_cal = reshape_json_array(data["T_cal"], (nt, ni, nj, nk), Float64)
-  Y_obs = reshape_json_array(data["Y_obs"], (nt, ni, nj), Float64)
+  # Phase 2.2: Python形状(nt,ni,nj,nk) → Julia形状(ni,nj,nk,nt)に変換
+  T_cal_tmp = reshape_json_array(data["T_cal"], (nt, ni, nj, nk), Float64)
+  T_cal = permutedims(T_cal_tmp, (2, 3, 4, 1))  # (nt,ni,nj,nk) → (ni,nj,nk,nt)
+
+  Y_obs_tmp = reshape_json_array(data["Y_obs"], (nt, ni, nj), Float64)
+  Y_obs = permutedims(Y_obs_tmp, (2, 3, 1))  # (nt,ni,nj) → (ni,nj,nt)
 
   # Python参照随伴場
-  λ_ref = reshape_json_array(data["lambda_all"], (nt, ni, nj, nk), Float64)
+  λ_ref_tmp = reshape_json_array(data["lambda_all"], (nt, ni, nj, nk), Float64)
+  λ_ref = permutedims(λ_ref_tmp, (2, 3, 4, 1))  # (nt,ni,nj,nk) → (ni,nj,nk,nt)
 
   println("Python参照データ読み込み完了")
   println("  T_cal範囲: [$(data["stats"]["T_min"]), $(data["stats"]["T_max"])] K")
@@ -104,7 +109,8 @@ using .JSONHelpers
 
   # テスト1: 終端条件
   @testset "終端条件 λ[nt] = 0" begin
-    @test all(λ_all[nt, :, :, :] .≈ 0.0)
+    # Phase 2.2: メモリレイアウト変更 λ_all[ni,nj,nk,nt] → 最終時刻
+    @test all(λ_all[:, :, :, nt] .≈ 0.0)
     println("  ✓ 終端条件確認: λ[nt] = 0")
   end
 
@@ -128,9 +134,10 @@ using .JSONHelpers
 
   # テスト3: 各時間ステップでの比較（詳細チェック）
   @testset "時間ステップ毎の比較" begin
+    # Phase 2.2: メモリレイアウト変更 λ_all[ni,nj,nk,nt]
     println("\n  時間ステップ毎の誤差:")
     for t in [1, nt÷2, nt-1]
-      error_t = maximum(abs.(λ_all[t, :, :, :] .- λ_ref[t, :, :, :]))
+      error_t = maximum(abs.(λ_all[:, :, :, t] .- λ_ref[:, :, :, t]))
       println("    t=$t: 最大誤差=$error_t")
       @test error_t < 1e-7
     end
@@ -139,12 +146,14 @@ using .JSONHelpers
 
   # テスト4: 残差注入機構の確認（底面での変化）
   @testset "残差注入機構" begin
+    # Phase 2.2: メモリレイアウト変更 λ_all[ni,nj,nk,nt] → 最初の時間ステップ
     # 底面（k=1）での随伴場が非ゼロであることを確認
     λ_bottom = λ_all[:, :, :, 1]
     @test maximum(abs.(λ_bottom)) > 1e-12
 
     # 測定残差との相関確認
-    residual = T_cal[:, :, :, 1] .- Y_obs
+    # T_cal[ni,nj,nk,nt], Y_obs[ni,nj,nt] → t=1の残差
+    residual = T_cal[:, :, 1, 1] .- Y_obs[:, :, 1]
     println("\n  残差注入機構:")
     println("    測定残差RMS: $(sqrt(mean(residual.^2)))")
     println("    底面随伴場範囲: [$(minimum(λ_bottom)), $(maximum(λ_bottom))]")
@@ -153,8 +162,9 @@ using .JSONHelpers
 
   # テスト5: 後退時間積分の単調性確認
   @testset "後退時間積分の単調性" begin
+    # Phase 2.2: メモリレイアウト変更 λ_all[ni,nj,nk,nt] → 時間ごとのノルム
     # 随伴場のノルムが時間的に変化することを確認
-    λ_norms = [norm(λ_all[t, :, :, :]) for t in 1:nt]
+    λ_norms = [norm(λ_all[:, :, :, t]) for t in 1:nt]
     println("\n  随伴場ノルム（時間変化）:")
     println("    t=1: $(λ_norms[1])")
     println("    t=$nt: $(λ_norms[nt])")
@@ -210,11 +220,16 @@ end
   println("時間: nt=$nt, dt=$dt s")
 
   # DHCP結果と観測データ（Python参照）
-  T_cal = reshape_json_array(data["T_cal"], (nt, ni, nj, nk), Float64)
-  Y_obs = reshape_json_array(data["Y_obs"], (nt, ni, nj), Float64)
+  # Phase 2.2: Python形状(nt,ni,nj,nk) → Julia形状(ni,nj,nk,nt)に変換
+  T_cal_tmp = reshape_json_array(data["T_cal"], (nt, ni, nj, nk), Float64)
+  T_cal = permutedims(T_cal_tmp, (2, 3, 4, 1))  # (nt,ni,nj,nk) → (ni,nj,nk,nt)
+
+  Y_obs_tmp = reshape_json_array(data["Y_obs"], (nt, ni, nj), Float64)
+  Y_obs = permutedims(Y_obs_tmp, (2, 3, 1))  # (nt,ni,nj) → (ni,nj,nt)
 
   # Python参照随伴場
-  λ_ref = reshape_json_array(data["lambda_all"], (nt, ni, nj, nk), Float64)
+  λ_ref_tmp = reshape_json_array(data["lambda_all"], (nt, ni, nj, nk), Float64)
+  λ_ref = permutedims(λ_ref_tmp, (2, 3, 4, 1))  # (nt,ni,nj,nk) → (ni,nj,nk,nt)
 
   println("Python参照データ読み込み完了")
   println("  T_cal範囲: [$(data["stats"]["T_min"]), $(data["stats"]["T_max"])] K")
@@ -235,7 +250,8 @@ end
 
   # テスト1: 終端条件
   @testset "終端条件 λ[nt] = 0" begin
-    @test all(λ_all[nt, :, :, :] .≈ 0.0)
+    # Phase 2.2: メモリレイアウト変更 λ_all[ni,nj,nk,nt] → 最終時刻
+    @test all(λ_all[:, :, :, nt] .≈ 0.0)
     println("  ✓ 終端条件確認: λ[nt] = 0")
   end
 

@@ -242,11 +242,17 @@ end
 
     # 入力データ
     T_init = nested_to_3d(input["T_init"], (ni, nj, nk))
-    Y_obs = nested_to_3d(input["Y_obs"], (nt, ni, nj))
-    q_true = nested_to_3d(input["q_true"], (nt-1, ni, nj))
+
+    # Phase 2.2: Python形状(nt,ni,nj) → Julia形状(ni,nj,nt)に変換
+    Y_obs_tmp = nested_to_3d(input["Y_obs"], (nt, ni, nj))
+    Y_obs = permutedims(Y_obs_tmp, (2, 3, 1))  # (nt,ni,nj) → (ni,nj,nt)
+
+    q_true_tmp = nested_to_3d(input["q_true"], (nt-1, ni, nj))
+    q_true = permutedims(q_true_tmp, (2, 3, 1))  # (nt-1,ni,nj) → (ni,nj,nt-1)
 
     # 期待される出力
-    q_global_ref = nested_to_3d(output["q_global"], (nt-1, ni, nj))
+    q_global_ref_tmp = nested_to_3d(output["q_global"], (nt-1, ni, nj))
+    q_global_ref = permutedims(q_global_ref_tmp, (2, 3, 1))  # (nt-1,ni,nj) → (ni,nj,nt-1)
     n_windows_ref = Int(output["n_windows"])
 
     println("問題設定:")
@@ -290,10 +296,11 @@ end
     @test all(isapprox.(q_global_julia, q_global_ref, rtol=1e-5, atol=1e-6))
 
     # サンプル値の表示
+    # Phase 2.2: メモリレイアウト変更 q_global[ni,nj,nt-1]
     println("\nサンプル値（t=0, 5, 10）:")
     for t in [1, 6, 11]
       if t <= nt-1
-        println("  t=$(t-1): Julia=$(q_global_julia[t, 1, 1]), Python=$(q_global_ref[t, 1, 1]), True=$(q_true[t, 1, 1])")
+        println("  t=$(t-1): Julia=$(q_global_julia[1, 1, t]), Python=$(q_global_ref[1, 1, t]), True=$(q_true[1, 1, t])")
       end
     end
 
@@ -332,11 +339,17 @@ end
 
     # 入力データ
     T_init = nested_to_3d(input["T_init"], (ni, nj, nk))
-    Y_obs = nested_to_3d(input["Y_obs"], (nt, ni, nj))
-    q_true = nested_to_3d(input["q_true"], (nt-1, ni, nj))
+
+    # Phase 2.2: Python形状(nt,ni,nj) → Julia形状(ni,nj,nt)に変換
+    Y_obs_tmp = nested_to_3d(input["Y_obs"], (nt, ni, nj))
+    Y_obs = permutedims(Y_obs_tmp, (2, 3, 1))  # (nt,ni,nj) → (ni,nj,nt)
+
+    q_true_tmp = nested_to_3d(input["q_true"], (nt-1, ni, nj))
+    q_true = permutedims(q_true_tmp, (2, 3, 1))  # (nt-1,ni,nj) → (ni,nj,nt-1)
 
     # 期待される出力
-    q_global_ref = nested_to_3d(output["q_global"], (nt-1, ni, nj))
+    q_global_ref_tmp = nested_to_3d(output["q_global"], (nt-1, ni, nj))
+    q_global_ref = permutedims(q_global_ref_tmp, (2, 3, 1))  # (nt-1,ni,nj) → (ni,nj,nt-1)
     n_windows_ref = Int(output["n_windows"])
 
     println("問題設定:")
@@ -376,10 +389,11 @@ end
     @test all(isapprox.(q_global_julia, q_global_ref, rtol=1e-6, atol=1e-10))
 
     # サンプル値の表示（中心点 [1,1]）
+    # Phase 2.2: メモリレイアウト変更 q_global[ni,nj,nt-1]
     println("\nサンプル値（中心点 [1,1]、t=0, 5, 10）:")
     for t in [1, 6, 11]
       if t <= nt-1
-        println("  t=$(t-1): Julia=$(q_global_julia[t, 1, 1]), Python=$(q_global_ref[t, 1, 1]), True=$(q_true[t, 1, 1])")
+        println("  t=$(t-1): Julia=$(q_global_julia[1, 1, t]), Python=$(q_global_ref[1, 1, t]), True=$(q_true[1, 1, t])")
       end
     end
 

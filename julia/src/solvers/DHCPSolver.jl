@@ -99,11 +99,11 @@ Returns:
   b: RHSベクトル (N,)
 """
 function build_dhcp_system!(
-  T_initial::Array{Float64,3},
-  q_surface::Array{Float64,2},
+  T_initial::AbstractArray{Float64,3},
+  q_surface::AbstractArray{Float64,2},
   rho::Float64,
-  cp::Array{Float64,3},
-  k::Array{Float64,3},
+  cp::AbstractArray{Float64,3},
+  k::AbstractArray{Float64,3},
   dx::Float64,
   dy::Float64,
   dz::Vector{Float64},
@@ -336,7 +336,7 @@ end
 
 Args:
   T_initial: 初期温度場 (ni, nj, nk) [K]
-  q_surface: 表面熱流束時系列 (nt-1, ni, nj) [W/m²]
+  q_surface: 表面熱流束時系列 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
   nt: 時間ステップ数
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数 [c0, c1, c2, c3]
@@ -348,7 +348,7 @@ Args:
   verbose: 進捗表示フラグ（デフォルト: false）
 
 Returns:
-  T_all: 温度場時系列 (nt, ni, nj, nk) [K]
+  T_all: 温度場時系列 (ni, nj, nk, nt) [K] ※Phase 2.2: 時間次元を最後に配置
 """
 function solve_dhcp!(
   T_initial::Array{Float64,3},
@@ -370,9 +370,10 @@ function solve_dhcp!(
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
 
-  # 結果配列の初期化
-  T_all = zeros(Float64, nt, ni, nj, nk)
-  T_all[1, :, :, :] = T_initial
+  # 結果配列の初期化（メモリレイアウト最適化: Phase 2.2）
+  # 時間次元を最後に配置して空間方向のメモリ連続性を確保
+  T_all = zeros(Float64, ni, nj, nk, nt)
+  T_all[:, :, :, 1] = T_initial
 
   # ホットスタート用初期推定値
   x0 = zeros(Float64, N)
@@ -393,13 +394,13 @@ function solve_dhcp!(
 
   # 時間積分ループ
   for t in 2:nt
-    # 前ステップ温度から熱物性値計算
-    T_prev = T_all[t-1, :, :, :]
+    # 前ステップ温度から熱物性値計算（メモリビュー使用: Phase 2.2）
+    T_prev = @view T_all[:, :, :, t-1]
     cp, k = thermal_properties_calculator(T_prev, cp_coeffs, k_coeffs)
 
-    # 係数とRHS構築
+    # 係数とRHS構築（熱流束も時間次元を最後に: Phase 2.2）
     a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = build_dhcp_system!(
-      T_prev, q_surface[t-1, :, :], rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
+      T_prev, @view(q_surface[:, :, t-1]), rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
     )
 
     # 疎行列組み立て
@@ -427,10 +428,10 @@ function solve_dhcp!(
       cg!(x0, A, b; Pl=Pl, reltol=rtol, maxiter=maxiter)
     end
 
-    # 結果を3D配列に復元（Fortran順序）
+    # 結果を3D配列に復元（Fortran順序、メモリレイアウト最適化: Phase 2.2）
     for k_idx in 1:nk, j in 1:nj, i in 1:ni
       p = dhcp_index(i, j, k_idx, ni, nj)
-      T_all[t, i, j, k_idx] = x0[p]
+      T_all[i, j, k_idx, t] = x0[p]
     end
 
     # 数値異常チェック

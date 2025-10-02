@@ -77,7 +77,7 @@ Julia標準の型推論による最適化を利用
 必要に応じて@threadsマクロで並列化可能
 """
 function thermal_properties_calculator(
-  Temperature::Array{Float64, 3},
+  Temperature::AbstractArray{Float64, 3},
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64}
 )
