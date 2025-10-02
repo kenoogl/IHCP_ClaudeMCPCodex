@@ -384,13 +384,16 @@ end
 メイン実行関数
 """
 function main()
+    # BLAS逐次実行に設定（ベースライン測定）
+    BLAS.set_num_threads(1)
+
     println("="^60)
-    println("ベースライン性能測定")
+    println("ベースライン性能測定（逐次実行）")
     println("="^60)
     println("測定日時: $(now())")
     println("Julia バージョン: $(VERSION)")
     println("スレッド数: $(Threads.nthreads())")
-    println("BLASスレッド数: $(BLAS.get_num_threads())")
+    println("BLASスレッド数: $(BLAS.get_num_threads()) [逐次実行]")
     println("="^60)
 
     results = Dict{String, Any}()
@@ -399,12 +402,12 @@ function main()
     println("\n測定する問題サイズ:")
     println("  1. Small  (10×10×10)")
     println("  2. Medium (40×50×15)")
-    println("  3. Large  (80×100×20, 完全一致検証サイズ)")
+    println("  3. Large  (80×100×20, 完全一致検証サイズ) [推奨]")
     println("  4. すべて")
 
-    print("\n選択 [1-4, デフォルト: 1]: ")
+    print("\n選択 [1-4, デフォルト: 3]: ")
     choice_input = readline()
-    choice = isempty(choice_input) ? 1 : parse(Int, choice_input)
+    choice = isempty(choice_input) ? 3 : parse(Int, choice_input)
 
     sizes = if choice == 1
         [:small]
