@@ -170,8 +170,8 @@ function check_stopping_criteria(
     end
   end
 
-  # 3. 最大反復数判定
-  if it >= max_iter - 1
+  # 3. 最大反復数判定（更新完了後にチェック）
+  if it + 1 >= max_iter
     reason = @sprintf("[停止] 最大反復数到達: iter=%d >= max_iter=%d", it + 1, max_iter)
     return StoppingStatus(true, reason, :max_iter)
   end

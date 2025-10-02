@@ -324,22 +324,13 @@ function solve_cgm!(
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
     )
 
-    # Step 2: 目的関数と停止判定
+    # Step 2: 目的関数計算
     res_T = T_cal[2:nt, :, :, bottom_idx] .- Y_obs[2:nt, :, :]  # (nt-1, ni, nj)
     J = tensor_dot(res_T, res_T)
     push!(J_hist, J)
 
     if verbose
       @printf("J = %.5e\n", J)
-    end
-
-    # 停止判定
-    status = check_stopping_criteria(J, J_hist, res_T, it, stop_params)
-    if status.should_stop
-      if verbose
-        println(status.reason)
-      end
-      break
     end
 
     # Step 3: 随伴問題求解（勾配計算）
@@ -404,6 +395,15 @@ function solve_cgm!(
 
     # Step 8: 勾配更新
     grad_last = copy(grad)
+
+    # Step 9: 停止判定（更新後にチェック）
+    status = check_stopping_criteria(J, J_hist, res_T, it, stop_params)
+    if status.should_stop
+      if verbose
+        println(status.reason)
+      end
+      break
+    end
   end
 
   return q, T_cal, J_hist
