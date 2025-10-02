@@ -92,12 +92,12 @@ Returns:
   b: RHSベクトル (N,)
 """
 function build_adjoint_system!(
-  λ_initial::Array{Float64,3},
-  T_cal_bottom::Matrix{Float64},
-  Y_obs::Matrix{Float64},
+  λ_initial::AbstractArray{Float64,3},
+  T_cal_bottom::AbstractMatrix{Float64},
+  Y_obs::AbstractMatrix{Float64},
   rho::Float64,
-  cp::Array{Float64,3},
-  k::Array{Float64,3},
+  cp::AbstractArray{Float64,3},
+  k::AbstractArray{Float64,3},
   dx::Float64,
   dy::Float64,
   dz::Vector{Float64},
@@ -338,8 +338,8 @@ end
      f. ホットスタート更新（x0 = x）
 
 Args:
-  T_cal: DHCP計算温度場 (nt, ni, nj, nk) [K]
-  Y_obs: 観測温度（底面） (nt, ni, nj) [K]
+  T_cal: DHCP計算温度場 (ni, nj, nk, nt) [K] ※Phase 2.2: 時間次元を最後に配置
+  Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
   nt: 時間ステップ数
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数 [c0, c1, c2, c3]
@@ -354,7 +354,7 @@ Args:
   verbose: 詳細出力フラグ（デフォルト: false）
 
 Returns:
-  λ_all: 随伴場時系列 (nt, ni, nj, nk)
+  λ_all: 随伴場時系列 (ni, nj, nk, nt) ※Phase 2.2: 時間次元を最後に配置
   cg_iters: CG反復回数履歴 (nt-1,)
 """
 function solve_adjoint!(
@@ -374,17 +374,18 @@ function solve_adjoint!(
   maxiter::Int=1000,
   verbose::Bool=false
 )
-  ni, nj, nk = size(T_cal[1, :, :, :])
+  ni, nj, nk = size(T_cal[:, :, :, 1])
   N = ni * nj * nk
 
-  # 随伴場の初期化
-  λ_all = zeros(Float64, nt, ni, nj, nk)
-  λ_all[nt, :, :, :] .= 0.0  # 終端条件（Pythonオリジナル1322行）
+  # 随伴場の初期化（メモリレイアウト最適化: Phase 2.2）
+  # 時間次元を最後に配置して空間方向のメモリ連続性を確保
+  λ_all = zeros(Float64, ni, nj, nk, nt)
+  λ_all[:, :, :, nt] .= 0.0  # 終端条件（Pythonオリジナル1322行）
 
   cg_iters = zeros(Int, nt-1)
 
   # ホットスタート用初期推定値
-  x0 = vec(λ_all[nt, :, :, :])
+  x0 = vec(λ_all[:, :, :, nt])
 
   if verbose
     println("Adjoint求解開始（後退時間積分）")
@@ -395,16 +396,16 @@ function solve_adjoint!(
 
   # 後退時間ループ（Pythonオリジナル1328行: range(nt-2, -1, -1)）
   for t in (nt-1):-1:1
-    # 次ステップ（時間的に後）の随伴場を初期値とする
-    λ_initial = λ_all[t+1, :, :, :]
+    # 次ステップ（時間的に後）の随伴場を初期値とする（メモリビュー: Phase 2.2）
+    λ_initial = @view λ_all[:, :, :, t+1]
 
     # 温度場から熱物性値計算（Pythonオリジナル1332行: T_cal[t]）
-    cp, k = thermal_properties_calculator(T_cal[t, :, :, :], cp_coeffs, k_coeffs)
+    cp, k = thermal_properties_calculator(@view(T_cal[:, :, :, t]), cp_coeffs, k_coeffs)
 
     # 係数とRHS構築（Pythonオリジナル1334-1335行）
-    # 残差注入: T_cal[t,:,:,1]（底面）と Y_obs[t] を使用
+    # 残差注入: T_cal[:,:,1,t]（底面）と Y_obs[:,:,t] を使用（Phase 2.2）
     a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = build_adjoint_system!(
-      λ_initial, T_cal[t, :, :, 1], Y_obs[t, :, :],
+      λ_initial, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]),
       rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
     )
 
@@ -424,8 +425,8 @@ function solve_adjoint!(
       @warn "[t=$t] CG法が収束しませんでした (iter=$(length(cg_history.data[:resnorm])))"
     end
 
-    # 結果保存（Pythonオリジナル1356-1357行）
-    λ_all[t, :, :, :] = reshape(x, ni, nj, nk)
+    # 結果保存（Pythonオリジナル1356-1357行、メモリレイアウト最適化: Phase 2.2）
+    λ_all[:, :, :, t] = reshape(x, ni, nj, nk)
     x0 .= x  # ホットスタート更新
 
     # 反復回数記録

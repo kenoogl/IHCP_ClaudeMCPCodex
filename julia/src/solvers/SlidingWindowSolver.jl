@@ -102,9 +102,9 @@ function solve_sliding_window_cgm(
   maxiter_adjoint::Int=20000
 )
 
-  nt = size(Y_obs, 1)
+  ni, nj, nt = size(Y_obs)  # メモリレイアウト最適化: Phase 2.2
   T_init = copy(T0)
-  ni, nj, nk = size(T_init)
+  nk = size(T_init, 3)
 
   start_idx = 0  # 0始まり（Pythonと同じ）
   q_total = []   # Vector{Array{Float64,3}}型
@@ -130,31 +130,31 @@ function solve_sliding_window_cgm(
     # 現在のウィンドウ長（Pythonオリジナル: 1577-1580行）
     max_L = min(window_size, (nt - 1) - start_idx)
     end_idx = start_idx + max_L
-    Y_obs_win = Y_obs[start_idx+1:end_idx+1, :, :]  # Julia: 1始まり
+    Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]  # メモリレイアウト最適化: Phase 2.2
 
     println("\n--- ウィンドウ $(length(windows_info)+1): [$start_idx, $end_idx] (長さ=$max_L) ---")
 
-    # 初期熱流束の設定（Pythonオリジナル: 1583-1592行）
+    # 初期熱流束の設定（Pythonオリジナル: 1583-1592行、メモリレイアウト最適化: Phase 2.2）
     if isnothing(prev_q_win)
       # 第1ウィンドウ: 一定値
-      q_init_win = fill(q_init_value, (max_L, ni, nj))
+      q_init_win = fill(q_init_value, (ni, nj, max_L))
       println("初期熱流束: 一定値 $q_init_value W/m²")
     else
       # 第2ウィンドウ以降: 前ウィンドウから継承
-      q_init_win = zeros(Float64, max_L, ni, nj)
-      L_overlap = min(overlap, max_L, size(prev_q_win, 1))
+      q_init_win = zeros(Float64, ni, nj, max_L)
+      L_overlap = min(overlap, max_L, size(prev_q_win, 3))
 
       if L_overlap > 0
         # オーバーラップ部分: 前ウィンドウの最後L_overlapステップを継承
-        q_init_win[1:L_overlap, :, :] = prev_q_win[end-L_overlap+1:end, :, :]
+        q_init_win[:, :, 1:L_overlap] = prev_q_win[:, :, end-L_overlap+1:end]
         println("オーバーラップ継承: 前$(L_overlap)ステップ")
       end
 
       if L_overlap < max_L
         # 残り部分: 前ウィンドウの最終値で埋める
-        edge = prev_q_win[end, :, :]
+        edge = prev_q_win[:, :, end]
         for t in L_overlap+1:max_L
-          q_init_win[t, :, :] = edge
+          q_init_win[:, :, t] = edge
         end
         println("残り部分: 前ウィンドウ最終値で埋める")
       end
@@ -177,7 +177,7 @@ function solve_sliding_window_cgm(
 
     prev_q_win = copy(q_win)
 
-    # 結果の拼接（オーバーラップ平均化）（Pythonオリジナル: 1603-1612行）
+    # 結果の拼接（オーバーラップ平均化）（Pythonオリジナル: 1603-1612行、メモリレイアウト最適化: Phase 2.2）
     overlap_steps_actual = 0
 
     if length(q_total) == 0
@@ -186,20 +186,20 @@ function solve_sliding_window_cgm(
       println("第1ウィンドウ: そのまま追加")
     else
       # 第2ウィンドウ以降: オーバーラップ平均化
-      overlap_steps_actual = min(overlap, size(q_win, 1), size(q_total[end], 1))
+      overlap_steps_actual = min(overlap, size(q_win, 3), size(q_total[end], 3))
 
       if overlap_steps_actual > 0
         # オーバーラップ部分を平均化（Python原典に合わせた重み付け）
         # 注: Python原典は 0.5*old + new（数学的には1.5倍だが、意図的な重み付けと判断）
         # q_total[end]の最後overlap_steps_actualステップと
         # q_winの最初overlap_steps_actualステップを組み合わせ
-        q_total[end][end-overlap_steps_actual+1:end, :, :] =
-          0.5 * q_total[end][end-overlap_steps_actual+1:end, :, :] +
-          q_win[1:overlap_steps_actual, :, :]
+        q_total[end][:, :, end-overlap_steps_actual+1:end] =
+          0.5 * q_total[end][:, :, end-overlap_steps_actual+1:end] +
+          q_win[:, :, 1:overlap_steps_actual]
 
         # q_winの残り部分を追加
-        if overlap_steps_actual < size(q_win, 1)
-          push!(q_total, q_win[overlap_steps_actual+1:end, :, :])
+        if overlap_steps_actual < size(q_win, 3)
+          push!(q_total, q_win[:, :, overlap_steps_actual+1:end])
         end
 
         println("オーバーラップ平均化: $(overlap_steps_actual)ステップ")
@@ -210,9 +210,9 @@ function solve_sliding_window_cgm(
       end
     end
 
-    # 温度場の継承（Pythonオリジナル: 1614行）
-    # solve_cgm!は常に(nt, ni, nj, nk)を返すので、最終時刻を取得
-    T_init = copy(T_cal_win[end, :, :, :])
+    # 温度場の継承（Pythonオリジナル: 1614行、メモリレイアウト最適化: Phase 2.2）
+    # solve_cgm!は(ni, nj, nk, nt)を返すので、最終時刻を取得
+    T_init = copy(T_cal_win[:, :, :, end])
 
     # ウィンドウ情報の保存
     win_info = WindowInfo(
@@ -233,12 +233,12 @@ function solve_sliding_window_cgm(
     start_idx += step
   end
 
-  # 全ウィンドウ結果の連結（Pythonオリジナル: 1622-1623行）
-  q_global = vcat(q_total...)
+  # 全ウィンドウ結果の連結（Pythonオリジナル: 1622-1623行、メモリレイアウト最適化: Phase 2.2）
+  q_global = cat(q_total..., dims=3)
 
   # nt-1に切り詰め
-  if size(q_global, 1) > nt - 1
-    q_global = q_global[1:nt-1, :, :]
+  if size(q_global, 3) > nt - 1
+    q_global = q_global[:, :, 1:nt-1]
   end
 
   println("\n=== スライディングウィンドウ計算完了 ===")
