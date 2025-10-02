@@ -13,6 +13,7 @@ using NPZ
 using TOML
 using Printf
 using LinearAlgebra
+using Statistics
 
 # プロジェクトのソースコードをロード
 include("../src/IHCP_CGM.jl")
@@ -172,7 +173,7 @@ function main()
     println("\n[5/6] 結果検証（DHCP順解析）...")
     start_time_verify = time()
 
-    T_verify = solve_dhcp_multiple_timesteps(
+    T_verify = IHCP_CGM.solve_dhcp_multiple_timesteps(
         T_init,
         q_result,
         nt,

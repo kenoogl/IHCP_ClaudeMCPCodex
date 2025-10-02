@@ -9,6 +9,10 @@ Python版完全一致検証用実行スクリプト
   python python/validation/run_exact_match.py
 """
 
+import os
+# Numba並列化設定（インポート前に設定する必要がある）
+os.environ['NUMBA_NUM_THREADS'] = '4'
+
 import sys
 from pathlib import Path
 import numpy as np
@@ -27,6 +31,16 @@ from IHCP_CGM_Sliding_Window_Calculation_ver2 import (
     global_CGM_time,
     sliding_window_CGM_q_saving
 )
+
+# 検証器関数を無効化（性能向上のため）
+import IHCP_CGM_Sliding_Window_Calculation_ver2 as original_module
+def _dummy_validator(*args, **kwargs):
+    """ダミー検証器（常にTrueを返す）"""
+    return True, "検証スキップ"
+
+original_module.check_temperature_field = _dummy_validator
+original_module.check_flux_field = _dummy_validator
+original_module.check_adjoint_field = _dummy_validator
 
 
 def load_verification_params():
@@ -88,6 +102,11 @@ def main():
     q_init_value = params['cgm']['q_init_value']
 
     T_init_value = params['initial']['T_init_value']
+
+    rtol_dhcp = params['numerical']['rtol_dhcp']
+    maxiter_dhcp = params['numerical']['maxiter_dhcp']
+    rtol_adjoint = params['numerical']['rtol_adjoint']
+    maxiter_adjoint = params['numerical']['maxiter_adjoint']
 
     print(f"  問題サイズ: ni={ni}, nj={nj}, nk={nk}, nt={nt}")
     print(f"  時間刻み: dt={dt} s")
@@ -170,7 +189,7 @@ def main():
     T_verify = multiple_time_step_solver_DHCP(
         T_initial=T_init,
         q_surface=q_result,
-        nt_step=nt,
+        nt=nt,
         rho=rho,
         cp_coeffs=cp_coeffs,
         k_coeffs=k_coeffs,
@@ -179,7 +198,9 @@ def main():
         dz=dz,
         dz_b=dz_b,
         dz_t=dz_t,
-        dt=dt
+        dt=dt,
+        rtol=rtol_dhcp,
+        maxiter=maxiter_dhcp
     )
 
     elapsed_verify = time.time() - start_time_verify

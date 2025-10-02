@@ -29,7 +29,7 @@ using IterativeSolvers
 include("../ThermalProperties.jl")
 using .ThermalProperties
 
-export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index
+export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index, solve_dhcp_multiple_timesteps
 
 
 """
