@@ -45,6 +45,7 @@ include("solvers/SlidingWindowSolver.jl")
 # Phase 6モジュールのインクルード
 include("utils/validators.jl")
 include("utils/data_loaders.jl")
+include("utils/GridTransform.jl")
 
 # 再エクスポート
 using .ThermalProperties
@@ -55,6 +56,7 @@ using .StoppingCriteria
 using .CGMSolver
 using .SlidingWindowSolver
 using .Validators
+using .GridTransform
 
 # Phase 6 C-1: 実データ読込機能のインポート
 # 注意: DataLoaders（CSV用）とMATDataLoaders（MAT用）を区別
@@ -71,6 +73,8 @@ export check_field_finite, check_temperature_range, check_flux_range
 export check_gradient_magnitude, detect_numerical_anomalies
 export check_temperature_field, check_flux_field, check_adjoint_field
 export extract_sorted_mat_files, load_region_temperature
+export BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION
+export convert_to_guard_cell_grid, initialize_guard_cells!, compute_z_range, λf
 
 # バージョン情報
 const VERSION = v"0.6.0"
