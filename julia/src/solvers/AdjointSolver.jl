@@ -394,13 +394,17 @@ function solve_adjoint!(
     println("  CG: rtol=$rtol, maxiter=$maxiter")
   end
 
+  # 熱物性値計算用バッファ
+  cp = zeros(Float64, ni, nj, nk)
+  k = zeros(Float64, ni, nj, nk)
+
   # 後退時間ループ（Pythonオリジナル1328行: range(nt-2, -1, -1)）
   for t in (nt-1):-1:1
     # 次ステップ（時間的に後）の随伴場を初期値とする（メモリビュー: Phase 2.2）
     λ_initial = @view λ_all[:, :, :, t+1]
 
     # 温度場から熱物性値計算（Pythonオリジナル1332行: T_cal[t]）
-    cp, k = thermal_properties_calculator(@view(T_cal[:, :, :, t]), cp_coeffs, k_coeffs)
+    ThermalProperties.thermal_properties!(@view(T_cal[:, :, :, t]), cp, k, cp_coeffs, k_coeffs)
 
     # 係数とRHS構築（Pythonオリジナル1334-1335行）
     # 残差注入: T_cal[:,:,1,t]（底面）と Y_obs[:,:,t] を使用（Phase 2.2）

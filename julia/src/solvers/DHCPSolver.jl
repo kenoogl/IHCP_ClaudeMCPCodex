@@ -15,6 +15,8 @@ DHCPSolver.jl
 module DHCPSolver
 
 using LinearAlgebra
+using SparseArrays
+using IterativeSolvers
 
 import ..Commons
 using ..Commons: WorkBuffers, λf, get_backend
@@ -22,7 +24,17 @@ using ..Commons: WorkBuffers, λf, get_backend
 import ..ThermalProperties
 using ..ThermalProperties: thermal_properties!
 
-export solve_dhcp!
+export solve_dhcp!, build_dhcp_system!, assemble_dhcp_matrix, dhcp_index
+
+"""
+    dhcp_index(i, j, k, ni, nj) -> Int
+
+3Dグリッドインデックス(i,j,k)を1D配列インデックスに変換
+インデックス順序: i + (j-1)*ni + (k-1)*ni*nj
+"""
+@inline function dhcp_index(i::Int, j::Int, k::Int, ni::Int, nj::Int)
+  return i + (j - 1) * ni + (k - 1) * ni * nj
+end
 
 """
 DHCP（直接熱伝導問題）ソルバー
@@ -91,7 +103,9 @@ function solve_dhcp!(
   z_range = compute_z_range(nk, ISOTHERMAL, HEAT_FLUX)
 
   # 熱伝導率の計算
-  cp, k = thermal_properties_calculator(T_prev, cp_coeffs, k_coeffs)
+  cp = zeros(Float64, ni, nj, nk)
+  k = zeros(Float64, ni, nj, nk)
+  ThermalProperties.thermal_properties!(T_prev, cp, k, cp_coeffs, k_coeffs)
 
     # 内点データをガイドセル配列にコピー
     initialize_guard_cells!(θ, λ, mask, T_prev, k)
@@ -137,14 +151,15 @@ function solve_dhcp!(
     # 熱伝達境界（IHCPでは未使用）
     HT = zeros(Float64, 6)
 
-
-
+  # 熱物性値計算用バッファ
+  cp = zeros(Float64, ni, nj, nk)
+  k = zeros(Float64, ni, nj, nk)
 
 # 時間積分ループ
   for t in 2:nt
     # 前ステップ温度から熱物性値計算（メモリビュー使用: Phase 2.2）
     T_prev = @view T_all[:, :, :, t-1]
-    cp, k = thermal_properties_calculator(T_prev, cp_coeffs, k_coeffs)
+    ThermalProperties.thermal_properties!(T_prev, cp, k, cp_coeffs, k_coeffs)
 
     if verbose
       isconverged, itr, res0 = PBiCGSTAB!( )
@@ -210,8 +225,9 @@ function build_dhcp_system!(
   k::AbstractArray{Float64,3},
   dx::Float64,
   dy::Float64,
-  Z::Vector{Float64},
-  ΔZ::Vector{Float64},
+  dz::Vector{Float64},
+  dz_b::Vector{Float64},
+  dz_t::Vector{Float64},
   dt::Float64
 )
   ni, nj, nk = size(T_initial)
@@ -308,7 +324,94 @@ function build_dhcp_system!(
   return a_w, a_e, a_s, a_n, a_b, a_t, a_p, b
 end
 
+"""
+    assemble_dhcp_matrix(ni, nj, nk, a_w, a_e, a_s, a_n, a_b, a_t, a_p) -> SparseMatrixCSC
 
+係数配列から疎行列Aを組み立て
+
+7点ステンシル: A[p,p] = a_p[p], A[p,neighbors] = -a_*[p]
+"""
+function assemble_dhcp_matrix(
+  ni::Int, nj::Int, nk::Int,
+  a_w::Vector{Float64},
+  a_e::Vector{Float64},
+  a_s::Vector{Float64},
+  a_n::Vector{Float64},
+  a_b::Vector{Float64},
+  a_t::Vector{Float64},
+  a_p::Vector{Float64}
+)
+  N = ni * nj * nk
+
+  # オフセット計算（Fortran順序）
+  off_i = 1           # i方向（南北）
+  off_j = ni          # j方向（西東）
+  off_k = ni * nj     # k方向（上下）
+
+  # COO形式（I, J, V）で係数を収集
+  I_list = Int[]
+  J_list = Int[]
+  V_list = Float64[]
+
+  # 予約サイズ（7点ステンシル: 最大7*N個の非ゼロ要素）
+  sizehint!(I_list, 7 * N)
+  sizehint!(J_list, 7 * N)
+  sizehint!(V_list, 7 * N)
+
+  for p in 1:N
+    # 対角成分
+    push!(I_list, p)
+    push!(J_list, p)
+    push!(V_list, a_p[p])
+
+    # i-1 (南)
+    if p > off_i
+      push!(I_list, p)
+      push!(J_list, p - off_i)
+      push!(V_list, -a_s[p])
+    end
+
+    # i+1 (北)
+    if p <= N - off_i
+      push!(I_list, p)
+      push!(J_list, p + off_i)
+      push!(V_list, -a_n[p])
+    end
+
+    # j-1 (西)
+    if p > off_j
+      push!(I_list, p)
+      push!(J_list, p - off_j)
+      push!(V_list, -a_w[p])
+    end
+
+    # j+1 (東)
+    if p <= N - off_j
+      push!(I_list, p)
+      push!(J_list, p + off_j)
+      push!(V_list, -a_e[p])
+    end
+
+    # k-1 (下)
+    if p > off_k
+      push!(I_list, p)
+      push!(J_list, p - off_k)
+      push!(V_list, -a_b[p])
+    end
+
+    # k+1 (上)
+    if p <= N - off_k
+      push!(I_list, p)
+      push!(J_list, p + off_k)
+      push!(V_list, -a_t[p])
+    end
+  end
+
+  # COO→CSC変換（Juliaのデフォルト疎行列形式）
+  A = sparse(I_list, J_list, V_list, N, N)
+
+  return A
+end
 
 
 """
@@ -349,6 +452,110 @@ Args:
 Returns:
   T_all: 温度場時系列 (ni, nj, nk, nt) [K] ※Phase 2.2: 時間次元を最後に配置
 """
+# 旧API版（行列ベース、WorkBuffersなし）
+function solve_dhcp!(
+  T_initial::Array{Float64,3},
+  q_surface::Array{Float64,3},
+  nt::Int,
+  rho::Float64,
+  cp_coeffs::Vector{Float64},
+  k_coeffs::Vector{Float64},
+  dx::Float64,
+  dy::Float64,
+  dz::Vector{Float64},
+  dz_b::Vector{Float64},
+  dz_t::Vector{Float64},
+  dt::Float64;
+  rtol::Float64=1e-8,
+  maxiter::Int=1000,
+  verbose::Bool=false
+)
+  ni, nj, nk = size(T_initial)
+  N = ni * nj * nk
+
+  # 結果配列の初期化
+  T_all = zeros(Float64, ni, nj, nk, nt)
+  T_all[:, :, :, 1] = T_initial
+
+  # ホットスタート用初期推定値
+  x0 = zeros(Float64, N)
+  for k_idx in 1:nk, j in 1:nj, i in 1:ni
+    p = dhcp_index(i, j, k_idx, ni, nj)
+    x0[p] = T_initial[i, j, k_idx]
+  end
+
+  if verbose
+    println("="^60)
+    println("DHCP直接ソルバー開始")
+    println("="^60)
+    println("格子: $(ni)×$(nj)×$(nk) (N=$(N))")
+    println("時間ステップ: $(nt), dt=$(dt)s")
+    println("CG許容誤差: rtol=$(rtol), maxiter=$(maxiter)")
+    println("="^60)
+  end
+
+  # 熱物性値計算用バッファ
+  cp = zeros(Float64, ni, nj, nk)
+  k = zeros(Float64, ni, nj, nk)
+
+  # 時間積分ループ
+  for t in 2:nt
+    # 前ステップ温度から熱物性値計算
+    T_prev = @view T_all[:, :, :, t-1]
+    ThermalProperties.thermal_properties!(T_prev, cp, k, cp_coeffs, k_coeffs)
+
+    # 係数とRHS構築
+    a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = build_dhcp_system!(
+      T_prev, @view(q_surface[:, :, t-1]), rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
+    )
+
+    # 疎行列組み立て
+    A = assemble_dhcp_matrix(ni, nj, nk, a_w, a_e, a_s, a_n, a_b, a_t, a_p)
+
+    # 対角前処理器
+    diag_A = diag(A)
+    inv_diag = similar(diag_A)
+    for i in 1:N
+      inv_diag[i] = diag_A[i] != 0.0 ? 1.0 / diag_A[i] : 0.0
+    end
+    Pl = Diagonal(inv_diag)
+
+    # CG法求解
+    if verbose
+      result = cg!(x0, A, b; Pl=Pl, reltol=rtol, maxiter=maxiter, log=true)
+      history = result[2]
+      if history.isconverged
+        println("[t=$(t)/$(nt)] CG収束: $(history.iters)回")
+      else
+        @warn "[t=$(t)/$(nt)] CG未収束: $(history.iters)回"
+      end
+    else
+      cg!(x0, A, b; Pl=Pl, reltol=rtol, maxiter=maxiter)
+    end
+
+    # 結果を3D配列に復元
+    for k_idx in 1:nk, j in 1:nj, i in 1:ni
+      p = dhcp_index(i, j, k_idx, ni, nj)
+      T_all[i, j, k_idx, t] = x0[p]
+    end
+
+    # 数値異常チェック
+    if any(isnan.(x0)) || any(isinf.(x0))
+      error("[t=$(t)] 数値異常が発生しました（NaN/Inf検出）")
+    end
+  end
+
+  if verbose
+    println("="^60)
+    println("DHCP直接ソルバー完了")
+    println("  最終温度範囲: $(minimum(T_all)) - $(maximum(T_all)) K")
+    println("="^60)
+  end
+
+  return T_all
+end
+
+# 新API版（マトリクスフリー、WorkBuffers使用）
 function solve_dhcp!(
   T_initial::Array{Float64,3},
   q_surface::Array{Float64,3},
@@ -361,6 +568,7 @@ function solve_dhcp!(
   dy::Float64,
   Z::Vector{Float64},
   ΔZ::Vector{Float64},
+  dz, dz_b, dz_t, 
   dt::Float64;
   rtol::Float64=1e-8,
   maxiter::Int=1000,
@@ -391,11 +599,15 @@ function solve_dhcp!(
     println("="^60)
   end
 
+  # 熱物性値計算用バッファ
+  cp = zeros(Float64, ni, nj, nk)
+  k = zeros(Float64, ni, nj, nk)
+
   # 時間積分ループ
   for t in 2:nt
     # 前ステップ温度から熱物性値計算（メモリビュー使用: Phase 2.2）
     T_prev = @view T_all[:, :, :, t-1]
-    cp, k = thermal_properties_calculator(T_prev, cp_coeffs, k_coeffs)
+    ThermalProperties.thermal_properties!(T_prev, cp, k, cp_coeffs, k_coeffs)
 
     # 係数とRHS構築（熱流束も時間次元を最後に: Phase 2.2）
     a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = build_dhcp_system!(
@@ -427,6 +639,11 @@ function solve_dhcp!(
       cg!(x0, A, b; Pl=Pl, reltol=rtol, maxiter=maxiter)
     end
 
+    # 結果を3D配列に復元（Fortran順序、メモリレイアウト最適化: Phase 2.2）
+    for k_idx in 1:nk, j in 1:nj, i in 1:ni
+      p = dhcp_index(i, j, k_idx, ni, nj)
+      T_all[i, j, k_idx, t] = x0[p]
+    end
 
     # 数値異常チェック
     if any(isnan.(x0)) || any(isinf.(x0))

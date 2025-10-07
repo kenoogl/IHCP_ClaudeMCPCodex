@@ -24,14 +24,11 @@ using LinearAlgebra
 using Statistics
 using JSON
 
-# テスト対象モジュール
-include("../src/solvers/AdjointSolver.jl")
-using .AdjointSolver
+# テスト用にIHCP_CGMモジュールをインクルード
+include("../src/IHCP_CGM.jl")
+using .IHCP_CGM
 
-include("../src/ThermalProperties.jl")
-using .ThermalProperties
-
-# JSON読み込みヘルパー（Phase 2で実装済み）
+# JSON読み込みヘルパー
 include("../src/utils/json_helpers.jl")
 using .JSONHelpers
 

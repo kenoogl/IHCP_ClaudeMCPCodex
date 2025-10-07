@@ -153,11 +153,13 @@ Returns:
 function compute_sensitivity!(
   T_init::Array{Float64,3},
   p_n::Array{Float64,3},
+  work::WorkBuffers,
   nt::Int,
   rho::Float64,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64},
   dx::Float64, dy::Float64,
+  Z::Vector{Float64}, ΔZ::Vector{Float64},
   dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rtol::Float64=1e-8,
@@ -165,8 +167,9 @@ function compute_sensitivity!(
 )
   # DHCPソルバーを流用（初期温度ゼロ、熱流束=p_n）
   dT = solve_dhcp!(
-    T_init, p_n, nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, dz, dz_b, dz_t, dt;
+    T_init, p_n, work,
+    nt, rho, cp_coeffs, k_coeffs,
+    dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
     rtol=rtol, maxiter=maxiter, verbose=false
   )
 
@@ -265,6 +268,7 @@ function solve_cgm!(
   work::WorkBuffers,
   dx::Float64, dy::Float64,
   Z::Vector{Float64}, ΔZ::Vector{Float64},
+  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rho::Float64,
   cp_coeffs::Vector{Float64},
@@ -322,7 +326,7 @@ function solve_cgm!(
     T_cal = solve_dhcp!(
       T_init, q, work,
       nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, Z, ΔZ, dt;
+      dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
     )
 
@@ -371,8 +375,9 @@ function solve_cgm!(
     # Step 5: 感度問題求解（dT計算）
     dT_init = zeros(ni, nj, nk)
     dT = compute_sensitivity!(
-      dT_init, p_n, nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt,
+      dT_init, p_n, work,
+      nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt,
       rtol_adjoint, maxiter_cg
     )
 
