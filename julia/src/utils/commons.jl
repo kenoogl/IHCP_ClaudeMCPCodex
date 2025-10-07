@@ -6,6 +6,8 @@ commons.jl
 """
 module Commons
 
+using FLoops
+
 export initialize_cells!, compute_z_range, λf, WorkBuffers, get_backend,
        BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION, FloatMin
 
@@ -47,7 +49,6 @@ struct WorkBuffers
     mask   ::Array{Float64,3}
     cp     ::Array{Float64,3}
     λ      ::Array{Float64,3}
-    α      ::Array{Float64,3}
     pcg_p  ::Array{Float64,3}
     pcg_p_ ::Array{Float64,3}
     pcg_r  ::Array{Float64,3}
@@ -69,7 +70,6 @@ function WorkBuffers(mx::Int64, my::Int64, mz::Int64)
      ones(Float64, mx, my, mz), # mask
     zeros(Float64, mx, my, mz), # cp
     zeros(Float64, mx, my, mz), # λ
-    zeros(Float64, mx, my, mz), # α
     zeros(Float64, mx, my, mz), # pcg_p
     zeros(Float64, mx, my, mz), # pcg_p_
     zeros(Float64, mx, my, mz), # pcg_r
@@ -77,7 +77,7 @@ function WorkBuffers(mx::Int64, my::Int64, mz::Int64)
     zeros(Float64, mx, my, mz), # pcg_q
     zeros(Float64, mx, my, mz), # pcg_s
     zeros(Float64, mx, my, mz), # pcg_s_
-    zeros(Float64, mx, my, mz), # pcg_t_ 
+    zeros(Float64, mx, my, mz), # pcg_t_
     zeros(Float64, mx, my, mz)  # hsrc
   )
 end

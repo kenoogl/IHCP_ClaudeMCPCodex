@@ -46,8 +46,8 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     Z::Vector{Float64},
                     ΔZ::Vector{Float64},
                     z_range::Vector{Int64},
-                    HT::Vector{Float64};
-                    ρ::Float64,
+                    HT::Vector{Float64},
+                    ρ::Float64;
                     tol::Float64,
                     maxItr::Int64,
                     smoother::String,
@@ -64,6 +64,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
     r_omega::Float64 = -omega
     beta::Float64 = 0.0
     isconverged::Bool = false
+    itr::Int = 0
 
     for itr in 1:maxItr
         rho = Fdot2(wk.pcg_r, wk.pcg_r0, z_range, par) # 非計算部分はゼロのこと
@@ -81,17 +82,17 @@ function PBiCGSTAB!(wk::WorkBuffers,
         end
 
         wk.pcg_p_ .= 0.0  #fill!(pcg_p_, 0.0)
-        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, wk.ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par)
+        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par)
 
-        CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, wk.ρ, Z, ΔZ, z_range, HT, par)
+        CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
         alpha = rho / Fdot2(wk.pcg_q, wk.pcg_r0, z_range, par)
         r_alpha = -alpha
         Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, z_range, par)
 
         wk.pcg_s_ .= 0.0  #fill!(pcg_s_, 0.0)
-        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, wk.ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par);
+        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par);
 
-        CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, wk.ρ, Z, ΔZ, z_range, HT, par)
+        CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
         omega = Fdot2(wk.pcg_t_, wk.pcg_s, z_range, par) / Fdot1(wk.pcg_t_, z_range, par)
         r_omega = -omega
 
