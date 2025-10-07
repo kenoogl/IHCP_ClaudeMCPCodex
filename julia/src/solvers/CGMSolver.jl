@@ -28,14 +28,13 @@ using LinearAlgebra
 using SparseArrays
 using Printf
 
-# Phase 2, 3モジュールの読み込み
-include("DHCPSolver.jl")
-include("AdjointSolver.jl")
-include("StoppingCriteria.jl")
+# 共通モジュール
+using ..Commons: WorkBuffers
 
-using .DHCPSolver
-using .AdjointSolver
-using .StoppingCriteria
+# Phase 2, 3モジュールは親モジュールで既にinclude済み
+using ..DHCPSolver
+using ..AdjointSolver
+using ..StoppingCriteria
 
 export solve_cgm!, compute_gradient!, compute_sensitivity!, compute_step_size
 
@@ -232,10 +231,10 @@ Args:
   T_init: 初期温度場 (ni, nj, nk) [K]
   Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
   q_init: 初期熱流束推定 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
+  work: Heat3d用配列群
   dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
+  Z: z方向格子配列 (nk,) [m]
+  ΔZ: CV幅 (nk,) [m]
   dt: 時間刻み [s]
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数
@@ -263,8 +262,9 @@ function solve_cgm!(
   T_init::Array{Float64,3},
   Y_obs::Array{Float64,3},
   q_init::Array{Float64,3},
+  work::WorkBuffers,
   dx::Float64, dy::Float64,
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
+  Z::Vector{Float64}, ΔZ::Vector{Float64},
   dt::Float64,
   rho::Float64,
   cp_coeffs::Vector{Float64},
@@ -296,12 +296,13 @@ function solve_cgm!(
   M = ni * nj
   epsilon = M * (sigma^2) * (nt - 1)  # Discrepancy基準値
 
-  grad = zeros(ni, nj, nt - 1)
-  grad_last = zeros(ni, nj, nt - 1)
-  p_n_last = zeros(ni, nj, nt - 1)
+  grad = zeros(ni, nj, nt - 1)      # CHECK: メモリ事前確保
+  grad_last = zeros(ni, nj, nt - 1) # CHECK: メモリ事前確保
+  p_n_last = zeros(ni, nj, nt - 1)  # CHECK: メモリ事前確保
 
-  bottom_idx = 1   # Julia 1-indexed（底面）
-  top_idx = nk     # Julia 1-indexed（表面）
+
+  bottom_idx = 2   # Julia 1-indexed（裏面 S2） PBICGSTAB ガイドセル考慮
+  top_idx = nk-1   # Julia 1-indexed（表面 S1） PBICGSTAB ガイドセル考慮
 
   # 停止判定パラメータ
   stop_params = (
@@ -319,8 +320,9 @@ function solve_cgm!(
 
     # Step 1: 直接問題求解（DHCP）
     T_cal = solve_dhcp!(
-      T_init, q, nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt;
+      T_init, q, work,
+      nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dt;
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
     )
 
