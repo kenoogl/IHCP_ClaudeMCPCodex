@@ -24,13 +24,13 @@ using LinearAlgebra
 using Statistics
 using JSON
 
-# テスト用にIHCP_CGMモジュールをインクルード
-include("../src/IHCP_CGM.jl")
-using .IHCP_CGM
+# IHCP_CGMモジュールはruntests.jlで一括読み込み済み
+# 必要な関数をインポート
+using Main.IHCP_CGM
+import Main.IHCP_CGM: solve_adjoint!
 
-# JSON読み込みヘルパー
-include("../src/utils/json_helpers.jl")
-using .JSONHelpers
+# JSON読み込みヘルパーもruntests.jlで読み込み済み
+using Main.JSONHelpers
 
 
 # ===== テストセット1: 1D小規模問題 =====

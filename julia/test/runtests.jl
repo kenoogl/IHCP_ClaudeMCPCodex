@@ -11,6 +11,7 @@ IHCP_CGMプロジェクトのメインテストランナー
 """
 
 using Test
+using IHCP_CGM
 
 # IHCP_CGMモジュールを一度だけ読み込み（各テストファイルで使用）
 include("../src/IHCP_CGM.jl")
