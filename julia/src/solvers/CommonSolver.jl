@@ -53,7 +53,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     smoother::String,
                     par::String)
     SZ = size(wk.θ)
-    wk.pcg_q .= 0.0  #fill!(pcg_q, 0.0)
+    myfill!(wk.pcg_q, 0.0, par)  #fill!(pcg_q, 0.0)
     res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
     println("Inital residual = ", res0)
     mycopy!(wk.pcg_r0, wk.pcg_r, par) # wk.pcg_r0 .= wk.pcg_r  #copy!(pcg_r0, pcg_r)
@@ -81,7 +81,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
             BiCG1!(wk.pcg_p, wk.pcg_r, wk.pcg_q, beta, omega, z_range, par)
         end
 
-        wk.pcg_p_ .= 0.0  #fill!(pcg_p_, 0.0)
+        myfill!(wk.pcg_p_, 0.0, par)  #fill!(pcg_p_, 0.0)
         Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par)
 
         CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
@@ -89,7 +89,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
         r_alpha = -alpha
         Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, z_range, par)
 
-        wk.pcg_s_ .= 0.0  #fill!(pcg_s_, 0.0)
+        myfill!(wk.pcg_s_, 0.0, par)  #fill!(pcg_s_, 0.0)
         Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par);
 
         CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
@@ -122,6 +122,19 @@ function mycopy!(a::Array{Float64,3}, b::Array{Float64,3}, par::String)
 
   @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
     a[i,j,k] = b[i,j,k]
+  end
+
+end
+
+"""
+並列用のfill（任意値の代入）
+"""
+function myfill!(a::Array{Float64,3}, val::Float64, par::String)
+  backend = get_backend(par)
+  SZ = size(a)
+
+  @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
+    a[i,j,k] = val
   end
 
 end
