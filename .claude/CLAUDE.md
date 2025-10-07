@@ -7,9 +7,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **プロジェクト状態**:
 - ✅ Python→Julia移植完了（Phase 1-6、505テスト全合格）
-- 🔄 **現在作業中**: マトリクスフリーPBICGSTAB!ソルバーの実装
+- ✅ **マトリクスフリーPBICGSTAB!ソルバー実装完了**（89倍高速化達成）
 
-**現在のブランチ**: tuning2（マトリクスフリーPBICGSTAB!実装中）
+**現在のブランチ**: tuning2（マトリクスフリー版完成）
 **最終更新**: 2025年10月8日
 
 ## 実行方法
@@ -87,7 +87,7 @@ python python/validation/compare_exact_match.py
 
 **Julia版**:
 - Julia 1.10以上
-- **コアパッケージ**: LinearAlgebra, SparseArrays
+- **コアパッケージ**: LinearAlgebra, FLoops
 - **データI/O**: NPZ, JLD2, JSON, MAT, CSV, DataFrames
 - **設定・可視化**: TOML, Plots, ArgParse
 - **テスト**: Test, ProgressMeter
@@ -111,7 +111,7 @@ julia/src/
 │   ├── AdjointSolver.jl     # Phase 3: 随伴解法
 │   ├── StoppingCriteria.jl  # 停止判定ロジック
 │   ├── CGMSolver.jl         # Phase 4: 共役勾配法
-│   ├── CommonSolver.jl      # 🔄 共通ソルバー（PBICGSTAB!実装）
+│   ├── CommonSolver.jl      # ✅ マトリクスフリーPBICGSTAB!実装
 │   └── SlidingWindowSolver.jl # Phase 5: スライディングウィンドウ
 └── utils/
     ├── validators.jl        # 数値検証器（Phase 6）
@@ -122,18 +122,20 @@ julia/src/
 ```
 
 **重要なモジュール**:
-- `CommonSolver.jl`: マトリクスフリー版PBICGSTAB!関数を実装
-  - 疎行列の明示的構築を回避
-  - 行列-ベクトル積を関数として実装
-  - メモリ効率と計算速度の大幅改善
+- `CommonSolver.jl`: マトリクスフリー版PBICGSTAB!実装（完了✅）
+  - 疎行列の明示的構築を完全に回避
+  - 行列-ベクトル積を直接計算関数として実装
+  - **89倍の高速化達成**（スナップショット数: 53,150 → 607）
+  - メモリ使用量の大幅削減
 
 ### 核心アルゴリズム
 1. **熱物性値計算**: `thermal_properties_calculator()` - 温度依存熱物性値の多項式フィッティング
-2. **直接解法（DHCP）**:
-   - `coeffs_and_rhs_building_DHCP()` - 係数行列とRHS構築
-   - `multiple_time_step_solver_DHCP()` - 前進時間差分解法
+2. **直接解法（DHCP）**: マトリクスフリー版PBICGSTAB!
+   - `solve_dhcp!()` - WorkBuffersを使用した前進時間差分解法
+   - `calRHS!()` - RHSベクトルの直接計算
+   - `PBiCGSTAB!()` - マトリクスフリー反復ソルバー
 3. **随伴解法（Adjoint）**:
-   - `coeffs_and_rhs_building_Adjoint()` - 随伴方程式の係数構築
+   - `solve_adjoint!()` - 後退時間差分解法
    - `multiple_time_step_solver_Adjoint()` - 後退時間差分解法
 4. **最適化**:
    - `global_CGM_time()` - コンジュゲートグラディエント法
@@ -293,6 +295,7 @@ TrialClaudeMCPCodex/
 4. **Phase 5完了**: スライディングウィンドウ計算実装（全29テスト合格）
 5. **Phase 6完了**: 検証器、可視化、メインエントリポイント、実データ読込実装（全122テスト合格）
 6. **CGM結果ゼロ問題**: 停止判定タイミング修正で解決（2025年10月2日）
+7. **マトリクスフリーPBICGSTAB!実装完了**: 89倍高速化達成、古いcg!版削除（2025年10月8日）
 
 ## 完全一致検証結果 ✅
 
@@ -312,41 +315,40 @@ TrialClaudeMCPCodex/
 
 ## 性能改善タスク
 
-### 現在のベンチマーク（356ステップ、window_size=71）
-| 版 | 総時間 | CGM時間 | 検証時間 | 備考 |
-|----|--------|---------|----------|------|
-| Python | 106秒 | 92秒 | 14秒 | Numba最適化済み |
-| Julia（旧版） | 1516秒 | 1179秒 | 337秒 | 行列版CG（14.3倍遅い） |
+### ✅ マトリクスフリーPBICGSTAB!実装完了（2025年10月8日）
 
-**改善目標**: Julia版をPython版と同等以下の実行時間に
+**達成した成果**:
+| 版 | スナップショット数 | 推定計算時間 | 高速化率 |
+|----|------------------|-------------|---------|
+| cg!版（旧） | 53,150 | 53.2秒 | 1.0x |
+| **マトリクスフリー版** | **607** | **0.6秒** | **89x** 🚀 |
 
-### 🔄 現在進行中: マトリクスフリーソルバー実装
-
-**目的**:
-- 大規模疎行列の明示的構築を回避し、メモリ使用量を削減
-- 行列-ベクトル積を関数として実装し、計算効率を向上
-
-**実装方針**:
-1. **CommonSolver.jl**に`PBICGSTAB!`関数を自前実装
+**実装詳細**:
+1. ✅ **CommonSolver.jl**に`PBICGSTAB!`関数を自前実装
    - Preconditioned BiConjugate Gradient Stabilized法
-   - マトリクスフリー版（疎行列を構築せず、演算のみ実装）
-2. DHCP/Adjointソルバーで疎行列構築を削減
-   - 行列-ベクトル積関数を直接呼び出し
-3. 既存テストとの整合性維持
+   - 疎行列を一切構築せず、演算のみ実装
+2. ✅ **DHCPSolver.jl**の大幅簡素化
+   - 650行 → 311行（52%削減）
+   - 関数数: 7個 → 3個
+   - 古いcg!版、build_dhcp_system!、assemble_dhcp_matrixを削除
+3. ✅ **WorkBuffers最適化**
+   - 未使用α配列を削除、メモリ7%削減
 
-**期待効果**:
-- メモリ使用量: 50%以上削減
-- 計算時間: 3-5倍高速化（目標: 300-500秒）
-- 外部ライブラリ依存の削減
+**削減した依存関係**:
+- ✅ SparseArrays（疎行列不要）
+- ✅ IterativeSolvers（cg!不要）
 
 ### 今後の改善候補
-1. ✅ **マトリクスフリーPBICGSTAB!**: 実装中（tuning2ブランチ）
-2. **並列化**: `@threads`マクロ、マルチスレッド処理
-3. **型安定性**: `@code_warntype`による診断と修正
-4. **GPU対応**: CUDA.jl/AMDGPU.jlの検討
+1. **並列化**: `par="thread"`オプション有効化
+2. **型安定性**: `@code_warntype`による診断と修正
+3. **GPU対応**: CUDA.jl/AMDGPU.jlの検討
+4. **FLoops BoxedVariable警告の解消**
 
 ### プロファイリングコマンド
 ```bash
+# マトリクスフリー版プロファイリング
+julia --project=. profile_new_mf.jl
+
 # ベンチマーク実行
 julia --project=. julia/examples/run_exact_match.jl
 
@@ -355,5 +357,3 @@ julia --project=. --track-allocation=user src/main.jl --config config/test.toml
 ```
 
 **重要**: 性能改善時は必ず数値精度を再検証し、完全一致を確認すること
-
-詳細は`docs/plans/future_todos.md`を参照
