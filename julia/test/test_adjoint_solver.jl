@@ -24,9 +24,11 @@ using LinearAlgebra
 using Statistics
 using JSON
 
-# IHCP_CGMはruntests.jlで既に読み込み済み（Mainスコープで利用可能）
+# テスト用にIHCP_CGMモジュールをインクルード
+include("../src/IHCP_CGM.jl")
+using .IHCP_CGM
 
-# JSON読み込みヘルパー（Phase 2で実装済み）
+# JSON読み込みヘルパー
 include("../src/utils/json_helpers.jl")
 using .JSONHelpers
 

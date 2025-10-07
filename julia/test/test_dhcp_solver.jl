@@ -205,10 +205,15 @@ using .JSONHelpers
     # 境界条件（メモリレイアウト最適化: Phase 2.2）
     q_surface = fill(q, ni, nj, nt-1)
 
+    # WorkBuffersとZ, ΔZを準備
+    work = WorkBuffers(ni+2, nj+2, nk+2)
+    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
     # Julia実装で求解
     T_all = solve_dhcp!(
-      T_initial, q_surface, nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt,
+      T_initial, q_surface, work,
+      nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
       rtol=1e-10, maxiter=1000, verbose=false
     )
 
@@ -277,10 +282,15 @@ using .JSONHelpers
     q_surface_tmp = reshape_json_array(data["q_surface"], (nt-1, ni, nj), Float64)
     q_surface = permutedims(q_surface_tmp, (2, 3, 1))  # (nt-1,ni,nj) → (ni,nj,nt-1)
 
+    # WorkBuffersとZ, ΔZを準備
+    work = WorkBuffers(ni+2, nj+2, nk+2)
+    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
     # Julia実装で求解
     T_all = solve_dhcp!(
-      T_initial, q_surface, nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt,
+      T_initial, q_surface, work,
+      nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
       rtol=1e-8, maxiter=1000, verbose=false
     )
 
@@ -334,9 +344,12 @@ using .JSONHelpers
     q_surface = fill(5000.0, ni, nj, nt-1)
 
     # 詳細ログ有効で実行
+    work = WorkBuffers(ni+2, nj+2, nk+2)
+    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
     T_all = solve_dhcp!(
-      T_initial, q_surface, nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt,
+      T_initial, q_surface, work,
+      nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
       rtol=1e-8, maxiter=1000, verbose=true
     )
 
@@ -369,10 +382,15 @@ using .JSONHelpers
     nt = 6
     q_surface = fill(1000.0, ni, nj, nt-1)
 
+    # WorkBuffersとZ, ΔZを準備
+    work = WorkBuffers(ni+2, nj+2, nk+2)
+    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
     # 実行（内部でホットスタート使用）
     T_all = solve_dhcp!(
-      T_initial, q_surface, nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt,
+      T_initial, q_surface, work,
+      nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
       rtol=1e-8, maxiter=1000, verbose=false
     )
 
