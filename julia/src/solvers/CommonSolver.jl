@@ -28,6 +28,7 @@ export PBiCGSTAB!
 @param [in]     ΔZ     格子幅
 @param [in]     z_range Zループ開始/終了インデクス
 @param [in]     HT   熱伝達境界の値
+@param [in]     ρ    SUS密度
 
 # キーワード引数
 @param [in]     tol    反復閾値
@@ -35,6 +36,8 @@ export PBiCGSTAB!
 @param [in]     smoother ["gs", ""]
 @param [in]     par    バックエンド（"sequential", "thread"）
 
+収束判定： 有効セル数(Nf)あたりの相対残差ノルム (||r_k|| / ||r_0||)/Nf < tol
+一方、IterativeSolvers.jlのcg!関数は相対残差ノルム
 @ret            収束/未収束、反復回数、初期残差
 """
 function PBiCGSTAB!(wk::WorkBuffers,
@@ -44,13 +47,14 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     ΔZ::Vector{Float64},
                     z_range::Vector{Int64},
                     HT::Vector{Float64};
+                    ρ::Float64,
                     tol::Float64,
                     maxItr::Int64,
                     smoother::String,
                     par::String)
     SZ = size(wk.θ)
     wk.pcg_q .= 0.0  #fill!(pcg_q, 0.0)
-    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, wk.ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
+    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
     println("Inital residual = ", res0)
     wk.pcg_r0 .= wk.pcg_r  #copy!(pcg_r0, pcg_r)
 
@@ -134,7 +138,7 @@ function CalcRK!(
                 λ::Array{Float64,3},
                 cp::Array{Float64,3},
                 m::Array{Float64,3},
-                ρ::Array{Float64,3},
+                ρ::Float64,
                 Δh::Tuple{Float64, Float64, Float64},
                 Δt::Float64,
                 Z::Vector{Float64},
@@ -156,7 +160,7 @@ function CalcRK!(
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         λ0 = λ[i,j,k]
-        r_ρc = 1.0 / (ρ[i,j,k] * cp[i,j,k])
+        r_ρc = 1.0 / (ρ * cp[i,j,k])
         m0 = m[i,j,k]
         mw = 1.0-m[i-1,j  ,k  ]
         me = 1.0-m[i+1,j  ,k  ]
@@ -207,7 +211,7 @@ function CalcAX!(ax::Array{Float64,3},
                   λ::Array{Float64,3},
                   cp::Array{Float64,3},
                   m::Array{Float64,3},
-                  ρ::Array{Float64,3},
+                  ρ::Float64,
                   Z::Vector{Float64},
                   ΔZ::Vector{Float64},
                   z_range::Vector{Int64},
@@ -227,7 +231,7 @@ function CalcAX!(ax::Array{Float64,3},
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         λ0 = λ[i,j,k]
-        r_ρc = 1.0 / (ρ[i,j,k] * cp[i,j,k])
+        r_ρc = 1.0 / (ρ * cp[i,j,k])
         m0 = m[i,j,k]
         mw = 1.0-m[i-1,j  ,k  ]
         me = 1.0-m[i+1,j  ,k  ]
@@ -273,7 +277,7 @@ function Preconditioner!(xx::Array{Float64,3},
                           λ::Array{Float64,3},
                           cp::Array{Float64,3},
                        mask::Array{Float64,3},
-                        ρ::Array{Float64,3},
+                        ρ::Float64,
                          Δh::Tuple{Float64, Float64, Float64},
                          Δt::Float64,
                    smoother::String,
@@ -429,7 +433,7 @@ function resSOR(θ::Array{Float64,3},
                 cp::Array{Float64,3},
                 b::Array{Float64,3},
                 m::Array{Float64,3},
-                ρ::Array{Float64,3},
+                ρ::Float64,
                 Δh::Tuple{Float64, Float64, Float64},
                 Δt::Float64, 
                 ω::Float64,
@@ -453,7 +457,7 @@ function resSOR(θ::Array{Float64,3},
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         pp = θ[i,j,k]
         λ0 = λ[i,j,k]
-        r_ρc = 1.0 / (ρ[i,j,k] * cp[i,j,k])
+        r_ρc = 1.0 / (ρ * cp[i,j,k])
         m0 = m[i,j,k]
         mw = 1.0-m[i-1,j  ,k  ]
         me = 1.0-m[i+1,j  ,k  ]
@@ -503,7 +507,7 @@ function sor!(θ::Array{Float64,3},
               cp::Array{Float64,3},
               b::Array{Float64,3},
               m::Array{Float64,3},
-              ρ::Array{Float64,3},
+              ρ::Float64,
               Δh::Tuple{Float64, Float64, Float64},
               Δt::Float64, 
               ω::Float64,
@@ -528,7 +532,7 @@ function sor!(θ::Array{Float64,3},
         pp = θ[i,j,k]
         bb = b[i,j,k]
         λ0 = λ[i,j,k]
-        r_ρc = 1.0 / (ρ[i,j,k] * cp[i,j,k])
+        r_ρc = 1.0 / (ρ * cp[i,j,k])
         m0 = m[i,j,k]
         mw = 1.0-m[i-1,j  ,k  ]
         me = 1.0-m[i+1,j  ,k  ]
@@ -581,7 +585,7 @@ function rbsor_core!(θ::Array{Float64,3},
                      cp::Array{Float64,3},
                      b::Array{Float64,3},
                      m::Array{Float64,3},
-                     ρ::Array{Float64,3},
+                     ρ::Float64,
                      Δh::Tuple{Float64, Float64, Float64},
                      Δt::Float64, 
                      ω::Float64,
@@ -607,7 +611,7 @@ function rbsor_core!(θ::Array{Float64,3},
         @simd for i in 2+mod(k+j+color,2):2:SZ[1]-1
             pp = θ[i,j,k]
             λ0 = λ[i,j,k]
-            r_ρc = 1.0 / (ρ[i,j,k] * cp[i,j,k])
+            r_ρc = 1.0 / (ρ * cp[i,j,k])
             m0 = m[i,j,k]
             me = 1.0-m[i+1,j  ,k  ]
             mw = 1.0-m[i-1,j  ,k  ]
@@ -658,7 +662,7 @@ function rbsor!(θ::Array{Float64,3},
                 cp::Array{Float64,3},
                 b::Array{Float64,3},
                 mask::Array{Float64,3},
-                ρ::Array{Float64,3},
+                ρ::Float64,
                 Δh::Tuple{Float64, Float64, Float64},
                 Δt::Float64, 
                 ω::Float64,

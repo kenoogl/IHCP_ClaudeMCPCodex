@@ -326,9 +326,17 @@ function solve_cgm!(
     T_cal = solve_dhcp!(
       T_init, q, work,
       nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dt;
+      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
+    )
+    #=
+    T_cal = solve_dhcp!(
+      T_init, q, work,
+      nt, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
     )
+      =#
 
     # Step 2: 目的関数計算（メモリレイアウト最適化: Phase 2.2）
     res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1)

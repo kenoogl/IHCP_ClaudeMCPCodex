@@ -36,6 +36,7 @@ include("ThermalProperties.jl")
 include("DataLoaders.jl")
 
 # Phase 2-5モジュールのインクルード
+include("solvers/CommonSolver.jl")
 include("solvers/DHCPSolver.jl")
 include("solvers/AdjointSolver.jl")
 include("solvers/StoppingCriteria.jl")
@@ -50,6 +51,7 @@ include("utils/data_loaders.jl")
 using .Commons
 using .ThermalProperties
 using .DataLoaders
+using .CommonSolver
 using .DHCPSolver
 using .AdjointSolver
 using .StoppingCriteria

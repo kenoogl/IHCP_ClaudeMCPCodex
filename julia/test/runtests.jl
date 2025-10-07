@@ -11,6 +11,7 @@ IHCP_CGMプロジェクトのメインテストランナー
 """
 
 using Test
+using IHCP_CGM
 
 println("\n" * "="^70)
 println("IHCP_CGM.jl テストスイート")

@@ -7,7 +7,10 @@ commons.jl
 module Commons
 
 export initialize_cells!, compute_z_range, λf, WorkBuffers, get_backend,
-       BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION
+       BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION, FloatMin
+
+# ゼロ除算回避用の小さな数値（BiCGSTAB法などで使用）
+const FloatMin = 1.0e-37
       
 """
 Harmonic mean with mask correction (Heat3ds互換)
