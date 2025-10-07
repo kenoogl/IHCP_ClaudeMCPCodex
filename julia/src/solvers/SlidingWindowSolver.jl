@@ -24,9 +24,11 @@ module SlidingWindowSolver
 using LinearAlgebra
 using Printf
 
-# Phase 4モジュールの読み込み
-include("CGMSolver.jl")
-using .CGMSolver
+# 共通モジュール
+using ..Commons: WorkBuffers
+
+# Phase 4モジュールは親モジュールで既にinclude済み
+using ..CGMSolver
 
 export solve_sliding_window_cgm, WindowInfo
 
@@ -74,10 +76,10 @@ Pythonオリジナル: sliding_window_CGM_q_saving() (1556-1626行)
 Args:
   Y_obs: 観測温度（底面） (nt, ni, nj)
   T0: 初期温度場 (ni, nj, nk)
+  work: Heat3d用配列群
   dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
+  Z: z方向格子配列 (nk,) [m]
+  ΔZ: CV幅 (nk,) [m]
   dt: 時間刻み [s]
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数 (4,)
@@ -88,12 +90,12 @@ Args:
   cgm_iteration: CGM最大反復数
 
 Returns:
-  q_global: 全時間の逆解析熱流束 (nt-1, ni, nj)
+  q_global: 全時間の逆解析熱流束 (ni, nj, nt-1)
   windows_info: 各ウィンドウの詳細情報
 """
 function solve_sliding_window_cgm(
-  Y_obs::Array{Float64,3}, T0::Array{Float64,3},
-  dx::Float64, dy::Float64, dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64}, dt::Float64,
+  Y_obs::Array{Float64,3}, T0::Array{Float64,3}, work::WorkBuffers,
+  dx::Float64, dy::Float64, Z::Vector{Float64}, ΔZ::Vector{Float64}, dt::Float64,
   rho::Float64, cp_coeffs::Vector{Float64}, k_coeffs::Vector{Float64},
   window_size::Int, overlap::Int, q_init_value::Float64, cgm_iteration::Int;
   rtol_dhcp::Float64=1e-6,
@@ -107,7 +109,7 @@ function solve_sliding_window_cgm(
   nk = size(T_init, 3)
 
   start_idx = 0  # 0始まり（Pythonと同じ）
-  q_total = []   # Vector{Array{Float64,3}}型
+  q_total = []   # Vector{Array{Float64,3}}型 CHECK: メモリ確保必要？？
   prev_q_win = nothing
 
   windows_info = WindowInfo[]
@@ -123,7 +125,7 @@ function solve_sliding_window_cgm(
   while start_idx < nt - 1
     safety_counter += 1
     if safety_counter > safety_limit
-      println("[警告] 安全カウンタ超過")
+      println("[警告] 安全カウンタ超過") # CHECK 何のため？？
       break
     end
 
@@ -141,7 +143,7 @@ function solve_sliding_window_cgm(
       println("初期熱流束: 一定値 $q_init_value W/m²")
     else
       # 第2ウィンドウ以降: 前ウィンドウから継承
-      q_init_win = zeros(Float64, ni, nj, max_L)
+      q_init_win = zeros(Float64, ni, nj, max_L) # CHECK : 毎回確保している
       L_overlap = min(overlap, max_L, size(prev_q_win, 3))
 
       if L_overlap > 0
@@ -171,8 +173,9 @@ function solve_sliding_window_cgm(
       maxiter_adjoint=maxiter_adjoint
     )
     q_win, T_cal_win, J_hist = solve_cgm!(
-      T_init, Y_obs_win, q_init_win, dx, dy, dz, dz_b, dz_t, dt,
-      rho, cp_coeffs, k_coeffs; params=cgm_params
+      T_init, Y_obs_win, q_init_win, work,
+      dx, dy, Z, ΔZ, 
+      dt, rho, cp_coeffs, k_coeffs; params=cgm_params
     )
 
     prev_q_win = copy(q_win)
@@ -234,7 +237,7 @@ function solve_sliding_window_cgm(
   end
 
   # 全ウィンドウ結果の連結（Pythonオリジナル: 1622-1623行、メモリレイアウト最適化: Phase 2.2）
-  q_global = cat(q_total..., dims=3)
+  q_global = cat(q_total..., dims=3) # CHECK: in-placeにできないか
 
   # nt-1に切り詰め
   if size(q_global, 3) > nt - 1

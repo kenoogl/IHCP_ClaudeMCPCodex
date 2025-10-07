@@ -25,29 +25,28 @@ Phase 5（スライディングウィンドウ計算）:
 
 module IHCP_CGM
 
+# 共通モジュールを最初にインクルード
+include("utils/commons.jl")
+include("utils/GridTransform.jl")
+include("utils/boundary_conditions.jl")
+
 # Phase 1モジュールのインクルード
 include("ThermalProperties.jl")
 include("DataLoaders.jl")
 
-# Phase 2モジュールのインクルード
+# Phase 2-5モジュールのインクルード
 include("solvers/DHCPSolver.jl")
-
-# Phase 3モジュールのインクルード
 include("solvers/AdjointSolver.jl")
-
-# Phase 4モジュールのインクルード
 include("solvers/StoppingCriteria.jl")
 include("solvers/CGMSolver.jl")
-
-# Phase 5モジュールのインクルード
 include("solvers/SlidingWindowSolver.jl")
 
 # Phase 6モジュールのインクルード
 include("utils/validators.jl")
 include("utils/data_loaders.jl")
-include("utils/GridTransform.jl")
 
 # 再エクスポート
+using .Commons
 using .ThermalProperties
 using .DataLoaders
 using .DHCPSolver
@@ -57,12 +56,13 @@ using .CGMSolver
 using .SlidingWindowSolver
 using .Validators
 using .GridTransform
+using .BoundaryConditions
 
 # Phase 6 C-1: 実データ読込機能のインポート
 # 注意: DataLoaders（CSV用）とMATDataLoaders（MAT用）を区別
 using .MATDataLoaders
 
-export polyval_numba, thermal_properties_calculator
+export polyval, thermal_properties!
 export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
 export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index, solve_dhcp_multiple_timesteps
 export build_adjoint_system!, assemble_adjoint_matrix, solve_adjoint!, adjoint_index
@@ -73,8 +73,8 @@ export check_field_finite, check_temperature_range, check_flux_range
 export check_gradient_magnitude, detect_numerical_anomalies
 export check_temperature_field, check_flux_field, check_adjoint_field
 export extract_sorted_mat_files, load_region_temperature
-export BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION
-export convert_to_guard_cell_grid, initialize_guard_cells!, compute_z_range, λf
+export convert_to_guard_cell_grid
+export WorkBuffers, λf
 
 # バージョン情報
 const VERSION = v"0.6.0"
