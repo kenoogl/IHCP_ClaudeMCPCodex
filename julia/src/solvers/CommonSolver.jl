@@ -56,7 +56,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
     wk.pcg_q .= 0.0  #fill!(pcg_q, 0.0)
     res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
     println("Inital residual = ", res0)
-    wk.pcg_r0 .= wk.pcg_r  #copy!(pcg_r0, pcg_r)
+    mycopy!(wk.pcg_r0, wk.pcg_r, par) # wk.pcg_r0 .= wk.pcg_r  #copy!(pcg_r0, pcg_r)
 
     rho_old::Float64 = 1.0
     alpha::Float64 = 0.0
@@ -75,7 +75,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
         end
 
         if itr == 1
-            wk.pcg_p .= wk.pcg_r  #copy!(pcg_p, pcg_r)
+            mycopy!(wk.pcg_p, wk.pcg_r, par)  #copy!(pcg_p, pcg_r)
         else
             beta = rho / rho_old * alpha / omega
             BiCG1!(wk.pcg_p, wk.pcg_r, wk.pcg_q, beta, omega, z_range, par)
@@ -113,6 +113,18 @@ function PBiCGSTAB!(wk::WorkBuffers,
     return  isconverged, itr, res0
 end
 
+"""
+並列用のcopy
+"""
+function mycopy!(a::Array{Float64,3}, b::Array{Float64,3}, par::String)
+  backend = get_backend(par)
+  SZ = size(a)
+
+  @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
+    a[i,j,k] = b[i,j,k]
+  end
+
+end
 
 """
 @brief 残差ベクトルの計算
