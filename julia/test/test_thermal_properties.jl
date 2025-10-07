@@ -11,6 +11,7 @@ using JSON
 # テスト用に相対パスからモジュールをインクルード
 include("../src/ThermalProperties.jl")
 using .ThermalProperties
+import .ThermalProperties: polyval, thermal_properties!
 
 # 参照データ読み込み
 function load_reference_data()
@@ -22,11 +23,11 @@ end
 
   ref_data = load_reference_data()
 
-  @testset "polyval_numba: 多項式評価" begin
+  @testset "polyval: 多項式評価" begin
     # ρ計算テスト（498.15K）
     rho_coeffs = Vector{Float64}(ref_data["rho_coeffs"])
     expected_rho = Float64(ref_data["polyval_test_rho"])
-    calculated_rho = polyval_numba(rho_coeffs, 498.15)
+    calculated_rho = polyval(rho_coeffs, 498.15)
 
     @test isapprox(calculated_rho, expected_rho, atol=1e-12)
     println("  ρ(498.15K): $(calculated_rho) ≈ $(expected_rho)")
@@ -40,8 +41,8 @@ end
       expected_cp = test_case["cp"]
       expected_k = test_case["k"]
 
-      calc_cp = polyval_numba(cp_coeffs, temp)
-      calc_k = polyval_numba(k_coeffs, temp)
+      calc_cp = polyval(cp_coeffs, temp)
+      calc_k = polyval(k_coeffs, temp)
 
       @test isapprox(calc_cp, expected_cp, atol=1e-12)
       @test isapprox(calc_k, expected_k, atol=1e-12)
@@ -51,7 +52,7 @@ end
     end
   end
 
-  @testset "thermal_properties_calculator: 3D配列計算" begin
+  @testset "thermal_properties!: 3D配列計算" begin
     cp_coeffs = Vector{Float64}(ref_data["cp_coeffs"])
     k_coeffs = Vector{Float64}(ref_data["k_coeffs"])
 
@@ -78,8 +79,10 @@ end
       end
     end
 
-    # 実際の計算実行（これが失敗することを確認する）
-    calc_cp, calc_k = thermal_properties_calculator(test_temp, cp_coeffs, k_coeffs)
+    # 実際の計算実行（in-place更新）
+    calc_cp = zeros(Float64, size(test_temp))
+    calc_k = zeros(Float64, size(test_temp))
+    thermal_properties!(test_temp, calc_cp, calc_k, cp_coeffs, k_coeffs)
 
     # 全要素の比較（許容誤差1e-12）
     @test isapprox(calc_cp, expected_cp, atol=1e-12)
@@ -104,10 +107,10 @@ end
     max_temp = Float64(maximum(sus304_temp))
 
     # 境界値での計算（外挿警告なし）
-    cp_min = polyval_numba(cp_coeffs, min_temp)
-    k_min = polyval_numba(k_coeffs, min_temp)
-    cp_max = polyval_numba(cp_coeffs, max_temp)
-    k_max = polyval_numba(k_coeffs, max_temp)
+    cp_min = polyval(cp_coeffs, min_temp)
+    k_min = polyval(k_coeffs, min_temp)
+    cp_max = polyval(cp_coeffs, max_temp)
+    k_max = polyval(k_coeffs, max_temp)
 
     @test cp_min > 0
     @test k_min > 0
@@ -128,7 +131,9 @@ end
       # ランダム温度配列（300-1600K）
       temp_array = 300.0 .+ rand(nk, nj, ni) .* 1300.0
 
-      calc_cp, calc_k = thermal_properties_calculator(temp_array, cp_coeffs, k_coeffs)
+      calc_cp = zeros(Float64, size(temp_array))
+      calc_k = zeros(Float64, size(temp_array))
+      thermal_properties!(temp_array, calc_cp, calc_k, cp_coeffs, k_coeffs)
 
       @test size(calc_cp) == size(temp_array)
       @test size(calc_k) == size(temp_array)

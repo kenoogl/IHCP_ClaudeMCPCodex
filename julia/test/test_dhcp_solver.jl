@@ -22,13 +22,9 @@ using LinearAlgebra
 using SparseArrays
 using JSON
 
-# Phase 1モジュールのインクルード
-include("../src/ThermalProperties.jl")
-using .ThermalProperties
-
-# Phase 2モジュールのインクルード
-include("../src/solvers/DHCPSolver.jl")
-using .DHCPSolver
+# テスト用にIHCP_CGMモジュールをインクルード
+include("../src/IHCP_CGM.jl")
+using .IHCP_CGM
 
 # JSON変換ヘルパーのインクルード
 include("../src/utils/json_helpers.jl")
