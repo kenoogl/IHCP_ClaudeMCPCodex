@@ -14,7 +14,7 @@ using LinearAlgebra
 using FLoops
 
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend, compute_z_range
+using ..Commons: WorkBuffers, λf, get_backend
 
 import ..ThermalProperties
 using ..ThermalProperties: thermal_properties!, set_properties!
