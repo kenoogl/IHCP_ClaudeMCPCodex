@@ -126,13 +126,14 @@ end
 
     q_final, T_cal_final, J_hist = solve_cgm!(
       T_init, Y_obs, q_init,
-      wk,  # WorkBuffers追加
+      wk,
       dx, dy,
-      Z, ΔZ,  # Z, ΔZ追加
+      Z, ΔZ,
       dz, dz_b, dz_t,
       dt,
       rho, cp_coeffs, k_coeffs;
-      params = cgm_params
+      params = cgm_params,
+      par = "sequential"
     )
 
     # 参照データと比較

@@ -171,7 +171,8 @@ function compute_sensitivity!(
   dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rtol::Float64=1e-8,
-  maxiter::Int=20000
+  maxiter::Int=20000,
+  par::String="sequential"
 )
   # 感度問題は旧API（疎行列cg!）を使用
   # 理由: マトリクスフリー版は順問題の境界条件のみ対応（Session C-3で感度問題対応予定）

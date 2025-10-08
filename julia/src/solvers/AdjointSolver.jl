@@ -30,12 +30,25 @@ module AdjointSolver
 using LinearAlgebra
 using SparseArrays
 using IterativeSolvers
+using FLoops
 
-# Phase 1モジュールの読み込み
-include("../ThermalProperties.jl")
-using .ThermalProperties
+import ..Commons
+using ..Commons: WorkBuffers, λf, get_backend, compute_z_range
 
-export build_adjoint_system!, assemble_adjoint_matrix, solve_adjoint!, adjoint_index
+import ..ThermalProperties
+using ..ThermalProperties: thermal_properties!, set_properties!
+
+import ..BoundaryConditions
+using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet,
+            isothermal_bc, heat_flux_bc, adiabatic_bc, convection_bc,
+            create_boundary_conditions, apply_boundary_conditions!,
+            print_boundary_conditions, ISOTHERMAL, HEAT_FLUX,
+            apply_face_boundary!, set_BC_coef
+
+import ..CommonSolver
+using ..CommonSolver: PBiCGSTAB!
+
+export build_adjoint_system!, assemble_adjoint_matrix, solve_adjoint!, solve_adjoint_mf!, adjoint_index
 
 
 """
@@ -156,7 +169,7 @@ function calRHS!(
         k=z_st
         a = 2.0 / ΔZ[k]
         @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-            wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i,j]) * a
+            wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i-1,j-1]) * a
         end
     end
 
