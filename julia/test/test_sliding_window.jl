@@ -254,9 +254,13 @@ end
     println("  オーバーラップ: $overlap")
     println("  CGM反復: $cgm_iteration")
 
+    # WorkBuffersとZ, ΔZを作成
+    work = WorkBuffers(ni+2, nj+2, nk+2)
+    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
     # Julia実装のスライディングウィンドウCGM実行
     q_global_julia, windows_info = solve_sliding_window_cgm(
-      Y_obs, T_init, dx, dy, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
+      Y_obs, T_init, work, dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
       window_size, overlap, q_init_value, cgm_iteration
     )
 
@@ -351,9 +355,13 @@ end
     println("  オーバーラップ: $overlap")
     println("  CGM反復: $cgm_iteration")
 
+    # WorkBuffersとZ, ΔZを作成
+    work = WorkBuffers(ni+2, nj+2, nk+2)
+    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
     # Julia実装のスライディングウィンドウCGM実行
     q_global_julia, windows_info = solve_sliding_window_cgm(
-      Y_obs, T_init, dx, dy, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
+      Y_obs, T_init, work, dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
       window_size, overlap, q_init_value, cgm_iteration
     )
 
