@@ -24,9 +24,7 @@ CGMSolver.jl
 
 module CGMSolver
 
-using LinearAlgebra
 using Printf
-using FLoops
 
 # 共通モジュール
 import ..Commons

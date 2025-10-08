@@ -21,7 +21,6 @@ Phase 5: スライディングウィンドウCGM計算
 
 module SlidingWindowSolver
 
-using LinearAlgebra
 using Printf
 
 # 共通モジュール

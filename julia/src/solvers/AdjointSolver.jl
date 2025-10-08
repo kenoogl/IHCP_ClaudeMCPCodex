@@ -24,7 +24,6 @@ Phase 3: 随伴問題（Adjoint）ソルバー（マトリクスフリー版）
 
 module AdjointSolver
 
-using LinearAlgebra
 using FLoops
 
 import ..Commons

@@ -14,7 +14,6 @@ DHCPSolver.jl
 
 module DHCPSolver
 
-using LinearAlgebra
 using FLoops
 
 import ..Commons

@@ -12,7 +12,6 @@ SUS304熱物性値CSVの読み込みと多項式フィッティング
 module DataLoaders
 
 using DelimitedFiles
-using LinearAlgebra
 
 export load_sus304_thermal_properties, polyfit
 
