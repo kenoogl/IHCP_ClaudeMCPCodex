@@ -11,7 +11,7 @@ using JSON
 # テスト用に相対パスからモジュールをインクルード
 include("../src/ThermalProperties.jl")
 using .ThermalProperties
-import .ThermalProperties: polyval, thermal_properties!
+import .ThermalProperties: polyval
 
 # 参照データ読み込み
 function load_reference_data()
@@ -52,7 +52,7 @@ end
     end
   end
 
-  @testset "thermal_properties!: 3D配列計算" begin
+  @testset "3D配列での熱物性値計算" begin
     cp_coeffs = Vector{Float64}(ref_data["cp_coeffs"])
     k_coeffs = Vector{Float64}(ref_data["k_coeffs"])
 
@@ -79,10 +79,14 @@ end
       end
     end
 
-    # 実際の計算実行（in-place更新）
+    # 実際の計算実行（thermal_properties!をインライン展開）
     calc_cp = zeros(Float64, size(test_temp))
     calc_k = zeros(Float64, size(test_temp))
-    thermal_properties!(test_temp, calc_cp, calc_k, cp_coeffs, k_coeffs)
+    for k in 1:nk, j in 1:nj, i in 1:ni
+      T_current = test_temp[i, j, k]
+      calc_cp[i, j, k] = polyval(cp_coeffs, T_current)
+      calc_k[i, j, k] = polyval(k_coeffs, T_current)
+    end
 
     # 全要素の比較（許容誤差1e-12）
     @test isapprox(calc_cp, expected_cp, atol=1e-12)
@@ -127,13 +131,18 @@ end
     cp_coeffs = Vector{Float64}(ref_data["cp_coeffs"])
     k_coeffs = Vector{Float64}(ref_data["k_coeffs"])
 
-    for (nk, nj, ni) in test_sizes
+    for (sz_i, sz_j, sz_k) in test_sizes
       # ランダム温度配列（300-1600K）
-      temp_array = 300.0 .+ rand(nk, nj, ni) .* 1300.0
+      temp_array = 300.0 .+ rand(sz_i, sz_j, sz_k) .* 1300.0
 
       calc_cp = zeros(Float64, size(temp_array))
       calc_k = zeros(Float64, size(temp_array))
-      thermal_properties!(temp_array, calc_cp, calc_k, cp_coeffs, k_coeffs)
+      # thermal_properties!をインライン展開
+      for k in 1:sz_k, j in 1:sz_j, i in 1:sz_i
+        T_current = temp_array[i, j, k]
+        calc_cp[i, j, k] = polyval(cp_coeffs, T_current)
+        calc_k[i, j, k] = polyval(k_coeffs, T_current)
+      end
 
       @test size(calc_cp) == size(temp_array)
       @test size(calc_k) == size(temp_array)

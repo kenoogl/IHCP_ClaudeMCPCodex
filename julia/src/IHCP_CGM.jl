@@ -67,7 +67,7 @@ using .BoundaryConditions
 # 注意: DataLoaders（CSV用）とMATDataLoaders（MAT用）を区別
 using .MATDataLoaders
 
-export polyval, thermal_properties!
+export polyval
 export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
 export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index, solve_dhcp_multiple_timesteps
 export solve_adjoint!

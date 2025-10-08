@@ -11,7 +11,7 @@ ThermalProperties.jl
 
 module ThermalProperties
 
-export polyval, thermal_properties!, set_properties!
+export polyval, set_properties!
 
 """
 多項式評価関数
@@ -45,33 +45,7 @@ end
 
 
 """
-3D温度から比熱cpと熱伝導率λを計算
-
-# 引数
-- `Temperature`: 3D温度配列 (ni, nj, nk) [K]
-- `cp`: 比熱配列 (ni, nj, nk) [J/(kg·K)]
-- `λ`: 熱伝導率配列 (ni, nj, nk) [W/(m·K)]
-- `cp_coeffs`: 比熱の多項式係数 [a, b, c, d]
-- `k_coeffs`: 熱伝導率の多項式係数 [a, b, c, d]
-"""
-function thermal_properties!(
-  Temperature::AbstractArray{Float64, 3},
-  cp::AbstractArray{Float64, 3},
-  λ::AbstractArray{Float64, 3},
-  cp_coeffs::Vector{Float64},
-  k_coeffs::Vector{Float64}
-)
-  ni, nj, nk = size(Temperature)
-
-  for k in 1:nk, j in 1:nj, i in 1:ni
-    T_current = Temperature[i, j, k]
-    cp[i, j, k] = polyval(cp_coeffs, T_current)
-    λ[i, j, k]  = polyval(k_coeffs, T_current)
-  end
-end
-
-"""
-3D温度から比熱cpと熱伝導率λを計算
+3D温度から比熱cpと熱伝導率λを計算 (WorkBuffers用)
 
 # 引数
 - `Temperature`: 3D温度配列 (ni, nj, nk) [K]
