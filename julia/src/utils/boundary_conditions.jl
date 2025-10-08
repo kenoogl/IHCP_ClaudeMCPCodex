@@ -4,7 +4,7 @@ module BoundaryConditions
 import ..Commons
 using ..Commons: BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION
 
-export BoundaryCondition, BoundaryConditionSet, 
+export BoundaryCondition, BoundaryConditionSet, set_BC_coef,
        isothermal_bc, heat_flux_bc, adiabatic_bc, convection_bc,
        create_boundary_conditions, apply_boundary_conditions!, 
        print_boundary_conditions, apply_face_boundary!
@@ -16,7 +16,7 @@ struct BoundaryCondition
     heat_flux::Float64                     # 熱流束条件用の流束値 (断熱条件は0.0)
     heat_transfer_coefficient::Float64     # 熱伝達条件用の熱伝達率
     ambient_temperature::Float64           # 熱伝達条件用の周囲温度
-    heatflux_dist::Bool                    # 熱流束を分布で与える場合true
+    distribution::Bool                     # 値を分布で与える場合true
 end
 
 # 6面の境界条件セット
@@ -33,8 +33,8 @@ end
 等温条件の境界条件を作成
 @param temperature 指定温度
 """
-function isothermal_bc(temperature::Float64)
-    return BoundaryCondition(ISOTHERMAL, temperature, 0.0, 0.0, 0.0, false)
+function isothermal_bc(temperature::Float64, dist::Bool=false)
+    return BoundaryCondition(ISOTHERMAL, temperature, 0.0, 0.0, 0.0, dist)
 end
 
 """
@@ -358,6 +358,27 @@ function print_boundary_conditions(bc_set::BoundaryConditionSet)
         end
     end
     println("===================")
+end
+
+
+function set_BC_coef(bc_set::BoundaryConditionSet)
+  HF = zeros(Float64, 6)
+  HF[1] = bc_set.x_minus.heat_flux
+  HF[2] = bc_set.x_plus.heat_flux
+  HF[3] = bc_set.y_minus.heat_flux
+  HF[4] = bc_set.y_plus.heat_flux
+  HF[5] = bc_set.z_minus.heat_flux
+  HF[6] = bc_set.z_plus.heat_flux
+
+  HT = zeros(Float64, 6)
+  HT[1] = bc_set.x_minus.heat_transfer_coefficient
+  HT[2] = bc_set.x_plus.heat_transfer_coefficient
+  HT[3] = bc_set.y_minus.heat_transfer_coefficient
+  HT[4] = bc_set.y_plus.heat_transfer_coefficient
+  HT[5] = bc_set.z_minus.heat_transfer_coefficient
+  HT[6] = bc_set.z_plus.heat_transfer_coefficient
+
+  return HF, HT
 end
 
 end # module BoundaryConditions
