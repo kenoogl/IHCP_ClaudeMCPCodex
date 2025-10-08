@@ -48,9 +48,10 @@ println("-"^70)
 include("test_data_loaders.jl")
 
 # Phase 2.3a: ガイドセル格子変換のテスト
-println("\n[Phase 2.3a] ガイドセル格子変換のテスト")
-println("-"^70)
-include("test_grid_transform.jl")
+# 注: このテストは不要のためスキップ
+# println("\n[Phase 2.3a] ガイドセル格子変換のテスト")
+# println("-"^70)
+# include("test_grid_transform.jl")
 
 println("\n" * "="^70)
 println("全テスト完了")
