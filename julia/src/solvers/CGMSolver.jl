@@ -1,7 +1,7 @@
 """
 CGMSolver.jl
 
-Phase 4: 共役勾配法（CGM）による逆問題ソルバー
+共役勾配法（CGM）による逆問題ソルバー
 
 共役勾配法（ポラック・リビエール型）による表面熱流束の逆解析：
 1. 勾配計算（随伴場λの表面値）
@@ -27,15 +27,20 @@ module CGMSolver
 using LinearAlgebra
 using SparseArrays
 using Printf
+using FLoops
 
 # 共通モジュール
-using ..Commons: WorkBuffers
+import ..Commons
+using ..Commons: WorkBuffers, λf, get_backend, compute_z_range
 
-# Phase 2, 3モジュールは親モジュールで既にinclude済み
+# 親モジュールで既にinclude済み
 using ..DHCPSolver
 using ..DHCPSolver: solve_dhcp_cg!
 using ..AdjointSolver
 using ..StoppingCriteria
+
+import ..CommonSolver
+using ..CommonSolver: PBiCGSTAB!
 
 export solve_cgm!, compute_gradient!, compute_sensitivity!, compute_step_size
 
@@ -54,6 +59,7 @@ Args:
 
 Returns:
   内積値（スカラー）
+  CHECK: 型安定性のため、Array{Float64,3}
 """
 function tensor_dot(a::Array{T}, b::Array{T}) where T <: Real
   return Float64(sum(a .* b))
@@ -77,13 +83,12 @@ end
 Args:
   T_cal: DHCP計算温度場 (ni, nj, nk, nt) ※Phase 2.2: 時間次元を最後に配置
   Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
+  work: 
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数
   k_coeffs: 熱伝導率多項式係数
   dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
+  Z, ΔZ: Z方向格子情報
   dt: 時間刻み [s]
   rtol: CG相対許容誤差
   maxiter: CG最大反復数
@@ -94,25 +99,27 @@ Returns:
 function compute_gradient!(
   T_cal::Array{Float64,4},
   Y_obs::Array{Float64,3},
+  work::WorkBuffers,
   rho::Float64,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64},
   dx::Float64, dy::Float64,
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
+  Z::Vector{Float64}, ΔZ::Vector{Float64},
   dt::Float64,
   rtol::Float64=1e-8,
-  maxiter::Int=20000
+  maxiter::Int=20000,
+  par::String="sequential"
 )
   ni, nj, nk, nt = size(T_cal)
 
   # 随伴場求解（Phase 3）
-  lambda_field, cg_iters = solve_adjoint!(
-    T_cal, Y_obs, nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, dz, dz_b, dz_t, dt;
-    rtol=rtol, maxiter=maxiter, verbose=false
+  lambda_field, cg_iters = solve_adjoint_mf!(
+    T_cal, Y_obs, work, nt, rho, cp_coeffs, k_coeffs,
+    dx, dy, Z, ΔZ, dt;
+    rtol=rtol, maxiter=maxiter, verbose=false, par=par
   )
 
-  # 勾配抽出（表面 k=nk での随伴場、メモリレイアウト最適化: Phase 2.2）
+  # 勾配抽出（表面 k=nk での随伴場）
   gradient = zeros(ni, nj, nt - 1)
   for n in 1:(nt - 1)
     gradient[:, :, n] = lambda_field[:, :, nk, n]  # 表面（上端）
@@ -283,7 +290,8 @@ function solve_cgm!(
   rho::Float64,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64};
-  params::NamedTuple=(;)
+  params::NamedTuple=(;),
+  par::String="sequential"
 )
   # パラメータ展開（デフォルト値付き）
   max_iter = get(params, :max_iter, 20000)
@@ -332,24 +340,16 @@ function solve_cgm!(
       println("\n=== CGM反復 $(it) ===")
     end
 
-    # Step 1: 直接問題求解（DHCP）
+    # Step 1: 順問題求解（DHCP）
     T_cal = solve_dhcp!(
       T_init, q, work,
       nt, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt;
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
     )
-    #=
-    T_cal = solve_dhcp!(
-      T_init, q, work,
-      nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
-      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
-    )
-      =#
 
-    # Step 2: 目的関数計算（メモリレイアウト最適化: Phase 2.2）
-    res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1)
+    # Step 2: 目的関数計算
+    res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1) CHECK:
     J = tensor_dot(res_T, res_T)
     push!(J_hist, J)
 
@@ -359,9 +359,9 @@ function solve_cgm!(
 
     # Step 3: 随伴問題求解（勾配計算）
     grad = compute_gradient!(
-      T_cal, Y_obs, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt,
-      rtol_adjoint, maxiter_cg
+      T_cal, Y_obs, work, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dt,
+      rtol_adjoint, maxiter_cg, par
     )
 
     # Step 4: 共役勾配方向計算（ポラック・リビエール）
@@ -396,7 +396,7 @@ function solve_cgm!(
       dT_init, p_n, work,
       nt, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt,
-      rtol_adjoint, maxiter_cg
+      rtol_adjoint, maxiter_cg, par
     )
 
     # Step 6: ステップサイズ計算（メモリレイアウト最適化: Phase 2.2）

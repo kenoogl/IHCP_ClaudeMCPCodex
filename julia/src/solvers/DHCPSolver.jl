@@ -30,7 +30,7 @@ using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet,
             isothermal_bc, heat_flux_bc, adiabatic_bc, convection_bc,
             create_boundary_conditions, apply_boundary_conditions!,
             print_boundary_conditions, ISOTHERMAL, HEAT_FLUX,
-            apply_face_boundary!
+            apply_face_boundary!, set_BC_coef
 
 import ..CommonSolver
 using ..CommonSolver: PBiCGSTAB!
@@ -48,7 +48,7 @@ function set_dhcp_bc_parameters()
     y_minus_bc = adiabatic_bc()  
     y_plus_bc  = adiabatic_bc()
     z_minus_bc = adiabatic_bc()
-    z_plus_bc  = heat_flux_bc(0.0, true) # 分布を与える > true
+    z_plus_bc  = heat_flux_bc(0.0, true) # 分布を与える > true, 0.0はダミー
     
     # 境界条件セットを作成
     return create_boundary_conditions(
@@ -62,7 +62,7 @@ end
 @brief 右辺項b
 @param [in,out] wk.b   RHS
 @param [in]     HF  熱流束境界の値
-@param [in]     Δh     セル幅
+@param [in]     dx, dy セル幅
 @param [in]     Δt   時間積分幅
 @param [in]     ΔZ   CV幅
 @param [in]     z_range Zループ開始/終了インデクス
@@ -234,31 +234,15 @@ function solve_dhcp!(
     wk.mask[i+1, j+1, k+1] = 1.0
   end
 
+  # 温度場から初期値の熱物性値計算
   set_properties!(T_initial, wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
   # Boundary condition
   bc_set = set_dhcp_bc_parameters()
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
-
-  HF = zeros(Float64, 6)
-  HF[1] = bc_set.x_minus.heat_flux
-  HF[2] = bc_set.x_plus.heat_flux
-  HF[3] = bc_set.y_minus.heat_flux
-  HF[4] = bc_set.y_plus.heat_flux
-  HF[5] = bc_set.z_minus.heat_flux
-  HF[6] = bc_set.z_plus.heat_flux
-
-  HT = zeros(Float64, 6)
-  HT[1] = bc_set.x_minus.heat_transfer_coefficient
-  HT[2] = bc_set.x_plus.heat_transfer_coefficient
-  HT[3] = bc_set.y_minus.heat_transfer_coefficient
-  HT[4] = bc_set.y_plus.heat_transfer_coefficient
-  HT[5] = bc_set.z_minus.heat_transfer_coefficient
-  HT[6] = bc_set.z_plus.heat_transfer_coefficient
-
+  HF, HT = set_BC_coef(bc_set) # 時間変化なし
   
-
 
 # 時間積分ループ
   for t in 2:nt
