@@ -25,7 +25,6 @@ CGMSolver.jl
 module CGMSolver
 
 using LinearAlgebra
-using SparseArrays
 using Printf
 using FLoops
 
