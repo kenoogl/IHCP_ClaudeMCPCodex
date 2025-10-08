@@ -42,19 +42,19 @@ export solve_dhcp!, solve_dhcp_cg!
 Z下面: 断熱、Z上面: 熱流束、側面: 断熱
 """
 
-function set_dhcp_bc_parameters()
+function set_dhcp_bc_parameters(nk::Int)
     x_minus_bc = adiabatic_bc()
     x_plus_bc  = adiabatic_bc()
-    y_minus_bc = adiabatic_bc()  
+    y_minus_bc = adiabatic_bc()
     y_plus_bc  = adiabatic_bc()
     z_minus_bc = adiabatic_bc()
     z_plus_bc  = heat_flux_bc(0.0, true) # 分布を与える > true, 0.0はダミー
-    
+
     # 境界条件セットを作成
     return create_boundary_conditions(
                               x_minus_bc, x_plus_bc,
                               y_minus_bc, y_plus_bc,
-                              z_minus_bc, z_plus_bc)
+                              z_minus_bc, z_plus_bc, nk)
 end
 
 
@@ -222,11 +222,7 @@ function solve_dhcp!(
     println("CG許容誤差: rtol=$(rtol), maxiter=$(maxiter)")
     println("="^60)
   end
-
-  # PBICGSTAB用の配列初期化
-  SZ = (ni+2, nj+2, nk+2)
-  z_range = compute_z_range(nk, ISOTHERMAL, HEAT_FLUX)
-  Nf = (SZ[1]-2)*(SZ[2]-2)*(z_range[2]-z_range[1]+1) # cg!と判定基準を合わせるため
+  
 
    # PBICGSTAB 初期値設定
   for k in 1:nk, j in 1:nj, i in 1:ni
@@ -238,10 +234,12 @@ function solve_dhcp!(
   set_properties!(T_initial, wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
   # Boundary condition
-  bc_set = set_dhcp_bc_parameters()
+  z_range, bc_set = set_dhcp_bc_parameters(nk)
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
   HF, HT = set_BC_coef(bc_set) # 時間変化なし
+  SZ = (ni+2, nj+2, nk+2)
+  Nf = (SZ[1]-2)*(SZ[2]-2)*(z_range[2]-z_range[1]+1) # cg!と判定基準を合わせるため
   
 
 # 時間積分ループ

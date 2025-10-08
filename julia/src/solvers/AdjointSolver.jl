@@ -56,19 +56,19 @@ export build_adjoint_system!, assemble_adjoint_matrix, solve_adjoint!, solve_adj
 Z下面: 値指定、Z上面: ノイマン、側面: ノイマン
 """
 
-function set_adjoint_bc_parameters()
+function set_adjoint_bc_parameters(nk::Int)
     x_minus_bc = adiabatic_bc()
     x_plus_bc  = adiabatic_bc()
-    y_minus_bc = adiabatic_bc()  
+    y_minus_bc = adiabatic_bc()
     y_plus_bc  = adiabatic_bc()
     z_minus_bc = isothermal_bc(0.0, true) # 分布を与える, 0.0はダミー
     z_plus_bc  = adiabatic_bc()
-    
+
     # 境界条件セットを作成
     return create_boundary_conditions(
                               x_minus_bc, x_plus_bc,
                               y_minus_bc, y_plus_bc,
-                              z_minus_bc, z_plus_bc)
+                              z_minus_bc, z_plus_bc, nk)
 end
 
 
@@ -671,11 +671,7 @@ function solve_adjoint_mf!(
     println("  時間ステップ: $nt")
     println("  CG: rtol=$rtol, maxiter=$maxiter")
   end
-
-  # PBICGSTAB用の配列初期化
-  SZ = (ni+2, nj+2, nk+2)
-  z_range = compute_z_range(nk, ISOTHERMAL, HEAT_FLUX)
-  Nf = (SZ[1]-2)*(SZ[2]-2)*(z_range[2]-z_range[1]+1) # cg!と判定基準を合わせるため
+  
 
   # PBICGSTAB 初期値設定
   for k in 1:nk, j in 1:nj, i in 1:ni
@@ -687,10 +683,14 @@ function solve_adjoint_mf!(
   set_properties!(@view(T_cal[:, :, :, nt]), wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
   # Boundary condition
-  bc_set = set_adjoint_bc_parameters()
+  z_range, bc_set = set_adjoint_bc_parameters(nk)
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
   HF, HT = set_BC_coef(bc_set) # 時間変化なし
+
+  SZ = (ni+2, nj+2, nk+2)
+  Nf = (SZ[1]-2)*(SZ[2]-2)*(z_range[2]-z_range[1]+1) # cg!と判定基準を合わせるため
+
 
   # 後退時間ループ（Pythonオリジナル1328行: range(nt-2, -1, -1)）
   for t in (nt-1):-1:1
