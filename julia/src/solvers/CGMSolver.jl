@@ -325,7 +325,7 @@ function solve_cgm!(
   # CGMループ
   for it in 0:(max_iter - 1)
     if verbose
-      println("\n=== CGM反復 $(it) ===")
+      println("\n=== CGM iteration $(it) ===")
     end
 
     # Step 1: 順問題求解（DHCP）
@@ -400,7 +400,7 @@ function solve_cgm!(
     # ステップサイズ制限（初回のみ）
     if it == 0 && abs(beta) > beta_max
       if verbose
-        @printf("[警告] beta制限: %.2e => %.2e\n", beta, sign(beta) * beta_max)
+        @printf("[Warning] beta clamped: %.2e => %.2e\n", beta, sign(beta) * beta_max)
       end
       beta = clamp(beta, -beta_max, beta_max)
     end

@@ -118,15 +118,15 @@ function solve_sliding_window_cgm(
   safety_counter = 0
   safety_limit = nt * 5
 
-  println("\n=== スライディングウィンドウCGM計算開始 ===")
-  println("全時間ステップ数: $nt")
-  println("ウィンドウサイズ: $window_size")
-  println("オーバーラップ: $overlap")
+  println("\n=== Starting Sliding Window CGM calculation ===")
+  println("Total time steps: $nt")
+  println("Window size: $window_size")
+  println("Overlap: $overlap")
 
   while start_idx < nt - 1
     safety_counter += 1
     if safety_counter > safety_limit
-      println("[警告] 安全カウンタ超過") # CHECK 何のため？？
+      println("[Warning] Safety counter exceeded") # CHECK 何のため？？
       break
     end
 
@@ -135,13 +135,13 @@ function solve_sliding_window_cgm(
     end_idx = start_idx + max_L
     Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]  # メモリレイアウト最適化: Phase 2.2
 
-    println("\n--- ウィンドウ $(length(windows_info)+1): [$start_idx, $end_idx] (長さ=$max_L) ---")
+    println("\n--- Window $(length(windows_info)+1): [$start_idx, $end_idx] (length=$max_L) ---")
 
     # 初期熱流束の設定（Pythonオリジナル: 1583-1592行、メモリレイアウト最適化: Phase 2.2）
     if isnothing(prev_q_win)
       # 第1ウィンドウ: 一定値
       q_init_win = fill(q_init_value, (ni, nj, max_L))
-      println("初期熱流束: 一定値 $q_init_value W/m²")
+      println("Initial heat flux: constant value $q_init_value W/m²")
     else
       # 第2ウィンドウ以降: 前ウィンドウから継承
       q_init_win = zeros(Float64, ni, nj, max_L) # CHECK : 毎回確保している
@@ -150,7 +150,7 @@ function solve_sliding_window_cgm(
       if L_overlap > 0
         # オーバーラップ部分: 前ウィンドウの最後L_overlapステップを継承
         q_init_win[:, :, 1:L_overlap] = prev_q_win[:, :, end-L_overlap+1:end]
-        println("オーバーラップ継承: 前$(L_overlap)ステップ")
+        println("Overlap inheritance: previous $(L_overlap) steps")
       end
 
       if L_overlap < max_L
@@ -159,7 +159,7 @@ function solve_sliding_window_cgm(
         for t in L_overlap+1:max_L
           q_init_win[:, :, t] = edge
         end
-        println("残り部分: 前ウィンドウ最終値で埋める")
+        println("Remaining part: filled with previous window's final value")
       end
     end
 
@@ -187,7 +187,7 @@ function solve_sliding_window_cgm(
     if length(q_total) == 0
       # 第1ウィンドウ: そのまま追加
       push!(q_total, q_win)
-      println("第1ウィンドウ: そのまま追加")
+      println("First window: added as-is")
     else
       # 第2ウィンドウ以降: オーバーラップ平均化
       overlap_steps_actual = min(overlap, size(q_win, 3), size(q_total[end], 3))
@@ -206,11 +206,11 @@ function solve_sliding_window_cgm(
           push!(q_total, q_win[:, :, overlap_steps_actual+1:end])
         end
 
-        println("オーバーラップ平均化: $(overlap_steps_actual)ステップ")
+        println("Overlap averaging: $(overlap_steps_actual) steps")
       else
         # オーバーラップなし
         push!(q_total, q_win)
-        println("オーバーラップなし: そのまま追加")
+        println("No overlap: added as-is")
       end
     end
 
@@ -230,7 +230,7 @@ function solve_sliding_window_cgm(
     )
     push!(windows_info, win_info)
 
-    println("CGM反復数: $(length(J_hist)), 最終J: $(J_hist[end])")
+    println("CGM iterations: $(length(J_hist)), final J: $(J_hist[end])")
 
     # インデックス進行（Pythonオリジナル: 1619-1620行）
     step = max(1, max_L - overlap)
@@ -245,9 +245,9 @@ function solve_sliding_window_cgm(
     q_global = q_global[:, :, 1:nt-1]
   end
 
-  println("\n=== スライディングウィンドウ計算完了 ===")
-  println("総ウィンドウ数: $(length(windows_info))")
-  println("最終q_global形状: $(size(q_global))")
+  println("\n=== Sliding Window calculation completed ===")
+  println("Total windows: $(length(windows_info))")
+  println("Final q_global shape: $(size(q_global))")
 
   return q_global, windows_info
 end

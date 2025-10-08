@@ -249,9 +249,9 @@ function solve_adjoint!(
   cg_iters = zeros(Int, nt-1)
 
   if verbose
-    println("Adjoint求解開始（後退時間積分）")
-    println("  格子: $ni×$nj×$nk, N=$N")
-    println("  時間ステップ: $nt")
+    println("Starting Adjoint solver (backward time integration)")
+    println("  Grid: $ni×$nj×$nk, N=$N")
+    println("  Time steps: $nt")
     println("  CG: rtol=$rtol, maxiter=$maxiter")
   end
   
@@ -295,9 +295,9 @@ function solve_adjoint!(
       isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
           tol=rtol*Nf, maxItr=maxiter, smoother="", par=par)
       if isconverged
-        println("[t=$(t)/$(nt)] CG収束: $(itr)回 初期残差: $(res0)")
+        println("[t=$(t)/$(nt)] CG converged: $(itr) iterations, initial residual: $(res0)")
       else
-        @warn "[t=$(t)/$(nt)] CG未収束: $(itr)回 初期残差: $(res0)"
+        @warn "[t=$(t)/$(nt)] CG not converged: $(itr) iterations, initial residual: $(res0)"
       end
       # 反復回数記録
       cg_iters[t] = itr
@@ -312,14 +312,14 @@ function solve_adjoint!(
     end
 
     if verbose && (t % 10 == 0 || t == nt-1)
-      println("  t=$t: CG収束 (iter=$(cg_iters[t]))")
+      println("  t=$t: CG converged (iter=$(cg_iters[t]))")
     end
   end
 
   if verbose
-    println("Adjoint求解完了")
-    println("  平均CG反復回数: $(mean(cg_iters))")
-    println("  随伴場範囲: [$(minimum(λa_all)), $(maximum(λa_all))]")
+    println("Adjoint solver completed")
+    println("  Average CG iterations: $(mean(cg_iters))")
+    println("  Adjoint field range: [$(minimum(λa_all)), $(maximum(λa_all))]")
   end
 
   return λa_all, cg_iters

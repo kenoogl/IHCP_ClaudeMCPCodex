@@ -214,9 +214,9 @@ function solve_dhcp!(
     println("="^60)
     println("Start DHCP direct solver")
     println("="^60)
-    println("格子: $(ni)×$(nj)×$(nk) (N=$(N))")
-    println("時間ステップ: $(nt), dt=$(dt)s")
-    println("CG許容誤差: rtol=$(rtol), maxiter=$(maxiter)")
+    println("Grid: $(ni)×$(nj)×$(nk) (N=$(N))")
+    println("Time steps: $(nt), dt=$(dt)s")
+    println("CG tolerance: rtol=$(rtol), maxiter=$(maxiter)")
     println("="^60)
   end
   
@@ -257,18 +257,18 @@ function solve_dhcp!(
       isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
           tol=rtol*Nf, maxItr=maxiter, smoother="", par=par)
       if isconverged
-        println("[t=$(t)/$(nt)] CG収束: $(itr)回 初期残差: $(res0)")
+        println("[t=$(t)/$(nt)] CG converged: $(itr) iterations, initial residual: $(res0)")
       else
-        @warn "[t=$(t)/$(nt)] CG未収束: $(itr)回 初期残差: $(res0)"
+        @warn "[t=$(t)/$(nt)] CG not converged: $(itr) iterations, initial residual: $(res0)"
       end
     else
       PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
           tol=rtol*Nf, maxItr=maxiter, smoother="", par=par)
     end
 
-    # 数値異常チェック
+    # Numerical anomaly check
     if any(isnan.(wk.θ)) || any(isinf.(wk.θ))
-      error("[t=$(t)] 数値異常が発生しました（NaN/Inf検出）")
+      error("[t=$(t)] Numerical anomaly detected (NaN/Inf)")
     end
 
     # ガイドセルを除いて内点データを返す
@@ -280,8 +280,8 @@ function solve_dhcp!(
 
   if verbose
     println("="^60)
-    println("DHCP直接ソルバー完了")
-    println("  最終温度範囲: $(minimum(T_all)) - $(maximum(T_all)) K")
+    println("DHCP direct solver completed")
+    println("  Final temperature range: $(minimum(T_all)) - $(maximum(T_all)) K")
     println("="^60)
   end
 
