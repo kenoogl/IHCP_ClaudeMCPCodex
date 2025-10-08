@@ -704,7 +704,8 @@ function solve_adjoint_mf!(
     apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_plus, :z_minus)
 
     # work.b (RHS)の計算
-    calRHS!(wk, @view(T_cal[:, :, z_range[1], t]), @view(Y_obs[:, :, t]), HF, dx, dy, dt, ΔZ, z_range,
+    # 底面（物理座標 k=1）の温度と観測値を使用
+    calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), HF, dx, dy, dt, ΔZ, z_range,
       true, ρ, par)
 
     if verbose
