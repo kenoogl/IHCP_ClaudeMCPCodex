@@ -8,8 +8,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 **プロジェクト状態**:
 - ✅ Python→Julia移植完了（Phase 1-6、505テスト全合格）
 - ✅ **マトリクスフリーPBICGSTAB!ソルバー実装完了**（89倍高速化達成）
+- ✅ **SensitivitySolverモジュール実装完了**（CGM感度問題専用、18テスト合格）
 
-**現在のブランチ**: tuning2（マトリクスフリー版完成）
+**現在のブランチ**: tuning2（マトリクスフリー版＋SensitivitySolver完成）
 **最終更新**: 2025年10月8日
 
 ## 実行方法
@@ -107,8 +108,9 @@ julia/src/
 ├── ThermalProperties.jl     # Phase 1: 熱物性値計算
 ├── DataLoaders.jl           # データ読み込み（CSV, NPY, MAT）
 ├── solvers/
-│   ├── DHCPSolver.jl        # Phase 2: 直接解法
-│   ├── AdjointSolver.jl     # Phase 3: 随伴解法
+│   ├── DHCPSolver.jl        # Phase 2: 直接解法（311行、52%削減）
+│   ├── SensitivitySolver.jl # ✅ Phase 4: 感度問題ソルバー（289行）
+│   ├── AdjointSolver.jl     # Phase 3: 随伴解法（マトリクスフリー版実装済み）
 │   ├── StoppingCriteria.jl  # 停止判定ロジック
 │   ├── CGMSolver.jl         # Phase 4: 共役勾配法
 │   ├── CommonSolver.jl      # ✅ マトリクスフリーPBICGSTAB!実装
@@ -118,7 +120,8 @@ julia/src/
     ├── io.jl                # 入出力（NPZ, JLD2）
     ├── visualization.jl     # 可視化機能
     ├── json_helpers.jl      # JSON型変換
-    └── boundary_conditions.jl # 境界条件処理
+    ├── boundary_conditions.jl # 境界条件処理
+    └── commons.jl           # WorkBuffers、reset_work_buffers!
 ```
 
 **重要なモジュール**:
@@ -128,18 +131,30 @@ julia/src/
   - **89倍の高速化達成**（スナップショット数: 53,150 → 607）
   - メモリ使用量の大幅削減
 
+- `SensitivitySolver.jl`: 感度問題専用ソルバー（完了✅）
+  - `solve_sensitivity!()` - CGM内で熱流束微小変化に対する温度応答を計算
+  - DHCPSolverとほぼ同じ構造だが、Z下面境界条件が異なる
+  - CGMのNaN問題を解決（WorkBuffersリセット併用）
+
 ### 核心アルゴリズム
 1. **熱物性値計算**: `thermal_properties_calculator()` - 温度依存熱物性値の多項式フィッティング
 2. **直接解法（DHCP）**: マトリクスフリー版PBICGSTAB!
    - `solve_dhcp!()` - WorkBuffersを使用した前進時間差分解法
    - `calRHS!()` - RHSベクトルの直接計算
    - `PBiCGSTAB!()` - マトリクスフリー反復ソルバー
-3. **随伴解法（Adjoint）**:
-   - `solve_adjoint!()` - 後退時間差分解法
-   - `multiple_time_step_solver_Adjoint()` - 後退時間差分解法
-4. **最適化**:
-   - `global_CGM_time()` - コンジュゲートグラディエント法
-   - `sliding_window_CGM_q_saving()` - スライディングウィンドウ計算
+3. **感度解法（Sensitivity）**:
+   - `solve_sensitivity!()` - CGM内で熱流束微小変化に対する温度応答を計算
+   - DHCPと同じマトリクスフリーPBICGSTAB!使用
+   - Z下面：断熱、Z上面：熱流束（DHCPと同じ）
+4. **随伴解法（Adjoint）**:
+   - `solve_adjoint!()` - 後退時間差分解法（マトリクスフリー版実装済み）
+   - `solve_adjoint_mf!()` - マトリクスフリー版
+   - Z下面：等温、Z上面：断熱（DHCPと逆）
+5. **最適化（CGM）**:
+   - `solve_cgm!()` - 共役勾配法メインループ
+   - `compute_gradient!()` - Adjointソルバーで勾配計算
+   - `compute_sensitivity!()` - Sensitivityソルバーで感度計算
+   - `compute_step_size()` - ライン検索でステップサイズ決定
 
 ### 数値計算設定
 - **空間格子**: x,y方向均等格子（dx=0.12mm）、z方向20層非均等格子
@@ -239,13 +254,13 @@ TrialClaudeMCPCodex/
 
 ## Git操作ガイドライン
 
-**現在のブランチ**: tuning2（マトリクスフリーPBICGSTAB!実装中）
+**現在のブランチ**: tuning2（マトリクスフリー版＋SensitivitySolver完成）
 **メインブランチ**: main（Phase 1-6完了版）
 
 - **大容量ファイル**: 1MB以上のファイルはステージング前に必ず確認
 - **除外ファイル**: `T_measure_700um_1ms.npy`（1.1GB）はgitignore済み
 - **コミット単位**: TDDサイクルに従い、テスト作成→実装完了で適切に分割
-- **ブランチ運用**: tuning2ブランチでマトリクスフリーPBICGSTAB!実装中、完了後mainにマージ
+- **ブランチ運用**: tuning2ブランチでマトリクスフリー版完成、SensitivitySolver実装完了
 
 ## トラブルシューティング
 
@@ -296,6 +311,11 @@ TrialClaudeMCPCodex/
 5. **Phase 6完了**: 検証器、可視化、メインエントリポイント、実データ読込実装（全122テスト合格）
 6. **CGM結果ゼロ問題**: 停止判定タイミング修正で解決（2025年10月2日）
 7. **マトリクスフリーPBICGSTAB!実装完了**: 89倍高速化達成、古いcg!版削除（2025年10月8日）
+8. **SensitivitySolver実装完了**: CGM感度問題専用モジュール新設（2025年10月8日）
+   - CGMのNaN問題を解決（WorkBuffersリセット併用）
+   - 18テスト合格（Python完全一致、相対誤差1e-7）
+9. **境界条件API修正**: `create_boundary_conditions`に`nk`パラメータ追加（2025年10月8日）
+10. **compute_z_range警告解消**: 不要なimport削除（2025年10月8日）
 
 ## 完全一致検証結果 ✅
 
@@ -327,16 +347,25 @@ TrialClaudeMCPCodex/
 1. ✅ **CommonSolver.jl**に`PBICGSTAB!`関数を自前実装
    - Preconditioned BiConjugate Gradient Stabilized法
    - 疎行列を一切構築せず、演算のみ実装
+   - `mycopy!`、`myfill!`でFLoops並列化
 2. ✅ **DHCPSolver.jl**の大幅簡素化
    - 650行 → 311行（52%削減）
    - 関数数: 7個 → 3個
    - 古いcg!版、build_dhcp_system!、assemble_dhcp_matrixを削除
-3. ✅ **WorkBuffers最適化**
+3. ✅ **SensitivitySolver.jl**新設（289行）
+   - DHCPSolverとほぼ同じ構造
+   - Z下面：断熱、Z上面：熱流束（DHCPと同じ）
+   - CGM内で`solve_sensitivity!`を使用
+4. ✅ **AdjointSolver.jl**マトリクスフリー版実装
+   - `solve_adjoint_mf!`関数追加
+   - Z下面：等温、Z上面：断熱（DHCPと逆）
+5. ✅ **WorkBuffers最適化**
    - 未使用α配列を削除、メモリ7%削減
+   - `reset_work_buffers!`でCGM反復間をクリーン化
 
 **削減した依存関係**:
-- ✅ SparseArrays（疎行列不要）
-- ✅ IterativeSolvers（cg!不要）
+- ✅ SparseArrays（疎行列不要、DHCPSolverから）
+- ✅ IterativeSolvers（cg!不要、DHCPSolverから）
 
 ### 今後の改善候補
 1. **並列化**: `par="thread"`オプション有効化
