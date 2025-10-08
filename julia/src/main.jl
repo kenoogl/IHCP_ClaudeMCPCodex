@@ -13,15 +13,12 @@ IHCP CGMソルバー メインエントリポイント
 """
 
 using ArgParse
-using ProgressMeter
 using Logging
 using Printf
 using LinearAlgebra
 using Dates
 using Pkg
 using Statistics
-using FLoops
-using ThreadsX
 
 # プロジェクトモジュールのインクルード
 include("IHCP_CGM.jl")

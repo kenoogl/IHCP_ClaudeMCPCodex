@@ -24,9 +24,7 @@ CGMSolver.jl
 
 module CGMSolver
 
-using LinearAlgebra
 using LinearAlgebra: dot
-using SparseArrays
 using Printf
 
 # 共通モジュール

@@ -10,7 +10,6 @@ SensitivitySolver.jl
 
 module SensitivitySolver
 
-using LinearAlgebra
 using FLoops
 
 import ..Commons
