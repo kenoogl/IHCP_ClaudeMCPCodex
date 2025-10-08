@@ -364,10 +364,10 @@ function print_file_info(file_path::String)
     file_size = filesize(file_path)
     file_ext = splitext(file_path)[2]
 
-    println(@sprintf("  ファイル: %s", basename(file_path)))
-    println(@sprintf("  パス: %s", dirname(file_path)))
-    println(@sprintf("  サイズ: %.2f MB", file_size / 1e6))
-    println(@sprintf("  形式: %s", file_ext))
+    println(@sprintf("  File: %s", basename(file_path)))
+    println(@sprintf("  Path: %s", dirname(file_path)))
+    println(@sprintf("  Size: %.2f MB", file_size / 1e6))
+    println(@sprintf("  Format: %s", file_ext))
 end
 
 """

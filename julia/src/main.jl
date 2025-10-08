@@ -122,7 +122,7 @@ end
 """
 function run_full_calculation(config::Dict, output_file::String)
     println("\n" * "="^60)
-    println("全時間領域計算モード")
+    println("Full time domain calculation mode")
     println("="^60)
 
     try
@@ -242,7 +242,7 @@ function run_full_calculation(config::Dict, output_file::String)
 
         # スライディングウィンドウCGM実行
         println("\n" * "-"^60)
-        println("スライディングウィンドウCGM実行")
+        println("Sliding window CGM execution")
         println("-"^60)
 
         window_size = sw["window_size"]
@@ -273,7 +273,7 @@ function run_full_calculation(config::Dict, output_file::String)
 
 
         # 計算開始
-        println("\n計算開始: $(now())")
+        println("\nCalculation started: $(now())")
         start_time = time()
 
         q_global, windows_info = solve_sliding_window_cgm(
@@ -284,12 +284,12 @@ function run_full_calculation(config::Dict, output_file::String)
         )
 
         elapsed_time = time() - start_time
-        println("計算完了: $(now())")
+        println("Calculation completed: $(now())")
         @info @sprintf("  計算時間: %.2f 秒 (%.2f 分)", elapsed_time, elapsed_time / 60)
 
         # 結果の統計情報
         println("\n" * "-"^60)
-        println("結果統計")
+        println("Result statistics")
         println("-"^60)
         @info @sprintf("  熱流束配列形状: %s", size(q_global))
         @info @sprintf("  熱流束範囲: [%.2e, %.2e] W/m²", minimum(q_global), maximum(q_global))
@@ -378,7 +378,7 @@ function run_full_calculation(config::Dict, output_file::String)
             println("-"^60)
         end
 
-        println("\n✓ 全時間領域計算が正常に完了しました")
+        println("\n✓ Full time domain calculation completed successfully")
         println("="^60)
 
         return 0
@@ -402,14 +402,14 @@ end
 """
 function run_test_mode(config::Dict)
     println("\n" * "="^60)
-    println("テストモード: Phase 1-5統合テスト実行")
+    println("Test mode: Phase 1-5 integrated test execution")
     println("="^60)
 
     try
         @info "テストスイートを実行中..."
         Pkg.test("IHCP_CGM")
 
-        println("\n✓ 全テスト合格")
+        println("\n✓ All tests passed")
         println("="^60)
 
         return 0
@@ -433,7 +433,7 @@ end
 """
 function run_benchmark_mode(config::Dict)
     println("\n" * "="^60)
-    println("ベンチマークモード")
+    println("Benchmark mode")
     println("="^60)
 
     try
@@ -447,7 +447,7 @@ function run_benchmark_mode(config::Dict)
         @info @sprintf("  格子: (%d, %d, %d), 時間ステップ: %d", ni, nj, nk, nt)
 
         # Phase 1: 熱物性値計算
-        println("\nPhase 1: 熱物性値計算")
+        println("\nPhase 1: Thermal properties calculation")
         T_test = 300.0 .+ 100.0 .* rand(ni, nj, nk)
         cp_coeffs = Float64.(config["material"]["cp_coeffs"])
         k_coeffs = Float64.(config["material"]["k_coeffs"])
@@ -458,12 +458,12 @@ function run_benchmark_mode(config::Dict)
             thermal_properties_calculator(T_test, cp_coeffs, k_coeffs)
         end
         elapsed = (time() - start_time) / 100
-        println(@sprintf("  平均実行時間: %.6f 秒", elapsed))
+        println(@sprintf("  Average execution time: %.6f seconds", elapsed))
 
         # Phase 2-4: 今後追加
-        println("\nPhase 2-4: 統合ベンチマークは今後実装予定")
+        println("\nPhase 2-4: Integrated benchmark planned for future implementation")
 
-        println("\n✓ ベンチマーク完了")
+        println("\n✓ Benchmark completed")
         println("="^60)
 
         return 0
@@ -491,12 +491,12 @@ function main()
 
     # バージョン情報表示
     println("\n" * "="^60)
-    println("IHCP CGM Solver - 逆熱伝導問題 共役勾配法ソルバー")
+    println("IHCP CGM Solver - Inverse Heat Conduction Problem Conjugate Gradient Method Solver")
     println("="^60)
     println("Version: $(IHCP_CGM.VERSION)")
     println("Phase: $(IHCP_CGM.PHASE)")
     println("Julia Version: $(VERSION)")
-    println("実行日時: $(now())")
+    println("Execution time: $(now())")
     println("="^60)
 
     # スレッド設定
@@ -531,7 +531,7 @@ function main()
     # Dry-runモード
     if args["dry-run"]
         println("\n" * "="^60)
-        println("Dry-runモード: 設定検証のみ完了")
+        println("Dry-run mode: Configuration validation completed")
         println("="^60)
         @info "実際の計算は実行されませんでした"
         return 0

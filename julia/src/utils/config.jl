@@ -292,36 +292,36 @@ end
 """
 function print_config_summary(config::Dict)
     println("\n" * "="^60)
-    println("設定情報サマリー")
+    println("Configuration summary")
     println("="^60)
 
     # Problem設定
     prob = config["problem"]
-    println("\n[Problem設定]")
-    println(@sprintf("  格子点数: ni=%d, nj=%d, nk=%d", prob["ni"], prob["nj"], prob["nk"]))
-    println(@sprintf("  格子幅: dx=%.2e m, dy=%.2e m", prob["dx"], prob["dy"]))
-    println(@sprintf("  時間設定: nt=%d, dt=%.2e s", prob["nt"], prob["dt"]))
+    println("\n[Problem settings]")
+    println(@sprintf("  Grid points: ni=%d, nj=%d, nk=%d", prob["ni"], prob["nj"], prob["nk"]))
+    println(@sprintf("  Grid spacing: dx=%.2e m, dy=%.2e m", prob["dx"], prob["dy"]))
+    println(@sprintf("  Time settings: nt=%d, dt=%.2e s", prob["nt"], prob["dt"]))
 
     # Material設定
     mat = config["material"]
-    println("\n[Material設定]")
-    println(@sprintf("  密度: %.1f kg/m³", mat["rho"]))
-    println("  比熱係数: ", mat["cp_coeffs"])
-    println("  熱伝導率係数: ", mat["k_coeffs"])
+    println("\n[Material settings]")
+    println(@sprintf("  Density: %.1f kg/m³", mat["rho"]))
+    println("  Specific heat coefficients: ", mat["cp_coeffs"])
+    println("  Thermal conductivity coefficients: ", mat["k_coeffs"])
 
     # CGM設定
     cgm = config["cgm"]
-    println("\n[CGM設定]")
-    println(@sprintf("  最大反復回数: %d", cgm["max_iter"]))
-    println(@sprintf("  測定誤差σ: %.2e K", cgm["sigma"]))
+    println("\n[CGM settings]")
+    println(@sprintf("  Max iterations: %d", cgm["max_iter"]))
+    println(@sprintf("  Measurement error σ: %.2e K", cgm["sigma"]))
 
     # Sliding Window設定
     if haskey(config, "sliding_window")
         sw = config["sliding_window"]
-        println("\n[Sliding Window設定]")
-        println(@sprintf("  ウィンドウサイズ: %d", sw["window_size"]))
-        println(@sprintf("  オーバーラップ: %d", sw["overlap"]))
-        println(@sprintf("  初期熱流束: %.2e W/m²", sw["q_init_value"]))
+        println("\n[Sliding Window settings]")
+        println(@sprintf("  Window size: %d", sw["window_size"]))
+        println(@sprintf("  Overlap: %d", sw["overlap"]))
+        println(@sprintf("  Initial heat flux: %.2e W/m²", sw["q_init_value"]))
     end
 
     println("\n" * "="^60)
