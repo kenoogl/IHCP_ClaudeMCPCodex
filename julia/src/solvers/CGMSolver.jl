@@ -36,6 +36,7 @@ using ..Commons: WorkBuffers, λf, get_backend, compute_z_range, reset_work_buff
 # 親モジュールで既にinclude済み
 using ..DHCPSolver
 using ..AdjointSolver
+using ..SensitivitySolver
 using ..StoppingCriteria
 
 import ..CommonSolver
@@ -119,7 +120,7 @@ function compute_gradient!(
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
-  gradient = zeros(ni, nj, nt - 1)
+  gradient = zeros(Float64, ni, nj, nt - 1)
   for n in 1:(nt - 1)
     gradient[:, :, n] = lambda_field[:, :, nk, n]  # 表面（上端）
   end
@@ -173,8 +174,7 @@ function compute_sensitivity!(
   maxiter::Int=20000,
   par::String="sequential"
 )
-  # DHCPソルバーを流用（初期温度ゼロ、熱流束=p_n）
-  dT = solve_dhcp!(
+  dT = solve_sensitivity!(
     T_init, p_n, work,
     nt, rho, cp_coeffs, k_coeffs,
     dx, dy, Z, ΔZ, dt;
@@ -309,9 +309,9 @@ function solve_cgm!(
   M = ni * nj
   epsilon = M * (sigma^2) * (nt - 1)  # Discrepancy基準値
 
-  grad = zeros(ni, nj, nt - 1)      # CHECK: メモリ事前確保
-  grad_last = zeros(ni, nj, nt - 1) # CHECK: メモリ事前確保
-  p_n_last = zeros(ni, nj, nt - 1)  # CHECK: メモリ事前確保
+  grad = zeros(Float64, ni, nj, nt - 1)      # CHECK: メモリ事前確保
+  grad_last = zeros(Float64, ni, nj, nt - 1) # CHECK: メモリ事前確保
+  p_n_last = zeros(Float64, ni, nj, nt - 1)  # CHECK: メモリ事前確保
 
 
   bottom_idx = 2   # Julia 1-indexed（裏面 S2） PBICGSTAB ガイドセル考慮
@@ -385,15 +385,18 @@ function solve_cgm!(
 
     # Step 5: 感度問題求解（dT計算）
     reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
-    dT_init = zeros(ni, nj, nk)
-    dT = compute_sensitivity!(
+    dT_init = zeros(Float64, ni, nj, nk)
+    dT = solve_sensitivity!(
       dT_init, p_n, work,
       nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt,
-      rtol_adjoint, maxiter_cg, par
+      dx, dy, Z, ΔZ, dt,
+      rtol=rtol_adjoint,
+      maxiter=maxiter_cg,
+      verbose=false,
+      par=par
     )
 
-    # Step 6: ステップサイズ計算（メモリレイアウト最適化: Phase 2.2）
+    # Step 6: ステップサイズ計算
     Sp = dT[:, :, bottom_idx, 2:nt]  # (ni, nj, nt-1)
     beta = compute_step_size(res_T, Sp, eps)
 
