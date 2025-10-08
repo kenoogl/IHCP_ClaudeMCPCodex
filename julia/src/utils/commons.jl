@@ -9,7 +9,7 @@ module Commons
 using FLoops
 
 export initialize_cells!, compute_z_range, λf, WorkBuffers, get_backend,
-       BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION, FloatMin
+       BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION, FloatMin, reset_work_buffers!
 
 # ゼロ除算回避用の小さな数値（BiCGSTAB法などで使用）
 const FloatMin = 1.0e-37
@@ -80,6 +80,31 @@ function WorkBuffers(mx::Int64, my::Int64, mz::Int64)
     zeros(Float64, mx, my, mz), # pcg_t_
     zeros(Float64, mx, my, mz)  # hsrc
   )
+end
+
+"""
+ WorkBuffersのリセット（CGM反復間でクリーンな状態を保証）
+"""
+function reset_work_buffers!(wk::WorkBuffers)
+  # 反復ソルバー用配列をゼロクリア
+  wk.pcg_p  .= 0.0
+  wk.pcg_p_ .= 0.0
+  wk.pcg_r  .= 0.0
+  wk.pcg_r0 .= 0.0
+  wk.pcg_q  .= 0.0
+  wk.pcg_s  .= 0.0
+  wk.pcg_s_ .= 0.0
+  wk.pcg_t_ .= 0.0
+
+  # θとbもリセット（solve内で上書きされるが、念のため）
+  wk.θ    .= 0.0
+  wk.b    .= 0.0
+  wk.hsrc .= 0.0
+
+  # maskは1.0に保持（境界条件で上書きされる）
+  wk.mask .= 1.0
+
+  # cp、λは物性値計算で毎回設定されるのでリセット不要
 end
 
 

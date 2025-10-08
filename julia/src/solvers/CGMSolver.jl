@@ -31,7 +31,7 @@ using FLoops
 
 # 共通モジュール
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend, compute_z_range
+using ..Commons: WorkBuffers, λf, get_backend, compute_z_range, reset_work_buffers!
 
 # 親モジュールで既にinclude済み
 using ..DHCPSolver
@@ -342,6 +342,7 @@ function solve_cgm!(
     end
 
     # Step 1: 順問題求解（DHCP）
+    reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
     T_cal = solve_dhcp!(
       T_init, q, work,
       nt, rho, cp_coeffs, k_coeffs,
@@ -359,6 +360,7 @@ function solve_cgm!(
     end
 
     # Step 3: 随伴問題求解（勾配計算）
+    reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
     grad = compute_gradient!(
       T_cal, Y_obs, work, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt,
@@ -392,6 +394,7 @@ function solve_cgm!(
     p_n_last = copy(p_n)
 
     # Step 5: 感度問題求解（dT計算）
+    reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
     dT_init = zeros(ni, nj, nk)
     dT = compute_sensitivity!(
       dT_init, p_n, work,
