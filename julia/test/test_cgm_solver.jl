@@ -107,6 +107,12 @@ end
     q_init_tmp = reshape(q_init_flat, (nt - 1, ni, nj))
     q_init = permutedims(q_init_tmp, (2, 3, 1))  # Phase 2.2: (nt-1,ni,nj) → (ni,nj,nt-1)
 
+    # WorkBuffers作成（ガイドセル含む）
+    work = WorkBuffers(ni+2, nj+2, nk+2)
+
+    # Z, ΔZの生成
+    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
     # CGM実行
     cgm_params = (
       max_iter = 20,
@@ -125,9 +131,14 @@ end
 
     q_final, T_cal_final, J_hist = solve_cgm!(
       T_init, Y_obs, q_init,
-      dx, dy, dz, dz_b, dz_t, dt,
+      work,
+      dx, dy,
+      Z, ΔZ,
+      dz, dz_b, dz_t,
+      dt,
       rho, cp_coeffs, k_coeffs;
-      params = cgm_params
+      params = cgm_params,
+      par = "sequential"
     )
 
     # 参照データと比較

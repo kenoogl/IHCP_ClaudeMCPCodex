@@ -170,14 +170,15 @@ function compute_sensitivity!(
   dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rtol::Float64=1e-8,
-  maxiter::Int=20000
+  maxiter::Int=20000,
+  par::String="sequential"
 )
   # DHCPソルバーを流用（初期温度ゼロ、熱流束=p_n）
   dT = solve_dhcp!(
     T_init, p_n, work,
     nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
-    rtol=rtol, maxiter=maxiter, verbose=false
+    dx, dy, Z, ΔZ, dt;
+    rtol=rtol, maxiter=maxiter, verbose=false, par=par
   )
 
   return dT
