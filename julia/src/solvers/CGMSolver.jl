@@ -113,7 +113,7 @@ function compute_gradient!(
   ni, nj, nk, nt = size(T_cal)
 
   # 随伴場求解（Phase 3）
-  lambda_field, cg_iters = solve_adjoint_mf!(
+  lambda_field, cg_iters = solve_adjoint!(
     T_cal, Y_obs, work, nt, rho, cp_coeffs, k_coeffs,
     dx, dy, Z, ΔZ, dt;
     rtol=rtol, maxiter=maxiter, verbose=false, par=par

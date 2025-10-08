@@ -70,7 +70,7 @@ using .MATDataLoaders
 export polyval, thermal_properties!
 export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
 export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index, solve_dhcp_multiple_timesteps
-export solve_adjoint_mf!
+export solve_adjoint!
 export check_discrepancy, check_plateau, check_stopping_criteria, StoppingStatus
 export solve_cgm!, compute_gradient!, compute_sensitivity!, compute_step_size
 export solve_sliding_window_cgm, WindowInfo

@@ -43,7 +43,7 @@ using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet,
 import ..CommonSolver
 using ..CommonSolver: PBiCGSTAB!
 
-export solve_adjoint_mf!
+export solve_adjoint!
 
 
 """
@@ -180,11 +180,11 @@ end
 
 
 """
-    solve_adjoint_mf!(T_cal, Y_obs, nt, ρ, cp_coeffs, k_coeffs,
-                   dx, dy, dz, dz_b, dz_t, dt; rtol=1e-8, maxiter=1000, verbose=false)
-      -> (λ_all, cg_iters)
+    solve_adjoint!(T_cal, Y_obs, wk, nt, ρ, cp_coeffs, k_coeffs,
+                   dx, dy, Z, ΔZ, dt; rtol=1e-8, maxiter=1000, verbose=false, par="sequential")
+      -> (λa_all, cg_iters)
 
-複数時間ステップ随伴ソルバー（後退時間積分）
+複数時間ステップ随伴ソルバー（後退時間積分、マトリクスフリー版）
 
 時間反転ループで随伴方程式を解く:
     for t in (nt-1):-1:1
@@ -196,32 +196,32 @@ end
   2. 後退時間ループ（nt-1 → 1）:
      a. 前ステップ（時間的に後）の随伴場を初期値とする
      b. T_cal[t]から熱物性値を計算
-     c. 係数とRHS構築（残差注入: T_cal[t,:,:,1] vs Y_obs[t]）
-     d. 疎行列組み立て
-     e. 対角前処理CG法で求解
-     f. ホットスタート更新（x0 = x）
+     c. RHS構築（残差注入: T_cal[t,:,:,1] vs Y_obs[t]）
+     d. マトリクスフリーPBICGSTAB!で求解
+     e. 結果保存
 
 Args:
-  T_cal: DHCP計算温度場 (ni, nj, nk, nt) [K] ※Phase 2.2: 時間次元を最後に配置
-  Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
+  T_cal: DHCP計算温度場 (ni, nj, nk, nt) [K]
+  Y_obs: 観測温度（底面） (ni, nj, nt) [K]
+  wk: WorkBuffers
   nt: 時間ステップ数
   ρ: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数 [c0, c1, c2, c3]
   k_coeffs: 熱伝導率多項式係数 [k0, k1, k2, k3]
   dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
+  Z: z方向座標配列 (nk+2,) [m]
+  ΔZ: z方向格子幅配列 (nk+1,) [m]
   dt: 時間刻み [s]
   rtol: CG相対許容誤差（デフォルト: 1e-8）
   maxiter: CG最大反復回数（デフォルト: 1000）
   verbose: 詳細出力フラグ（デフォルト: false）
+  par: 並列化バックエンド（デフォルト: "sequential"）
 
 Returns:
   λa_all: 随伴場時系列 (ni, nj, nk, nt) ※熱伝導率のλと混同するのでλaとする
   cg_iters: CG反復回数履歴 (nt-1,)
 """
-function solve_adjoint_mf!(
+function solve_adjoint!(
   T_cal::Array{Float64,4},
   Y_obs::Array{Float64,3},
   wk::WorkBuffers,
