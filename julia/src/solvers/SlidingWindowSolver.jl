@@ -101,7 +101,8 @@ function solve_sliding_window_cgm(
   rtol_dhcp::Float64=1e-6,
   maxiter_dhcp::Int=20000,
   rtol_adjoint::Float64=1e-8,
-  maxiter_adjoint::Int=20000
+  maxiter_adjoint::Int=20000,
+  verbose::Bool=false
 )
 
   ni, nj, nt = size(Y_obs)  # Y_obs形状: (ni, nj, nt)
@@ -117,15 +118,19 @@ function solve_sliding_window_cgm(
   safety_counter = 0
   safety_limit = nt * 5
 
-  println("\n=== Starting Sliding Window CGM calculation ===")
-  println("Total time steps: $nt")
-  println("Window size: $window_size")
-  println("Overlap: $overlap")
+  if verbose
+    println("\n=== Starting Sliding Window CGM calculation ===")
+    println("Total time steps: $nt")
+    println("Window size: $window_size")
+    println("Overlap: $overlap")
+  end
 
   while start_idx < nt - 1
     safety_counter += 1
     if safety_counter > safety_limit
-      println("[Warning] Safety counter exceeded") # CHECK 何のため？？
+      if verbose
+        println("[Warning] Safety counter exceeded") # CHECK 何のため？？
+      end
       break
     end
 
@@ -134,13 +139,17 @@ function solve_sliding_window_cgm(
     end_idx = start_idx + max_L
     Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]  # Y_obs形状: (ni, nj, nt)
 
-    println("\n--- Window $(length(windows_info)+1): [$start_idx, $end_idx] (length=$max_L) ---")
+    if verbose
+      println("\n--- Window $(length(windows_info)+1): [$start_idx, $end_idx] (length=$max_L) ---")
+    end
 
     # 初期熱流束の設定（Pythonオリジナル: 1583-1592行、メモリレイアウト最適化: Phase 2.2）
     if isnothing(prev_q_win)
       # 第1ウィンドウ: 一定値
       q_init_win = fill(q_init_value, (ni, nj, max_L))
-      println("Initial heat flux: constant value $q_init_value W/m²")
+      if verbose
+        println("Initial heat flux: constant value $q_init_value W/m²")
+      end
     else
       # 第2ウィンドウ以降: 前ウィンドウから継承
       q_init_win = zeros(Float64, ni, nj, max_L) # CHECK : 毎回確保している
@@ -149,7 +158,9 @@ function solve_sliding_window_cgm(
       if L_overlap > 0
         # オーバーラップ部分: 前ウィンドウの最後L_overlapステップを継承
         q_init_win[:, :, 1:L_overlap] = prev_q_win[:, :, end-L_overlap+1:end]
-        println("Overlap inheritance: previous $(L_overlap) steps")
+        if verbose
+          println("Overlap inheritance: previous $(L_overlap) steps")
+        end
       end
 
       if L_overlap < max_L
@@ -158,7 +169,9 @@ function solve_sliding_window_cgm(
         for t in L_overlap+1:max_L
           q_init_win[:, :, t] = edge
         end
-        println("Remaining part: filled with previous window's final value")
+        if verbose
+          println("Remaining part: filled with previous window's final value")
+        end
       end
     end
 
@@ -186,7 +199,9 @@ function solve_sliding_window_cgm(
     if length(q_total) == 0
       # 第1ウィンドウ: そのまま追加
       push!(q_total, q_win)
-      println("First window: added as-is")
+      if verbose
+        println("First window: added as-is")
+      end
     else
       # 第2ウィンドウ以降: オーバーラップ平均化
       overlap_steps_actual = min(overlap, size(q_win, 3), size(q_total[end], 3))
@@ -205,11 +220,15 @@ function solve_sliding_window_cgm(
           push!(q_total, q_win[:, :, overlap_steps_actual+1:end])
         end
 
-        println("Overlap averaging: $(overlap_steps_actual) steps")
+        if verbose
+          println("Overlap averaging: $(overlap_steps_actual) steps")
+        end
       else
         # オーバーラップなし
         push!(q_total, q_win)
-        println("No overlap: added as-is")
+        if verbose
+          println("No overlap: added as-is")
+        end
       end
     end
 
@@ -229,7 +248,9 @@ function solve_sliding_window_cgm(
     )
     push!(windows_info, win_info)
 
-    println("CGM iterations: $(length(J_hist)), final J: $(J_hist[end])")
+    if verbose
+      println("CGM iterations: $(length(J_hist)), final J: $(J_hist[end])")
+    end
 
     # インデックス進行（Pythonオリジナル: 1619-1620行）
     step = max(1, max_L - overlap)
@@ -244,9 +265,11 @@ function solve_sliding_window_cgm(
     q_global = q_global[:, :, 1:nt-1]
   end
 
-  println("\n=== Sliding Window calculation completed ===")
-  println("Total windows: $(length(windows_info))")
-  println("Final q_global shape: $(size(q_global))")
+  if verbose
+    println("\n=== Sliding Window calculation completed ===")
+    println("Total windows: $(length(windows_info))")
+    println("Final q_global shape: $(size(q_global))")
+  end
 
   return q_global, windows_info
 end

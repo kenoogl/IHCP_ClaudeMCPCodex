@@ -206,7 +206,7 @@ function solve_sensitivity!(
 
     if verbose
       isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="", par=par)
+          tol=rtol, maxItr=maxiter, smoother="", par=par, verbose=true)
       if isconverged
         println("[t=$(t)/$(nt)] CG converged: $(itr) iterations, initial residual: $(res0)")
       else
@@ -214,7 +214,7 @@ function solve_sensitivity!(
       end
     else
       PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="", par=par)
+          tol=rtol, maxItr=maxiter, smoother="", par=par, verbose=false)
     end
 
     # Numerical anomaly check
@@ -241,4 +241,4 @@ end
 
 
 
-end  # module DHCPSolver
+end  # module SensitivitySolver

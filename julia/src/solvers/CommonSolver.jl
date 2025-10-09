@@ -58,11 +58,14 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     tol::Float64,
                     maxItr::Int64,
                     smoother::String,
-                    par::String)
+                    par::String,
+                    verbose::Bool=false)
     SZ = size(wk.θ)
     myfill!(wk.pcg_q, 0.0, par)  #fill!(pcg_q, 0.0)
     res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
-    println("Inital residual = ", res0)
+    if verbose
+        println("Inital residual = ", res0)
+    end
 
     # 初期残差がゼロの場合は収束済み（数値安定性対策）
     if res0 ≈ 0.0

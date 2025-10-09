@@ -210,7 +210,7 @@ function solve_dhcp!(
 
     if verbose
       isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="", par=par)
+          tol=rtol, maxItr=maxiter, smoother="", par=par, verbose=true)
       if isconverged
         println("[t=$(t)/$(nt)] CG converged: $(itr) iterations, initial residual: $(res0)")
       else
@@ -218,7 +218,7 @@ function solve_dhcp!(
       end
     else
       PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="", par=par)
+          tol=rtol, maxItr=maxiter, smoother="", par=par, verbose=false)
     end
 
     # Numerical anomaly check
@@ -227,7 +227,8 @@ function solve_dhcp!(
     end
 
     # ガイドセルを除いて内点データを返す
-    for k in 1:nk, j in 1:nj, i in 1:ni
+    backend = get_backend(par)
+    @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
       T_all[i, j, k, t] = wk.θ[i+1, j+1, k+1]
     end
 
