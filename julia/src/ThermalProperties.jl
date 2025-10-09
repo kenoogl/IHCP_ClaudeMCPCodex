@@ -14,17 +14,19 @@ module ThermalProperties
 export polyval, set_properties!
 
 """
+    polyval(coeffs, x) -> Float64
+
 多項式評価関数
 
-# 引数
-- `coeffs`: 多項式係数配列 [a, b, c, d] for y = ax³ + bx² + cx + d
-- `x`: 評価点（温度K）
-
-# 戻り値
-- 多項式の評価結果
+係数の順序はNumPyと同じ（高次から低次）
 result = a*x^3 + b*x^2 + c*x + d
 
-係数の順序はNumPyと同じ（高次から低次）
+# 引数
+- `coeffs::Vector{Float64}`: 多項式係数配列 [a, b, c, d]
+- `x::Float64`: 評価点（温度 [K]）
+
+# 戻り値
+- `Float64`: 多項式の評価結果
 """
 function polyval(coeffs::Vector{Float64}, x::Float64)::Float64
   result = 0.0
@@ -45,14 +47,16 @@ end
 
 
 """
-3D温度から比熱cpと熱伝導率λを計算 (WorkBuffers用)
+    set_properties!(Temperature, cp, λ, cp_coeffs, k_coeffs)
+
+3D温度場から比熱cpと熱伝導率λを計算（WorkBuffers用、ガイドセル含む）
 
 # 引数
-- `Temperature`: 3D温度配列 (ni, nj, nk) [K]
-- `cp`: 比熱配列 (ni+2, nj+2, nk+2) [J/(kg·K)]
-- `λ`: 熱伝導率配列 (ni+2, nj+2, nk+2) [W/(m·K)]
-- `cp_coeffs`: 比熱の多項式係数 [a, b, c, d]
-- `k_coeffs`: 熱伝導率の多項式係数 [a, b, c, d]
+- `Temperature::AbstractArray{Float64, 3}`: 温度場 (ni, nj, nk) [K]
+- `cp::Array{Float64, 3}`: 比熱配列（出力先） (ni+2, nj+2, nk+2) [J/(kg·K)]
+- `λ::Array{Float64, 3}`: 熱伝導率配列（出力先） (ni+2, nj+2, nk+2) [W/(m·K)]
+- `cp_coeffs::Vector{Float64}`: 比熱の多項式係数 [a, b, c, d]
+- `k_coeffs::Vector{Float64}`: 熱伝導率の多項式係数 [a, b, c, d]
 """
 function set_properties!(
   Temperature::AbstractArray{Float64, 3},

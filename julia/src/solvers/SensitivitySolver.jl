@@ -55,16 +55,22 @@ end
 
 
 """
-@brief 右辺項b
-@param [in,out] wk.b   RHS
-@param [in]     HF  熱流束境界の値
-@param [in]     dx, dy セル幅
-@param [in]     Δt   時間積分幅
-@param [in]     ΔZ   CV幅
-@param [in]     z_range Zループ開始/終了インデクス
-@param [in]     qsrf 熱流束分布
-@param [in]     q_dist 熱流束分布を与える場合true
+    calRHS!(wk, HF, dx, dy, Δt, ΔZ, z_range, qsrf, distribution, ρ, par)
 
+感度問題用右辺項ベクトルbを計算
+
+# 引数
+- `wk::WorkBuffers`: ワークバッファ（wk.bを更新）
+- `HF::Vector{Float64}`: 熱流束境界条件係数（6面分）
+- `dx::Float64`: x方向セル幅 [m]
+- `dy::Float64`: y方向セル幅 [m]
+- `Δt::Float64`: 時間刻み幅 [s]
+- `ΔZ::Vector{Float64}`: z方向CV幅配列 (nk+1,) [m]
+- `z_range::Vector{Int64}`: Zループ範囲 [開始, 終了]
+- `qsrf::AbstractArray{Float64,2}`: 表面熱流束分布 (ni, nj) [W/m²]
+- `distribution::Bool`: 熱流束分布を与える場合true
+- `ρ::Float64`: 密度 [kg/m³]
+- `par::String`: 並列化バックエンド（"sequential" / "thread"）
 """
 function calRHS!(wk::WorkBuffers,
     HF::Vector{Float64},
@@ -102,25 +108,33 @@ end
 
 
 """
-Sensitivity（感度問題）ソルバー
+    solve_sensitivity!(T_initial, q_surf, wk, nt, ρ, cp_coeffs, k_coeffs, dx, dy, Z, ΔZ, dt;
+                       rtol=1e-6, maxiter=20000, verbose=false, par="sequential") -> T_all
 
-微小な熱流束の変化が裏面S2温度に及ぼす影響(感度)を計算
+感度問題ソルバー
+
+微小な熱流束変化が裏面S2温度に及ぼす影響（感度）を計算
 
 # 引数
-T_initial: 初期温度場 (ni, nj, nk) [K]
-q_surface: 表面熱流束 (ni, nj, nt-1) [W/m²] 
-work: ワーク配列群 (ni+2, nj+2, nk+2)
-nt: 時間ステップ数
-ρ: 密度 [kg/m³]
-cp_coeffs: 比熱多項式係数 [c0, c1, c2, c3]
-k_coeffs: 熱伝導率多項式係数 [k0, k1, k2, k3]
-dx, dy, Z, ΔZ, Δt: 格子・時間パラメータ
-rtol, maxiter: 収束パラメータ
-verbose: 進捗表示フラグ（デフォルト: false）
-par: バックエンド
+- `T_initial::Array{Float64,3}`: 初期温度場 (ni, nj, nk) [K]
+- `q_surf::Array{Float64,3}`: 表面熱流束 (ni, nj, nt-1) [W/m²]
+- `wk::WorkBuffers`: ワーク配列群 (ni+2, nj+2, nk+2)
+- `nt::Int`: 時間ステップ数
+- `ρ::Float64`: 密度 [kg/m³]
+- `cp_coeffs::Vector{Float64}`: 比熱多項式係数 [c0, c1, c2, c3]
+- `k_coeffs::Vector{Float64}`: 熱伝導率多項式係数 [k0, k1, k2, k3]
+- `dx::Float64`: x方向格子幅 [m]
+- `dy::Float64`: y方向格子幅 [m]
+- `Z::Vector{Float64}`: z方向座標配列 (nk+2,) [m]
+- `ΔZ::Vector{Float64}`: z方向格子幅配列 (nk+1,) [m]
+- `dt::Float64`: 時間刻み [s]
+- `rtol::Float64`: CG相対許容誤差（デフォルト: 1e-6）
+- `maxiter::Int`: CG最大反復回数（デフォルト: 20000）
+- `verbose::Bool`: 進捗表示フラグ（デフォルト: false）
+- `par::String`: 並列化バックエンド（デフォルト: "sequential"）
 
 # 戻り値
-T_all: 新時刻の温度場 (ni, nj, nk, nt) [K] 
+- `T_all::Array{Float64,4}`: 温度場時系列 (ni, nj, nk, nt) [K]
 """
 
 function solve_sensitivity!(

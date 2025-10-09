@@ -20,29 +20,36 @@ export PBiCGSTAB!
 
 
 """
-@brief PBiCGSTAB反復
-@param [in]     wk   ワークベクトル
-@param [in]     Δh     セル幅
-@param [in]     Δt     時間積分幅
-@param [in]     Z      Z座標
-@param [in]     ΔZ     格子幅
-@param [in]     z_range Zループ開始/終了インデクス
-@param [in]     HT   熱伝達境界の値
-@param [in]     ρ    SUS密度
+    PBiCGSTAB!(wk, Δh, Δt, Z, ΔZ, z_range, HT, ρ;
+               tol, maxItr, smoother, par) -> (isconverged, itr, res0)
 
-# キーワード引数
-@param [in]     tol    反復閾値
-@param [in]     maxItr 最大反復数
-@param [in]     smoother ["gs", ""]
-@param [in]     par    バックエンド（"sequential", "thread"）
+前処理付きBiCGSTAB法による線形方程式求解
 
 収束判定： 有効セル数(Nf)あたりの相対残差ノルム (||r_k|| / ||r_0||)/Nf < tol
 一方、IterativeSolvers.jlのcg!関数は相対残差ノルム
-@ret            収束/未収束、反復回数、初期残差
+
+# 引数
+- `wk::WorkBuffers`: ワークバッファ（wk.θが解ベクトル、wk.bがRHS）
+- `Δh::Tuple{Float64, Float64, Float64}`: セル幅 (dx, dy, dz_dummy)
+- `Δt::Float64`: 時間積分幅 [s]
+- `Z::Vector{Float64}`: z方向座標配列 (nk+2,) [m]
+- `ΔZ::Vector{Float64}`: z方向格子幅配列 (nk+1,) [m]
+- `z_range::Vector{Int64}`: Zループ範囲 [開始, 終了]
+- `HT::Vector{Float64}`: 熱伝達境界条件係数（6面分）
+- `ρ::Float64`: 密度 [kg/m³]
+- `tol::Float64`: 反復収束閾値
+- `maxItr::Int64`: 最大反復回数
+- `smoother::String`: 前処理手法（"gs" / ""）
+- `par::String`: 並列化バックエンド（"sequential" / "thread"）
+
+# 戻り値
+- `isconverged::Bool`: 収束フラグ
+- `itr::Int`: 反復回数
+- `res0::Float64`: 初期残差ノルム
 """
 function PBiCGSTAB!(wk::WorkBuffers,
                     Δh::Tuple{Float64, Float64, Float64},
-                    Δt::Float64, 
+                    Δt::Float64,
                     Z::Vector{Float64},
                     ΔZ::Vector{Float64},
                     z_range::Vector{Int64},

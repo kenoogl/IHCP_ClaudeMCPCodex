@@ -70,17 +70,23 @@ end
 
 
 """
-@brief 右辺項b
-@param [in,out] wk.b   RHS
-@param [in]     Tsrf   底面の計算温度
-@param [in]     Yobs   底面の観測値
-@param [in]     HF  熱流束境界の値
-@param [in]     dx, dy セル幅
-@param [in]     Δt   時間積分幅
-@param [in]     ΔZ   CV幅
-@param [in]     z_range Zループ開始/終了インデクス
-@param [in]     distribution 分布を与える場合true
+    calRHS!(wk, Tsrf, Yobs, HF, dx, dy, Δt, ΔZ, z_range, distribution, ρ, par)
 
+随伴問題用右辺項ベクトルbを計算（残差注入含む）
+
+# 引数
+- `wk::WorkBuffers`: ワークバッファ（wk.bを更新）
+- `Tsrf::AbstractArray{Float64,2}`: 底面の計算温度 (ni, nj) [K]
+- `Yobs::AbstractArray{Float64,2}`: 底面の観測温度 (ni, nj) [K]
+- `HF::Vector{Float64}`: 熱流束境界条件係数（6面分）
+- `dx::Float64`: x方向セル幅 [m]
+- `dy::Float64`: y方向セル幅 [m]
+- `Δt::Float64`: 時間刻み幅 [s]
+- `ΔZ::Vector{Float64}`: z方向CV幅配列 (nk+1,) [m]
+- `z_range::Vector{Int64}`: Zループ範囲 [開始, 終了]
+- `distribution::Bool`: 分布を与える場合true
+- `ρ::Float64`: 密度 [kg/m³]
+- `par::String`: 並列化バックエンド（"sequential" / "thread"）
 """
 function calRHS!(
     wk::WorkBuffers,
@@ -122,11 +128,10 @@ end
 
 
 """
-    solve_adjoint!(T_cal, Y_obs, wk, nt, ρ, cp_coeffs, k_coeffs,
-                   dx, dy, Z, ΔZ, dt; rtol=1e-8, maxiter=1000, verbose=false, par="sequential")
-      -> (λa_all, cg_iters)
+    solve_adjoint!(T_cal, Y_obs, wk, nt, ρ, cp_coeffs, k_coeffs, dx, dy, Z, ΔZ, dt;
+                   rtol=1e-8, maxiter=1000, verbose=false, par="sequential") -> (λa_all, cg_iters)
 
-複数時間ステップ随伴ソルバー（後退時間積分、マトリクスフリー版）
+随伴ソルバー（後退時間積分、マトリクスフリー版）
 
 時間反転ループで随伴方程式を解く:
     for t in (nt-1):-1:1
@@ -142,26 +147,27 @@ end
      d. マトリクスフリーPBICGSTAB!で求解
      e. 結果保存
 
-Args:
-  T_cal: DHCP計算温度場 (ni, nj, nk, nt) [K]
-  Y_obs: 観測温度（底面） (ni, nj, nt) [K]
-  wk: WorkBuffers
-  nt: 時間ステップ数
-  ρ: 密度 [kg/m³]
-  cp_coeffs: 比熱多項式係数 [c0, c1, c2, c3]
-  k_coeffs: 熱伝導率多項式係数 [k0, k1, k2, k3]
-  dx, dy: x, y方向格子幅 [m]
-  Z: z方向座標配列 (nk+2,) [m]
-  ΔZ: z方向格子幅配列 (nk+1,) [m]
-  dt: 時間刻み [s]
-  rtol: CG相対許容誤差（デフォルト: 1e-8）
-  maxiter: CG最大反復回数（デフォルト: 1000）
-  verbose: 詳細出力フラグ（デフォルト: false）
-  par: 並列化バックエンド（デフォルト: "sequential"）
+# 引数
+- `T_cal::Array{Float64,4}`: DHCP計算温度場 (ni, nj, nk, nt) [K]
+- `Y_obs::Array{Float64,3}`: 観測温度（底面） (ni, nj, nt) [K]
+- `wk::WorkBuffers`: ワーク配列群 (ni+2, nj+2, nk+2)
+- `nt::Int`: 時間ステップ数
+- `ρ::Float64`: 密度 [kg/m³]
+- `cp_coeffs::Vector{Float64}`: 比熱多項式係数 [c0, c1, c2, c3]
+- `k_coeffs::Vector{Float64}`: 熱伝導率多項式係数 [k0, k1, k2, k3]
+- `dx::Float64`: x方向格子幅 [m]
+- `dy::Float64`: y方向格子幅 [m]
+- `Z::Vector{Float64}`: z方向座標配列 (nk+2,) [m]
+- `ΔZ::Vector{Float64}`: z方向格子幅配列 (nk+1,) [m]
+- `dt::Float64`: 時間刻み [s]
+- `rtol::Float64`: CG相対許容誤差（デフォルト: 1e-8）
+- `maxiter::Int`: CG最大反復回数（デフォルト: 1000）
+- `verbose::Bool`: 詳細出力フラグ（デフォルト: false）
+- `par::String`: 並列化バックエンド（デフォルト: "sequential"）
 
-Returns:
-  λa_all: 随伴場時系列 (ni, nj, nk, nt) ※熱伝導率のλと混同するのでλaとする
-  cg_iters: CG反復回数履歴 (nt-1,)
+# 戻り値
+- `λa_all::Array{Float64,4}`: 随伴場時系列 (ni, nj, nk, nt) ※熱伝導率のλと混同するのでλaとする
+- `cg_iters::Vector{Int}`: CG反復回数履歴 (nt-1,)
 """
 function solve_adjoint!(
   T_cal::Array{Float64,4},

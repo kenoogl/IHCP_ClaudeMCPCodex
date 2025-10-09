@@ -64,8 +64,8 @@ end
 
 
 """
-    compute_gradient!(T_cal, Y_obs, rho, cp_coeffs, k_coeffs, dx, dy, dz, dz_b, dz_t, dt,
-                      rtol, maxiter) -> gradient
+    compute_gradient!(T_cal, Y_obs, work, rho, cp_coeffs, k_coeffs, dx, dy, Z, ΔZ, dt,
+                      rtol=1e-8, maxiter=20000, par="sequential") -> gradient
 
 勾配計算（随伴場の表面値）
 
@@ -77,21 +77,24 @@ end
   gradient[n, i, j] = ∂J/∂q[n, i, j]
   ここでJは目的関数（残差二乗和）
 
-Args:
-  T_cal: DHCP計算温度場 (ni, nj, nk, nt) ※Phase 2.2: 時間次元を最後に配置
-  Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
-  work: 
-  rho: 密度 [kg/m³]
-  cp_coeffs: 比熱多項式係数
-  k_coeffs: 熱伝導率多項式係数
-  dx, dy: x, y方向格子幅 [m]
-  Z, ΔZ: Z方向格子情報
-  dt: 時間刻み [s]
-  rtol: CG相対許容誤差
-  maxiter: CG最大反復数
+# 引数
+- `T_cal::Array{Float64,4}`: DHCP計算温度場 (ni, nj, nk, nt) [K]
+- `Y_obs::Array{Float64,3}`: 観測温度（底面） (ni, nj, nt) [K]
+- `work::WorkBuffers`: ワーク配列群 (ni+2, nj+2, nk+2)
+- `rho::Float64`: 密度 [kg/m³]
+- `cp_coeffs::Vector{Float64}`: 比熱多項式係数
+- `k_coeffs::Vector{Float64}`: 熱伝導率多項式係数
+- `dx::Float64`: x方向格子幅 [m]
+- `dy::Float64`: y方向格子幅 [m]
+- `Z::Vector{Float64}`: z方向座標配列 (nk+2,) [m]
+- `ΔZ::Vector{Float64}`: z方向格子幅配列 (nk+1,) [m]
+- `dt::Float64`: 時間刻み [s]
+- `rtol::Float64`: CG相対許容誤差（デフォルト: 1e-8）
+- `maxiter::Int`: CG最大反復数（デフォルト: 20000）
+- `par::String`: 並列化バックエンド（デフォルト: "sequential"）
 
-Returns:
-  gradient: 勾配場 (ni, nj, nt-1) ※Phase 2.2: 時間次元を最後に配置
+# 戻り値
+- `gradient::Array{Float64,3}`: 勾配場 (ni, nj, nt-1)
 """
 function compute_gradient!(
   T_cal::Array{Float64,4},
