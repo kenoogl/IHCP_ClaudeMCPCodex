@@ -28,16 +28,13 @@ using Printf
 
 # 共通モジュール
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend, reset_work_buffers!
+using ..Commons: WorkBuffers, get_backend, reset_work_buffers!
 
 # 親モジュールで既にinclude済み
 using ..DHCPSolver
 using ..AdjointSolver
 using ..SensitivitySolver
 using ..StoppingCriteria
-
-import ..CommonSolver
-using ..CommonSolver: PBiCGSTAB!
 
 export solve_cgm!, compute_gradient!, compute_step_size
 
