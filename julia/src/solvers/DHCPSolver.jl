@@ -273,7 +273,8 @@ function solve_dhcp!(
     end
 
     # ガイドセルを除いて内点データを返す
-    for k in 1:nk, j in 1:nj, i in 1:ni
+    backend = get_backend(par)
+    @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
       T_all[i, j, k, t] = wk.θ[i+1, j+1, k+1]
     end
 

@@ -694,8 +694,7 @@ function solve_adjoint_mf!(
 
   # 後退時間ループ（Pythonオリジナル1328行: range(nt-2, -1, -1)）
   for t in (nt-1):-1:1
-    # 次ステップ（時間的に後）の随伴場を初期値とする
-    λa_initial = @view λa_all[:, :, :, t+1]
+    # 次ステップ（時間的に後）の随伴場を初期値とする（wk.θに保持されているためホットスタート）
 
     # 温度場から熱物性値計算（Pythonオリジナル1332行: T_cal[t]）
     set_properties!(@view(T_cal[:, :, :, t]), wk.cp, wk.λ, cp_coeffs, k_coeffs)
@@ -724,7 +723,8 @@ function solve_adjoint_mf!(
     end
 
     # 結果保存 ガイドセルを除いて内点データを返す
-    for k in 1:nk, j in 1:nj, i in 1:ni
+    backend = get_backend(par)
+    @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
       λa_all[i, j, k, t] = wk.θ[i+1, j+1, k+1]
     end
 
