@@ -25,6 +25,7 @@ CGMSolver.jl
 module CGMSolver
 
 using Printf
+using LinearAlgebra: dot
 
 # 共通モジュール
 import ..Commons
@@ -54,9 +55,12 @@ Args:
 Returns:
   内積値（スカラー）
   CHECK: 型安定性のため、Array{Float64,3}
+
+メモリ効率化:
+  一時配列を生成しないdot(vec(), vec())を使用
 """
 function tensor_dot(a::Array{T}, b::Array{T}) where T <: Real
-  return Float64(sum(a .* b))
+  return Float64(dot(vec(a), vec(b)))
 end
 
 

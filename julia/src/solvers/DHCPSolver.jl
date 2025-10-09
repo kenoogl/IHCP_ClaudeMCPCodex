@@ -17,7 +17,7 @@ module DHCPSolver
 using FLoops
 
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend
+using ..Commons: WorkBuffers, get_backend
 
 import ..ThermalProperties
 using ..ThermalProperties: set_properties!

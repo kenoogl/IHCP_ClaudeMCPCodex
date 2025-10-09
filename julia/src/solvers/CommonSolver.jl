@@ -63,6 +63,12 @@ function PBiCGSTAB!(wk::WorkBuffers,
     myfill!(wk.pcg_q, 0.0, par)  #fill!(pcg_q, 0.0)
     res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
     println("Inital residual = ", res0)
+
+    # 初期残差がゼロの場合は収束済み（数値安定性対策）
+    if res0 ≈ 0.0
+        return true, 0, res0
+    end
+
     mycopy!(wk.pcg_r0, wk.pcg_r, par) # wk.pcg_r0 .= wk.pcg_r  #copy!(pcg_r0, pcg_r)
 
     rho_old::Float64 = 1.0
@@ -100,7 +106,14 @@ function PBiCGSTAB!(wk::WorkBuffers,
         Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par);
 
         CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
-        omega = Fdot2(wk.pcg_t_, wk.pcg_s, z_range, par) / Fdot1(wk.pcg_t_, z_range, par)
+
+        # 分母ゼロ対策（数値安定性）
+        denom = Fdot1(wk.pcg_t_, z_range, par)
+        if abs(denom) < FloatMin
+            isconverged = false
+            break
+        end
+        omega = Fdot2(wk.pcg_t_, wk.pcg_s, z_range, par) / denom
         r_omega = -omega
 
         BICG2!(wk.θ, wk.pcg_p_, wk.pcg_s_, alpha , omega, z_range, par)
@@ -731,13 +744,15 @@ end
 @param [in]     F    ファイルディスクリプタ
 @param [in]     tol  収束判定基準
 @param [in]     HT   熱伝達境界の値
+@param [in]     ItrMax 最大反復回数（デフォルト: 1000）
 
 """
 function solveSOR!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ,
                     z_range::Vector{Int64},
                     F, tol,
                     HT::Vector{Float64},
-                    par::String)
+                    par::String;
+                    ItrMax::Int=1000)
 
     res0 = resSOR(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, par)
     if res0==0.0

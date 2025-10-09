@@ -13,7 +13,7 @@ module SensitivitySolver
 using FLoops
 
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend
+using ..Commons: WorkBuffers, get_backend
 
 import ..ThermalProperties
 using ..ThermalProperties: set_properties!
@@ -158,6 +158,7 @@ function solve_sensitivity!(
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
   Δh = (dx, dy, 1.0) # 1.0はダミー
+  backend = get_backend(par)
 
   T_all = zeros(Float64, ni, nj, nk, nt)
   T_all[:, :, :, 1] = T_initial
@@ -174,7 +175,7 @@ function solve_sensitivity!(
   end
 
    # PBICGSTAB 初期値設定
-  for k in 1:nk, j in 1:nj, i in 1:ni
+  @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
     wk.θ[i+1, j+1, k+1] = T_initial[i, j, k]
     wk.mask[i+1, j+1, k+1] = 1.0
   end
@@ -222,7 +223,7 @@ function solve_sensitivity!(
     end
 
     # ガイドセルを除いて内点データを返す
-    for k in 1:nk, j in 1:nj, i in 1:ni
+    @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
       T_all[i, j, k, t] = wk.θ[i+1, j+1, k+1]
     end
 
