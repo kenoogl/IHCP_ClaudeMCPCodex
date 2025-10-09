@@ -86,3 +86,8 @@ julia/src/
 - `docs/INDEX.md`: 全ドキュメント索引
 - `docs/logs/`: Phase 1-6実装ログ
 - `shared/results/validation/`: 検証結果
+
+## 開発方針
+- Task toolを用いCodex MCPと連携する
+- Claudeの役割：タスク全体の計画と進捗管理、ユーザーとのコミュニケーション、Codexへの指示出しと結果のレビュー
+- Codexの役割：詳細な調査作業、コードの実装、ファイル検索や分析
