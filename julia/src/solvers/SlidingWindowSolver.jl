@@ -73,7 +73,7 @@ Pythonオリジナル: sliding_window_CGM_q_saving() (1556-1626行)
    - 各ウィンドウの最終温度場を次ウィンドウの初期値とする
 
 Args:
-  Y_obs: 観測温度（底面） (nt, ni, nj)
+  Y_obs: 観測温度（底面） (ni, nj, nt)
   T0: 初期温度場 (ni, nj, nk)
   work: Heat3d用配列群
   dx, dy: x, y方向格子幅 [m]
@@ -105,7 +105,7 @@ function solve_sliding_window_cgm(
   maxiter_adjoint::Int=20000
 )
 
-  ni, nj, nt = size(Y_obs)  # メモリレイアウト最適化: Phase 2.2
+  ni, nj, nt = size(Y_obs)  # Y_obs形状: (ni, nj, nt)
   T_init = copy(T0)
   nk = size(T_init, 3)
 
@@ -133,7 +133,7 @@ function solve_sliding_window_cgm(
     # 現在のウィンドウ長（Pythonオリジナル: 1577-1580行）
     max_L = min(window_size, (nt - 1) - start_idx)
     end_idx = start_idx + max_L
-    Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]  # メモリレイアウト最適化: Phase 2.2
+    Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]  # Y_obs形状: (ni, nj, nt)
 
     println("\n--- Window $(length(windows_info)+1): [$start_idx, $end_idx] (length=$max_L) ---")
 
