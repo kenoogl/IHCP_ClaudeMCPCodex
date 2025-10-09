@@ -36,6 +36,7 @@ include("ThermalProperties.jl")
 include("DataLoaders.jl")
 
 # Phase 2-5モジュールのインクルード
+include("solvers/RHSCore.jl")
 include("solvers/CommonSolver.jl")
 include("solvers/DHCPSolver.jl")
 include("solvers/SensitivitySolver.jl")
@@ -52,6 +53,7 @@ include("utils/data_loaders.jl")
 using .Commons
 using .ThermalProperties
 using .DataLoaders
+using .RHSCore
 using .CommonSolver
 using .DHCPSolver
 using .SensitivitySolver

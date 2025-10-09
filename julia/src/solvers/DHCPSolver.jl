@@ -29,6 +29,9 @@ using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet,
             print_boundary_conditions, ISOTHERMAL, HEAT_FLUX,
             apply_face_boundary!, set_BC_coef
 
+import ..RHSCore
+using ..RHSCore: calRHS_core!
+
 import ..CommonSolver
 using ..CommonSolver: PBiCGSTAB!
 
@@ -80,71 +83,11 @@ function calRHS!(wk::WorkBuffers,
     par::String
     )
 
+    # コア処理（共通部分）: 初期化 + 6面一様境界条件
+    SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
     backend = get_backend(par)
-    SZ = size(wk.b)
-    dx1 = 1.0 / dx
-    dy1 = 1.0 / dy
-    z_st = z_range[1]
-    z_ed = z_range[2]
-    ddt = 1.0 / Δt
-    
-    @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
-        wk.b[i,j,k] = 0.0
-    end
 
-    # 領域境界面に一様な熱流束の場合
-    # X_minus
-    if HF[1] != 0.0
-        i=2
-        @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1
-            wk.b[i,j,k] += HF[1] * dx1
-        end
-    end
-
-    # X_plus
-    if HF[2] != 0.0
-        i=SZ[1]-1
-        @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1
-            wk.b[i,j,k] -= HF[2] * dx1
-        end
-    end
-
-    # Y_minus
-    if HF[3] != 0.0
-        j=2
-        @floop backend for k in z_st:z_ed, i in 2:SZ[1]-1
-            wk.b[i,j,k] += HF[3] * dy1
-        end
-    end
-
-    # Y_plus
-    if HF[4] != 0.0
-        j=SZ[2]-1
-        @floop backend for k in z_st:z_ed, i in 2:SZ[1]-1
-            wk.b[i,j,k] -= HF[4] * dy1
-        end
-    end
-
-    # Z_minus
-    if HF[5] != 0.0
-        k=z_st
-        a = HF[5] / ΔZ[k]
-        @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-            wk.b[i,j,k] += a
-        end
-    end
-
-    # Z_plus
-    if HF[6] != 0.0
-        k=z_ed
-        a = HF[6] / ΔZ[k]
-        @floop for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-            wk.b[i,j,k] -= a
-        end
-    end
-
-    # IHCPの場合、Z方向のみ分布を考慮した熱流束、必要があれば他の面も同様に処理
-    # Z_plus
+    # DHCP固有: Z上面の熱流束分布
     if q_dist == true
         let k = z_ed, a = 1.0 / ΔZ[z_ed]
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
@@ -153,7 +96,7 @@ function calRHS!(wk::WorkBuffers,
         end
     end
 
-    # RHS
+    # DHCP固有: 最終RHS計算（内部熱源項含む）
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         wk.b[i,j,k] = -( ddt * wk.θ[i,j,k]
                         + (wk.hsrc[i,j,k] + wk.b[i,j,k]) / (ρ * wk.cp[i,j,k])  )
