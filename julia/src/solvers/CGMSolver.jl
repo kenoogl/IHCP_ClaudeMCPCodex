@@ -156,6 +156,150 @@ end
 
 
 """
+    compute_objective_function(T_cal, Y_obs, bottom_idx, nt) -> (J, res_T)
+
+目的関数計算（CGM Step 2）
+
+残差場と目的関数値を計算します。
+
+対応Pythonコード: global_CGM_time() 1445-1449行
+
+# 引数
+- `T_cal::Array{Float64,4}`: DHCP計算温度場 (ni, nj, nk, nt) [K]
+- `Y_obs::Array{Float64,3}`: 観測温度（底面） (ni, nj, nt) [K]
+- `bottom_idx::Int`: 底面インデックス（通常1）
+- `nt::Int`: 時間ステップ数
+
+# 戻り値
+- `J::Float64`: 目的関数値（残差二乗和）
+- `res_T::Array{Float64,3}`: 残差場 (ni, nj, nt-1) [K]
+"""
+function compute_objective_function(
+  T_cal::Array{Float64,4},
+  Y_obs::Array{Float64,3},
+  bottom_idx::Int,
+  nt::Int
+)
+  # 残差計算（t=2以降、初期時刻を除く）
+  res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1)
+
+  # 目的関数（残差二乗和）
+  J = tensor_dot(res_T, res_T)
+
+  return J, res_T
+end
+
+
+"""
+    compute_search_direction(grad, grad_last, p_n_last, it, dire_reset_every, eps) -> (p_n, gamma)
+
+共役勾配探索方向計算（CGM Step 4）
+
+ポラック・リビエール型共役勾配法による探索方向を計算します。
+
+対応Pythonコード: global_CGM_time() 1463-1482行
+
+# 引数
+- `grad::Array{Float64,3}`: 現在の勾配 (ni, nj, nt-1)
+- `grad_last::Array{Float64,3}`: 前回の勾配 (ni, nj, nt-1)
+- `p_n_last::Array{Float64,3}`: 前回の探索方向 (ni, nj, nt-1)
+- `it::Int`: 現在の反復回数
+- `dire_reset_every::Int`: 方向リセット周期
+- `eps::Float64`: ゼロ除算防止値
+
+# 戻り値
+- `p_n::Array{Float64,3}`: 探索方向 (ni, nj, nt-1)
+- `gamma::Float64`: ポラック・リビエール係数
+"""
+function compute_search_direction(
+  grad::Array{Float64,3},
+  grad_last::Array{Float64,3},
+  p_n_last::Array{Float64,3},
+  it::Int,
+  dire_reset_every::Int,
+  eps::Float64
+)
+  # リセット条件：初回 or 非下降方向 or 周期リセット
+  if it == 0 || tensor_dot(grad, p_n_last) <= 0 || it % dire_reset_every == 0
+    # 最急降下方向にリセット
+    p_n = copy(grad)
+    gamma = 0.0
+  else
+    # ポラック・リビエール係数計算
+    y = grad .- grad_last
+    denom = tensor_dot(grad_last, grad_last) + eps
+    gamma = max(0.0, tensor_dot(grad, y) / denom)
+
+    # 探索方向候補
+    p_n_candidate = grad .+ gamma .* p_n_last
+
+    # 下降方向チェック
+    if tensor_dot(grad, p_n_candidate) > 0
+      p_n = p_n_candidate
+    else
+      # 下降方向でない場合はリセット
+      p_n = copy(grad)
+      gamma = 0.0
+    end
+  end
+
+  return p_n, gamma
+end
+
+
+"""
+    compute_and_clamp_step_size(dT, res_T, bottom_idx, nt, it, eps, beta_max, verbose) -> (beta, Sp)
+
+ステップサイズ計算と制限（CGM Step 6）
+
+感度場の底面値を抽出し、ステップサイズを計算します。
+初回反復のみステップサイズ制限を適用します。
+
+対応Pythonコード: global_CGM_time() 1499-1509行
+
+# 引数
+- `dT::Array{Float64,4}`: 感度場 (ni, nj, nk, nt) [K]
+- `res_T::Array{Float64,3}`: 残差場 (ni, nj, nt-1) [K]
+- `bottom_idx::Int`: 底面インデックス（通常1）
+- `nt::Int`: 時間ステップ数
+- `it::Int`: 現在の反復回数
+- `eps::Float64`: ゼロ除算防止値
+- `beta_max::Float64`: ステップサイズ上限
+- `verbose::Bool`: 詳細出力フラグ
+
+# 戻り値
+- `beta::Float64`: ステップサイズ
+- `Sp::Array{Float64,3}`: 感度場の底面値 (ni, nj, nt-1) [K]
+"""
+function compute_and_clamp_step_size(
+  dT::Array{Float64,4},
+  res_T::Array{Float64,3},
+  bottom_idx::Int,
+  nt::Int,
+  it::Int,
+  eps::Float64,
+  beta_max::Float64,
+  verbose::Bool
+)
+  # 感度場の底面値を抽出（t=2以降）
+  Sp = dT[:, :, bottom_idx, 2:nt]  # (ni, nj, nt-1)
+
+  # ステップサイズ計算
+  beta = compute_step_size(res_T, Sp, eps)
+
+  # ステップサイズ制限（初回のみ）
+  if it == 0 && abs(beta) > beta_max
+    if verbose
+      @printf("[Warning] beta clamped: %.2e => %.2e\n", beta, sign(beta) * beta_max)
+    end
+    beta = clamp(beta, -beta_max, beta_max)
+  end
+
+  return beta, Sp
+end
+
+
+"""
     solve_cgm!(T_init, Y_obs, q_init, dx, dy, dt,
                rho, cp_coeffs, k_coeffs; params)
       -> (q_final, T_cal_final, J_hist)
@@ -280,8 +424,7 @@ function solve_cgm!(
     )
 
     # Step 2: 目的関数計算
-    res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1) CHECK:
-    J = tensor_dot(res_T, res_T)
+    J, res_T = compute_objective_function(T_cal, Y_obs, bottom_idx, nt)
     push!(J_hist, J)
 
     if verbose
@@ -297,29 +440,7 @@ function solve_cgm!(
     )
 
     # Step 4: 共役勾配方向計算（ポラック・リビエール）
-    if it == 0 || tensor_dot(grad, p_n_last) <= 0 || it % dire_reset_every == 0
-      # 最急降下方向にリセット
-      p_n = copy(grad)
-      gamma = 0.0
-    else
-      # ポラック・リビエール係数
-      y = grad .- grad_last
-      denom = tensor_dot(grad_last, grad_last) + eps
-      gamma = max(0.0, tensor_dot(grad, y) / denom)
-
-      # 探索方向候補
-      p_n_candidate = grad .+ gamma .* p_n_last
-
-      # 下降方向チェック
-      if tensor_dot(grad, p_n_candidate) > 0
-        p_n = p_n_candidate
-      else
-        # 下降方向でない場合はリセット
-        p_n = copy(grad)
-        gamma = 0.0
-      end
-    end
-
+    p_n, gamma = compute_search_direction(grad, grad_last, p_n_last, it, dire_reset_every, eps)
     p_n_last = copy(p_n)
 
     # Step 5: 感度問題求解（dT計算）
@@ -336,16 +457,7 @@ function solve_cgm!(
     )
 
     # Step 6: ステップサイズ計算
-    Sp = dT[:, :, bottom_idx, 2:nt]  # (ni, nj, nt-1)
-    beta = compute_step_size(res_T, Sp, eps)
-
-    # ステップサイズ制限（初回のみ）
-    if it == 0 && abs(beta) > beta_max
-      if verbose
-        @printf("[Warning] beta clamped: %.2e => %.2e\n", beta, sign(beta) * beta_max)
-      end
-      beta = clamp(beta, -beta_max, beta_max)
-    end
+    beta, Sp = compute_and_clamp_step_size(dT, res_T, bottom_idx, nt, it, eps, beta_max, verbose)
 
     if verbose
       @printf("beta = %.4e, gamma = %.4e\n", beta, gamma)
