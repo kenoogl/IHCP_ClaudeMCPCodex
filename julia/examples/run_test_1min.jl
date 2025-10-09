@@ -96,6 +96,9 @@ function main()
     @printf("初期温度場: %s, T_range=[%.2f, %.2f]K\n",
             size(T0), minimum(T0), maximum(T0))
 
+    wk = IHCP_CGM.WorkBuffers(ni+2, nj+2, nz+2)
+    Z, ΔZ = IHCP_CGM.convert_to_guard_cell_grid(nz, dz, dz_b, dz_t)
+
     # 計算実行
     println("\n" * "=" ^ 80)
     println("Julia版計算開始")
@@ -104,7 +107,7 @@ function main()
     start_time = time()
 
     q_result, windows_info = solve_sliding_window_cgm(
-        Y_obs, T0, dx, dy, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
+        Y_obs, T0, wk, dx, dy, Z, ΔZ, dt, rho, cp_coeffs, k_coeffs,
         window_size, overlap, q_init_value, cgm_iteration
     )
 

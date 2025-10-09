@@ -130,7 +130,7 @@ end
 
 
 """
-    compute_sensitivity!(T_init, p_n, rho, cp_coeffs, k_coeffs, dx, dy, dz, dz_b, dz_t, dt,
+    compute_sensitivity!(T_init, p_n, rho, cp_coeffs, k_coeffs, dx, dy, dt,
                           rtol, maxiter) -> dT
 
 感度問題求解（熱流束微小変化に対する温度応答）
@@ -148,9 +148,6 @@ Args:
   cp_coeffs: 比熱多項式係数
   k_coeffs: 熱伝導率多項式係数
   dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
   dt: 時間刻み [s]
   rtol: CG相対許容誤差
   maxiter: CG最大反復数
@@ -168,7 +165,6 @@ function compute_sensitivity!(
   k_coeffs::Vector{Float64},
   dx::Float64, dy::Float64,
   Z::Vector{Float64}, ΔZ::Vector{Float64},
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rtol::Float64=1e-8,
   maxiter::Int=20000,
@@ -215,7 +211,7 @@ end
 
 
 """
-    solve_cgm!(T_init, Y_obs, q_init, dx, dy, dz, dz_b, dz_t, dt,
+    solve_cgm!(T_init, Y_obs, q_init, dx, dy, dt,
                rho, cp_coeffs, k_coeffs; params)
       -> (q_final, T_cal_final, J_hist)
 
@@ -276,7 +272,6 @@ function solve_cgm!(
   work::WorkBuffers,
   dx::Float64, dy::Float64,
   Z::Vector{Float64}, ΔZ::Vector{Float64},
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rho::Float64,
   cp_coeffs::Vector{Float64},

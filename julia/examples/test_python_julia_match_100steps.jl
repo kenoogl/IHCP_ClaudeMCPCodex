@@ -80,7 +80,7 @@ function main()
     cgm_iteration = 1  # 1反復に削減（既存検証と同じ条件）
     q_init_value = 0.0
 
-    # 数値ソルバーパラメータ
+    # 数値ソルバーパラメータ（Python版と同じ相対残差定義）
     rtol_dhcp = 1.0e-6
     maxiter_dhcp = 20000
     rtol_adjoint = 1.0e-8
@@ -163,9 +163,6 @@ function main()
         dy,
         Z,
         ΔZ,
-        dz,
-        dz_b,
-        dz_t,
         dt,
         rho,
         cp_coeffs,

@@ -25,7 +25,7 @@ export PBiCGSTAB!
 
 前処理付きBiCGSTAB法による線形方程式求解
 
-収束判定： 有効セル数(Nf)あたりの相対残差ノルム (||r_k|| / ||r_0||)/Nf < tol
+収束判定： r_k, r_0とも格子点あたりの相対残差ノルムなので、 (||r_k|| / ||r_0||) < tol　は相対残差になる
 一方、IterativeSolvers.jlのcg!関数は相対残差ノルム
 
 # 引数

@@ -111,8 +111,18 @@ function main()
     @printf("  温度範囲: %.2f ~ %.2f K\n", minimum(Y_obs), maximum(Y_obs))
 
     # データサイズの一致確認
+    # NPZファイルはPython形式 (nt, ni, nj)、Julia形式 (ni, nj, nt) に変換必要
     if size(Y_obs) != (nt, ni, nj)
         error("データ形状が不一致: $(size(Y_obs)) != ($nt, $ni, $nj)")
+    end
+
+    # Julia形式に転置: (nt, ni, nj) -> (ni, nj, nt)
+    Y_obs = permutedims(Y_obs, (2, 3, 1))
+    println("  データ形状（Julia形式）: $(size(Y_obs))")
+
+    # 変換後の形状確認
+    if size(Y_obs) != (ni, nj, nt)
+        error("転置後のデータ形状が不一致: $(size(Y_obs)) != ($ni, $nj, $nt)")
     end
 
     # ========================================
@@ -128,9 +138,37 @@ function main()
     println("  T_init型: $(eltype(T_init))")
 
     # ========================================
-    # 4. スライディングウィンドウCGM計算
+    # 4. WorkBuffers と Z配列の準備
     # ========================================
-    println("\n[4/6] スライディングウィンドウCGM計算開始...")
+    println("\n[4/7] WorkBuffers と Z配列の準備...")
+
+    # Z配列の計算（1-indexed, nk+2要素）
+    Z = zeros(Float64, nk+2)
+    Z[1] = 0.0  # ガイドセル
+    Z[2] = 0.0  # 底面
+    for k in 1:nk
+        Z[k+2] = Z[k+1] + dz[k]
+    end
+
+    # ΔZ配列（CV幅、nk+1要素）
+    ΔZ = zeros(Float64, nk+1)
+    ΔZ[1] = dz_b[1]  # 底面のCV幅（通常Inf）
+    for k in 1:nk-1
+        ΔZ[k+1] = 0.5 * (dz[k] + dz[k+1])
+    end
+    ΔZ[nk+1] = dz_t[nk]  # 上面のCV幅（通常Inf）
+
+    # WorkBuffers作成（ガイドセル含むサイズ: ni+2, nj+2, nk+2）
+    wk = IHCP_CGM.WorkBuffers(ni+2, nj+2, nk+2)
+
+    println("  Z配列形状: $(size(Z))")
+    println("  ΔZ配列形状: $(size(ΔZ))")
+    println("  WorkBuffers作成完了")
+
+    # ========================================
+    # 5. スライディングウィンドウCGM計算
+    # ========================================
+    println("\n[5/7] スライディングウィンドウCGM計算開始...")
     expected_windows = div(nt - 1, window_size - overlap) + 1
     @printf("  予想ウィンドウ数: 約%d個\n", expected_windows)
 
@@ -140,11 +178,11 @@ function main()
     q_result, windows_info = solve_sliding_window_cgm(
         Y_obs,
         T_init,
+        wk,
         dx,
         dy,
-        dz,
-        dz_b,
-        dz_t,
+        Z,
+        ΔZ,
         dt,
         rho,
         cp_coeffs,
@@ -168,23 +206,26 @@ function main()
     @printf("  実際のウィンドウ数: %d個\n", length(windows_info))
 
     # ========================================
-    # 5. 結果検証（DHCP forward計算）
+    # 6. 結果検証（DHCP forward計算）
     # ========================================
-    println("\n[5/6] 結果検証（DHCP順解析）...")
+    println("\n[6/7] 結果検証（DHCP順解析）...")
     start_time_verify = time()
 
-    T_verify = IHCP_CGM.solve_dhcp_multiple_timesteps(
+    # WorkBuffers作成（検証用、ガイドセル含むサイズ）
+    wk_verify = IHCP_CGM.WorkBuffers(ni+2, nj+2, nk+2)
+
+    T_verify = IHCP_CGM.solve_dhcp!(
         T_init,
         q_result,
+        wk_verify,
         nt,
         rho,
         cp_coeffs,
         k_coeffs,
         dx,
         dy,
-        dz,
-        dz_b,
-        dz_t,
+        Z,
+        ΔZ,
         dt;
         rtol=rtol_dhcp,
         maxiter=maxiter_dhcp
@@ -193,7 +234,9 @@ function main()
     elapsed_verify = time() - start_time_verify
 
     # 検証誤差計算（表面温度）
-    T_calc_surface = T_verify[:, :, :, 1]  # Julia: 底面は1番目
+    # Y_obsは表面（Z上面、k=nk）の温度、形状: (ni, nj, nt)
+    # T_verifyは全格子点の温度、形状: (ni, nj, nk, nt)
+    T_calc_surface = T_verify[:, :, nk, :]  # 表面（k=nk）の温度を取得
     residual = T_calc_surface .- Y_obs
     rms_error = sqrt(mean(residual.^2))
     max_error = maximum(abs.(residual))
@@ -203,9 +246,9 @@ function main()
     @printf("  温度誤差（最大）: %.4e K\n", max_error)
 
     # ========================================
-    # 6. 結果保存
+    # 7. 結果保存
     # ========================================
-    println("\n[6/6] 結果保存...")
+    println("\n[7/7] 結果保存...")
     output_dir = joinpath(@__DIR__, "../../shared/results/validation")
     mkpath(output_dir)
 

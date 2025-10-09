@@ -72,12 +72,15 @@ function main()
     T_measure_init = Y_obs[1, :, :]
     T0 = repeat(T_measure_init, outer=(1, 1, nz))
 
+    wk = IHCP_CGM.WorkBuffers(ni+2, nj+2, nz+2)
+    Z, ΔZ = IHCP_CGM.convert_to_guard_cell_grid(nz, dz, dz_b, dz_t)
+
     # 計算実行
     println("\n計算開始...")
     start_time = time()
 
     q_result, windows_info = solve_sliding_window_cgm(
-        Y_obs, T0, dx, dy, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
+        Y_obs, T0, wk, dx, dy, Z, ΔZ, dt, rho, cp_coeffs, k_coeffs,
         window_size, overlap, q_init_value, cgm_iteration
     )
 

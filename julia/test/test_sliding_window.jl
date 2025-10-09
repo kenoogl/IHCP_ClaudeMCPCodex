@@ -274,7 +274,7 @@ end
 
     # Julia実装のスライディングウィンドウCGM実行
     q_global_julia, windows_info = solve_sliding_window_cgm(
-      Y_obs, T_init, work, dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
+      Y_obs, T_init, work, dx, dy, Z, ΔZ, dt, rho, cp_coeffs, k_coeffs,
       window_size, overlap, q_init_value, cgm_iteration
     )
 
@@ -376,7 +376,7 @@ end
 
     # Julia実装のスライディングウィンドウCGM実行
     q_global_julia, windows_info = solve_sliding_window_cgm(
-      Y_obs, T_init, work, dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
+      Y_obs, T_init, work, dx, dy, Z, ΔZ, dt, rho, cp_coeffs, k_coeffs,
       window_size, overlap, q_init_value, cgm_iteration
     )
 

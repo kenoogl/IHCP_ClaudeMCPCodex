@@ -220,9 +220,6 @@ function solve_adjoint!(
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
   HF, HT = set_BC_coef(bc_set) # 時間変化なし
 
-  SZ = (ni+2, nj+2, nk+2)
-  Nf = (SZ[1]-2)*(SZ[2]-2)*(z_range[2]-z_range[1]+1) # cg!と判定基準を合わせるため
-
 
   # 後退時間ループ（Pythonオリジナル1328行: range(nt-2, -1, -1)）
   for t in (nt-1):-1:1
@@ -242,7 +239,7 @@ function solve_adjoint!(
 
     if verbose
       isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol*Nf, maxItr=maxiter, smoother="", par=par)
+          tol=rtol, maxItr=maxiter, smoother="", par=par)
       if isconverged
         println("[t=$(t)/$(nt)] CG converged: $(itr) iterations, initial residual: $(res0)")
       else
@@ -252,7 +249,7 @@ function solve_adjoint!(
       cg_iters[t] = itr
     else
       PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol*Nf, maxItr=maxiter, smoother="", par=par)
+          tol=rtol, maxItr=maxiter, smoother="", par=par)
     end
 
     # 結果保存 ガイドセルを除いて内点データを返す
