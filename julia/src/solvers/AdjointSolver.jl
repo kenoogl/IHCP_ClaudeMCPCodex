@@ -33,7 +33,7 @@ using IterativeSolvers
 using FLoops
 
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend
+using ..Commons: WorkBuffers, get_backend
 
 import ..ThermalProperties
 using ..ThermalProperties: thermal_properties!, set_properties!
@@ -701,7 +701,7 @@ function solve_adjoint_mf!(
     set_properties!(@view(T_cal[:, :, :, t]), wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
     # Z-方向のみ時間とともに更新
-    apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_plus, :z_minus)
+    apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_minus, :z_minus)
 
     # work.b (RHS)の計算
     # 底面（物理座標 k=1）の温度と観測値を使用
