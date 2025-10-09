@@ -213,11 +213,12 @@ function main()
 
     elapsed_verify = time() - start_time_verify
 
-    # 検証誤差計算（表面温度）
-    # Y_obsは表面（Z上面、k=nk）の温度、形状: (ni, nj, nt)
+    # 検証誤差計算（底面温度）
+    # Y_obsは底面（Z下面、k=1）の観測温度、形状: (ni, nj, nt)
     # T_verifyは全格子点の温度、形状: (ni, nj, nk, nt)
-    T_calc_surface = T_verify[:, :, nk, :]  # 表面（k=nk）の温度を取得
-    residual = T_calc_surface .- Y_obs
+    # Python版では bottom_idx = 0 (k=0)で底面を参照、Julia版では k=1 (1-indexed)
+    T_calc_bottom = T_verify[:, :, 1, :]  # 底面（k=1）の温度を取得
+    residual = T_calc_bottom .- Y_obs
     rms_error = sqrt(mean(residual.^2))
     max_error = maximum(abs.(residual))
 

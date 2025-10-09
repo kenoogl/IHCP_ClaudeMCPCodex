@@ -256,9 +256,8 @@ function solve_cgm!(
   grad_last = zeros(Float64, ni, nj, nt - 1) # CHECK: メモリ事前確保
   p_n_last = zeros(Float64, ni, nj, nt - 1)  # CHECK: メモリ事前確保
 
-
-  bottom_idx = 2   # Julia 1-indexed（裏面 S2） PBICGSTAB ガイドセル考慮
-  top_idx = nk-1   # Julia 1-indexed（表面 S1） PBICGSTAB ガイドセル考慮
+  # 底面インデックス（solve_dhcp!の戻り値はガードセルを含まない）
+  bottom_idx = 1   # 真の底面（Y_obsとの比較用）
 
   # 停止判定パラメータ
   stop_params = (
