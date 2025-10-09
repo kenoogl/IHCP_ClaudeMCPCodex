@@ -43,7 +43,7 @@ Profile.print(format=:flat, sortedby=:count)
 | solve_dhcp! (427-428行) | 42,951 | 42,768 | 0.4% | DHCP時間ループ |
 | cg! (79行) | 37,997 | 37,825 | 0.5% | CG反復内部 |
 | sparse vector getindex (989行) | 36,203 | 36,060 | 0.4% | 疎ベクトルアクセス |
-| compute_sensitivity! | 26,343 | 26,025 | 1.2% | 感度問題 |
+| solve_sensitivity! | 26,343 | 26,025 | 1.2% | 感度問題（※旧compute_sensitivity!） |
 | searchsortedfirst (185行) | 22,440 | 22,798 | -1.6% | バイナリサーチ（微増） |
 | essentials.getindex (917行) | 24,027 | 24,097 | -0.3% | 配列アクセス（微増） |
 | compute_gradient! | 4,739 | 4,666 | 1.5% | 勾配計算（Adjoint） |
@@ -91,13 +91,14 @@ Profile.print(format=:flat, sortedby=:count)
 
 **解釈**: 全体的に改善傾向だが、一部の関数で微増。
 
-### 4.4 感度計算（compute_sensitivity!）
+### 4.4 感度計算（solve_sensitivity!）
 
 | メトリック | 旧レイアウト | 新レイアウト | 改善率 |
 |---------|------------|------------|--------|
-| compute_sensitivity! (168行) | 26,343 | 26,025 | 1.2% |
+| solve_sensitivity! (168行) | 26,343 | 26,025 | 1.2% |
 
 **解釈**: 感度問題（DHCPベース）で1.2%の改善。
+**注記**: 旧版ではcompute_sensitivity!というラッパー関数を経由していましたが、現在は直接solve_sensitivity!を呼び出しています。
 
 ### 4.5 勾配計算（compute_gradient!）
 

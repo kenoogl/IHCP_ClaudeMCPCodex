@@ -126,10 +126,6 @@ mean(rel_drops) < η  # η: 閾値（1e-4）
 **機能**: 勾配計算（Adjointソルバーを呼び出し）
 **物理的意味**: gradient[n, i, j] = ∂J/∂q[n, i, j]
 
-### `compute_sensitivity!`
-**機能**: 感度問題求解（DHCPソルバーを流用）
-**物理的意味**: 熱流束微小変化に対する温度応答
-
 ### `compute_step_size`
 **機能**: ステップサイズ計算（ライン検索）
 **公式**: β = <res_T, Sp> / <Sp, Sp>

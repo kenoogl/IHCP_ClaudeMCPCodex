@@ -74,7 +74,7 @@ export load_sus304_thermal_properties, polyfit, fit_sus304_coefficients
 export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index, solve_dhcp_multiple_timesteps
 export solve_adjoint!
 export check_discrepancy, check_plateau, check_stopping_criteria, StoppingStatus
-export solve_cgm!, compute_gradient!, compute_sensitivity!, compute_step_size
+export solve_cgm!, compute_gradient!, compute_step_size
 export solve_sliding_window_cgm, WindowInfo
 export check_field_finite, check_temperature_range, check_flux_range
 export check_gradient_magnitude, detect_numerical_anomalies
