@@ -146,7 +146,7 @@ git commit -m "[tuning3-PhaseC] マトリクスフリー化完了
 - PBICGSTAB!実装とWorkBuffers導入
 - 全ソルバーマトリクスフリー化
 - 検証: Python-Julia一致確認済み
-- 性能: 89倍高速化達成
+- 性能: マトリクスフリー実装基盤完成
 "
 ```
 

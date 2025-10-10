@@ -2,12 +2,12 @@
 
 ## 📋 Phase C概要
 
-**目的**: マトリクスフリーPBICGSTAB!実装による89倍高速化の達成
+**目的**: マトリクスフリーPBICGSTAB!実装による大幅な性能向上
 
 **コミット範囲**: d9799c0, f72e9be, af36461, 15719bb, f2e5a70, 6af4798, ddf0c3d, 4692ae4（8コミット）
 
 **期待される成果**:
-- CGM実行時間: 22.72秒 → **0.26秒**（89倍高速化）
+- CGM実行時間: CGM実行時間の大幅な短縮
 - 全ソルバーのマトリクスフリー化完了
 - Python-Julia一致維持（相対誤差 < 0.01%）
 - Phase 1-6全テスト合格（505項目以上）
@@ -22,7 +22,7 @@ Phase Cは**3つのセッション**に分割して段階的に進めます：
 
 | セッション | コミット数 | 主な内容 | リスク | 所要時間 |
 |-----------|-----------|---------|-------|---------|
-| **C-1: 基盤整備** | 3 | PBICGSTAB!実装、旧コード削除、89倍高速化 | ⚠️ 高 | 2-3時間 |
+| **C-1: 基盤整備** | 3 | PBICGSTAB!実装、旧コード削除、性能向上 | ⚠️ 高 | 2-3時間 |
 | **C-2: Adjoint統合** | 3 | Adjointマトリクスフリー化、CGM統合 | 中 | 1-2時間 |
 | **C-3: 仕上げ** | 2 | WorkBuffersリセット、SensitivitySolver新設 | 中 | 1-2時間 |
 
@@ -127,7 +127,7 @@ cd julia && julia --project=. test/runtests.jl
 
 #### Step 3: コミットaf36461適用
 
-**内容**: マトリクスフリーPBICGSTAB!に統一、89倍高速化達成
+**内容**: マトリクスフリーPBICGSTAB!に統一、大幅な性能向上達成
 
 **主な変更** (4ファイル、356行削除):
 - `DHCPSolver.jl`: **古いcg!版コードを完全削除**（356行削除）
@@ -161,7 +161,7 @@ julia --project=. julia/scripts/run_10steps_fullsize_test.jl
 
 **期待される結果**:
 - Phase 1-6全テスト合格（505項目）
-- **89倍高速化達成**:
+- **大幅な性能向上達成**:
   - 旧版: 53,150スナップショット
   - 新版: 607スナップショット
 
@@ -251,7 +251,7 @@ cd julia && julia --project=. test/runtests.jl
 # 2. 10ステップフルサイズテスト
 cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
 julia --project=julia julia/scripts/run_10steps_fullsize_test.jl
-# 期待: 約0.26秒（89倍高速化）
+# 期待: 性能向上を期待（性能向上）
 
 # 3. Python-Julia一致確認
 python python/validation/compare_python_julia_10steps_fullsize.py
@@ -263,7 +263,7 @@ python python/validation/compare_python_julia_10steps_fullsize.py
 - [✅] コミット5df340f適用完了（f72e9be相当、依存パッケージ追加確認）
 - [✅] コミット2566843適用完了（af36461相当）
 - [✅] コミット4cef5c5, 4b393ae適用完了（補足作業）
-- [✅] 89倍高速化確認（DHCPソルバー: 53,150 → 607スナップショット）
+- [✅] 性能向上確認（DHCPソルバー: 53,150 → 607スナップショット）
 - [✅] Phase 1-4, 6テスト合格
 - [✅] セッション完了コミット作成（7939d73）
 
@@ -536,7 +536,7 @@ cd julia && julia --project=. test/runtests.jl
 # 2. 10ステップフルサイズテスト
 cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
 julia --project=julia julia/scripts/run_10steps_fullsize_test.jl
-# 期待: CGM時間 約0.26秒
+# 期待: CGM時間 性能向上を期待
 
 # 3. Python-Julia一致確認
 python python/validation/compare_python_julia_10steps_fullsize.py
@@ -548,7 +548,7 @@ python python/validation/compare_python_julia_10steps_fullsize.py
 - [✅] コミット45d9dde適用完了（4692ae4相当、コンフリクト解決）
 - [✅] Phase 4 CGM NaN問題解決（18 passed, 1 broken達成）
 - [✅] Phase 1, 4-6テスト実行（159 passed, 2 failed, 1 broken）
-- [✅] 89倍高速化確認（DHCPソルバー: 53,150 → 607スナップショット）
+- [✅] 性能向上確認（DHCPソルバー: 53,150 → 607スナップショット）
 - [✅] セッション完了コミット作成（1482073）
 - [✅] Phase C完了コミット作成（399256e）
 - [✅] CURRENT_SESSION_STATE.md更新（84b960f）
@@ -632,7 +632,7 @@ julia --project=. profile_new_mf.jl > ../profile_result.txt
 
 # 期待値との比較
 # 旧版: 53,150スナップショット
-# 新版: 607スナップショット（89倍高速化）
+# 新版: 607スナップショット（性能向上）
 ```
 
 ---
@@ -642,12 +642,12 @@ julia --project=. profile_new_mf.jl > ../profile_result.txt
 ### セッションC-1: 基盤整備
 - [✅] コミット770c85f適用（d9799c0相当: 新API対応）
 - [✅] コミット5df340f適用（f72e9be相当: マトリクスフリーPBICGSTAB!実装）
-- [✅] コミット2566843適用（af36461相当: 旧コード削除、89倍高速化達成）
+- [✅] コミット2566843適用（af36461相当: 旧コード削除、大幅な性能向上達成）
 - [✅] **補足作業**: コミット4cef5c5適用（CGM新API対応）
 - [✅] **補足作業**: コミット4b393ae適用（感度問題解決）
 - [✅] **補足作業**: 10ステップフルサイズテスト実行（熱流束正常）
 - [✅] Phase 1-4, 6テスト合格（Phase 5は2エラー残存）
-- [✅] 89倍高速化確認（DHCPソルバー）
+- [✅] 性能向上確認（DHCPソルバー）
 - [✅] セッション完了コミット作成（7939d73: 補足作業完了記録）
 
 ### セッションC-2: Adjoint統合
@@ -671,7 +671,7 @@ julia --project=. profile_new_mf.jl > ../profile_result.txt
 - [✅] 全セッション完了（C-1, C-2, C-3）
 - [✅] Phase 1, 4-6テスト合格（Phase 5は既知の数値精度問題で2 failed）
 - [✅] CGM NaN問題解決（最重要目標達成）
-- [✅] 89倍高速化確認（DHCPソルバー: 53,150 → 607スナップショット）
+- [✅] 性能向上確認（DHCPソルバー: 53,150 → 607スナップショット）
 - [✅] SensitivitySolverモジュール新設完了
 - [✅] WorkBuffersリセット機構実装完了
 
@@ -746,7 +746,7 @@ julia --project=. profile_new_mf.jl > ../profile_result.txt
 - **達成事項**:
   - ✅ マトリクスフリーPBICGSTAB!実装完了
   - ✅ CGM NaN問題解決（最重要目標達成）
-  - ✅ 89倍高速化達成（DHCPソルバー: 53,150→607スナップショット）
+  - ✅ 大幅な性能向上達成（DHCPソルバー: 53,150→607スナップショット）
   - ✅ SensitivitySolverモジュール新設完了
   - ✅ WorkBuffersリセット機構実装完了
   - ✅ Python-Julia一致維持
@@ -761,6 +761,6 @@ julia --project=. profile_new_mf.jl > ../profile_result.txt
 **Phase C: マトリクスフリーPBICGSTAB!実装完了** ✅
 
 Phase Cの全3セッション、計16コミット適用が完了しました。
-CGM NaN問題を解決し、89倍高速化を達成しました。
+CGM NaN問題を解決し、性能向上を達成しました。
 
 **詳細**: `docs/CURRENT_SESSION_STATE.md`を参照してください。

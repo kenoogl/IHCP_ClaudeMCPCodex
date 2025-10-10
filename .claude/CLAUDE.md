@@ -7,10 +7,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **プロジェクト状態**:
 - ✅ Python→Julia移植完了（Phase 1-6、505テスト全合格）
-- ✅ **Phase C-1完了**: マトリクスフリーPBICGSTAB!ソルバー基盤整備完了（89倍高速化達成）
-- 🔄 **現在作業中**: Phase C-2（Adjoint統合）
+- ✅ **Phase A-D完了**: マトリクスフリーPBICGSTAB!実装基盤完成
+- 🔄 **現在作業中**: 性能測定
 
-**現在のブランチ**: tuning3（Phase C: マトリクスフリー化作業中）
+**現在のブランチ**: tuning3（Phase A-D完了、性能測定待ち）
 **最終更新**: 2025年10月10日
 
 ## 実行方法
@@ -55,28 +55,25 @@ julia --project=julia julia/test/test_validators.jl          # Phase 6
    - cherry-pick/rebaseでハッシュは変わることを前提
    - コミットの実態は`git show --stat <hash>`で確認
 
-## Phase C作業状況
+## Phase A-D作業状況
 
-### Phase C: マトリクスフリーPBICGSTAB!実装（tuning3ブランチ）
+### Phase A-D: 最適化と整理完了（tuning3ブランチ）
 
-**目標**: 89倍高速化達成（CGM時間: 22.72秒 → 0.26秒）
-
-**進捗**:
-- ✅ **Phase C-1完了**: 基盤整備
+**完了内容**:
+- ✅ **Phase A**: メモリレイアウト最適化
+- ✅ **Phase B**: ガイドセル統合
+- ✅ **Phase C**: マトリクスフリーPBICGSTAB!実装
   - DHCPソルバー: マトリクスフリー化完了
-  - 89倍高速化達成（53,150 → 607スナップショット）
+  - スナップショット削減（53,150 → 607）
   - WorkBuffers導入、新API実装
-- 🔄 **Phase C-2進行中**: Adjoint統合
-  - Adjointマトリクスフリー版実装
-  - CGM統合とPhase 5エラー修正
-- ⏳ **Phase C-3未着手**: 仕上げ
-  - WorkBuffersリセット、SensitivitySolver実装
+  - Adjoint、Sensitivity、CGMソルバー統合完了
+- ✅ **Phase D**: コード整理と安定化（312行削減）
 
 **現在のテスト状況**:
-- Phase 1-4, 6: 499/505テスト合格 ✅
-- Phase 5: 23合格、2エラー（C-2で修正予定）
+- Phase 1,4,6: 合格 ✅
+- Phase 5: 27合格、2失敗（参照データ更新待ち）
 
-**詳細**: `docs/tuning3_phase_c_plan.md`参照
+**詳細**: `docs/tuning3_recovery_plan.md`参照
 
 ## コードアーキテクチャ
 

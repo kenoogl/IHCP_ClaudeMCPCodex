@@ -10,7 +10,7 @@
 
 **Phase A**: メモリレイアウト最適化 ✅
 **Phase B**: ガイドセル統合 ✅
-**Phase C**: マトリクスフリーPBICGSTAB!実装 ✅（89倍高速化）
+**Phase C**: マトリクスフリーPBICGSTAB!実装 ✅
 **Phase D**: コード整理と安定化 ✅（182行削減、警告解消）
 **追加整理**: 未使用関数削除、許容誤差修正 ✅（130行削減）
 
@@ -70,9 +70,9 @@ julia --project=julia julia/scripts/run_10steps_fullsize_test.jl
 ```
 
 **期待結果**:
-- CGM実行時間: 22.72秒 → 0.26秒（89倍高速化）
-- Total実行時間: ~3秒
-- 53,150 → 607スナップショット（メモリ削減）
+- CGM実行時間の大幅な短縮
+- Total実行時間の短縮
+- スナップショット数の削減（メモリ削減）
 
 ### 2. Python-Julia一致確認
 
@@ -125,8 +125,8 @@ julia --project=julia julia/scripts/run_10steps_fullsize_test.jl
 
 **期待される出力**:
 ```
-CGM時間: ~0.26秒（89倍高速化）
-Total時間: ~3秒
+CGM時間の大幅な短縮
+Total時間の短縮
 ```
 
 ### ステップ4: 結果確認
@@ -177,4 +177,4 @@ julia --project=julia julia/scripts/run_10steps_fullsize_test.jl
 **備考**:
 - Phase 5の2件失敗は既知の問題（参照データ更新待ち）
 - Phase 1, 4は正常に動作
-- 89倍高速化の性能は維持されている見込み
+- マトリクスフリー実装による性能向上が期待される
