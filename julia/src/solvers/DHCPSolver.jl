@@ -20,7 +20,7 @@ using SparseArrays
 using IterativeSolvers
 
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend, compute_z_range
+using ..Commons: WorkBuffers, λf, get_backend
 
 import ..ThermalProperties
 using ..ThermalProperties: thermal_properties!, set_properties!
@@ -149,10 +149,10 @@ function calRHS!(wk::WorkBuffers,
     # IHCPの場合、Z方向のみ分布を考慮した熱流束、必要があれば他の面も同様に処理
     # Z_plus
     if q_dist == true
-        k=z_ed
-        a = 1.0 / ΔZ[k]
-        @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-            wk.b[i,j,k] -= qsrf[i-1,j-1] * a
+        let k=z_ed, a = 1.0 / ΔZ[z_ed]
+            @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
+                wk.b[i,j,k] -= qsrf[i-1,j-1] * a
+            end
         end
     end
 

@@ -31,7 +31,7 @@ using FLoops
 
 # 共通モジュール
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend, compute_z_range, reset_work_buffers!
+using ..Commons: WorkBuffers, λf, get_backend, reset_work_buffers!
 
 # 親モジュールで既にinclude済み
 using ..DHCPSolver
