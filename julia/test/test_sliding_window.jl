@@ -19,15 +19,7 @@ Phase 5テスト: スライディングウィンドウCGMソルバー
 using Test
 using JSON
 
-# モジュールのパスを追加
-push!(LOAD_PATH, joinpath(@__DIR__, "../src"))
-
-# モジュール読み込み（重複定義を回避）
-if !isdefined(Main, :IHCP_CGM)
-  include("../src/IHCP_CGM.jl")
-end
-
-using .IHCP_CGM
+# IHCP_CGMはruntests.jlで既に読み込み済み（Mainスコープで利用可能）
 
 
 """

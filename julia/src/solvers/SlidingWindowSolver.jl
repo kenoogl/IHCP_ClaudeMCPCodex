@@ -24,9 +24,6 @@ module SlidingWindowSolver
 using LinearAlgebra
 using Printf
 
-# 共通モジュール
-using ..Commons: WorkBuffers
-
 # Phase 4モジュールは親モジュールで既にinclude済み
 using ..CGMSolver
 
@@ -74,12 +71,12 @@ Pythonオリジナル: sliding_window_CGM_q_saving() (1556-1626行)
    - 各ウィンドウの最終温度場を次ウィンドウの初期値とする
 
 Args:
-  Y_obs: 観測温度（底面） (nt, ni, nj)
+  Y_obs: 観測温度（底面） (ni, nj, nt) ※Phase 2.2: 時間次元を最後に配置
   T0: 初期温度場 (ni, nj, nk)
-  work: Heat3d用配列群
   dx, dy: x, y方向格子幅 [m]
-  Z: z方向格子配列 (nk,) [m]
-  ΔZ: CV幅 (nk,) [m]
+  dz: z方向格子幅配列 (nk,) [m]
+  dz_b: 下側界面距離 (nk,) [m]
+  dz_t: 上側界面距離 (nk,) [m]
   dt: 時間刻み [s]
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数 (4,)
@@ -90,12 +87,12 @@ Args:
   cgm_iteration: CGM最大反復数
 
 Returns:
-  q_global: 全時間の逆解析熱流束 (ni, nj, nt-1)
+  q_global: 全時間の逆解析熱流束 (ni, nj, nt-1) ※Phase 2.2: 時間次元を最後に配置
   windows_info: 各ウィンドウの詳細情報
 """
 function solve_sliding_window_cgm(
-  Y_obs::Array{Float64,3}, T0::Array{Float64,3}, work::WorkBuffers,
-  dx::Float64, dy::Float64, Z::Vector{Float64}, ΔZ::Vector{Float64}, dt::Float64,
+  Y_obs::Array{Float64,3}, T0::Array{Float64,3},
+  dx::Float64, dy::Float64, dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64}, dt::Float64,
   rho::Float64, cp_coeffs::Vector{Float64}, k_coeffs::Vector{Float64},
   window_size::Int, overlap::Int, q_init_value::Float64, cgm_iteration::Int;
   rtol_dhcp::Float64=1e-6,
@@ -162,7 +159,7 @@ function solve_sliding_window_cgm(
       end
     end
 
-    # CGM実行（Pythonオリジナル: 1595-1598行）
+    # CGM実行（Pythonオリジナル: 1595-1598行）- Phase B: 旧API使用
     # paramsでCGM反復数を指定
     cgm_params = (
       max_iter=cgm_iteration,
@@ -173,8 +170,8 @@ function solve_sliding_window_cgm(
       maxiter_adjoint=maxiter_adjoint
     )
     q_win, T_cal_win, J_hist = solve_cgm!(
-      T_init, Y_obs_win, q_init_win, work,
-      dx, dy, Z, ΔZ, 
+      T_init, Y_obs_win, q_init_win,
+      dx, dy, dz, dz_b, dz_t,
       dt, rho, cp_coeffs, k_coeffs; params=cgm_params
     )
 

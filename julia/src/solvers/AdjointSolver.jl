@@ -387,6 +387,10 @@ function solve_adjoint!(
   # ホットスタート用初期推定値
   x0 = vec(λ_all[:, :, :, nt])
 
+  # 熱物性値配列の事前確保（DHCPSolver.jlの516-519行参照）
+  cp = zeros(Float64, ni, nj, nk)
+  k = zeros(Float64, ni, nj, nk)
+
   if verbose
     println("Adjoint求解開始（後退時間積分）")
     println("  格子: $ni×$nj×$nk, N=$N")
@@ -400,7 +404,9 @@ function solve_adjoint!(
     λ_initial = @view λ_all[:, :, :, t+1]
 
     # 温度場から熱物性値計算（Pythonオリジナル1332行: T_cal[t]）
-    cp, k = thermal_properties_calculator(@view(T_cal[:, :, :, t]), cp_coeffs, k_coeffs)
+    # DHCPSolver.jlの525行と同じ方式を使用
+    T_current = @view T_cal[:, :, :, t]
+    thermal_properties!(T_current, cp, k, cp_coeffs, k_coeffs)
 
     # 係数とRHS構築（Pythonオリジナル1334-1335行）
     # 残差注入: T_cal[:,:,1,t]（底面）と Y_obs[:,:,t] を使用（Phase 2.2）

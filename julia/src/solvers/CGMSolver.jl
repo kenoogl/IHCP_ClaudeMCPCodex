@@ -28,9 +28,6 @@ using LinearAlgebra
 using SparseArrays
 using Printf
 
-# 共通モジュール
-using ..Commons: WorkBuffers
-
 # Phase 2, 3モジュールは親モジュールで既にinclude済み
 using ..DHCPSolver
 using ..AdjointSolver
@@ -231,10 +228,10 @@ Args:
   T_init: 初期温度場 (ni, nj, nk) [K]
   Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
   q_init: 初期熱流束推定 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
-  work: Heat3d用配列群
   dx, dy: x, y方向格子幅 [m]
-  Z: z方向格子配列 (nk,) [m]
-  ΔZ: CV幅 (nk,) [m]
+  dz: z方向格子幅配列 (nk,) [m]
+  dz_b: 下側界面距離 (nk,) [m]
+  dz_t: 上側界面距離 (nk,) [m]
   dt: 時間刻み [s]
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数
@@ -262,9 +259,8 @@ function solve_cgm!(
   T_init::Array{Float64,3},
   Y_obs::Array{Float64,3},
   q_init::Array{Float64,3},
-  work::WorkBuffers,
   dx::Float64, dy::Float64,
-  Z::Vector{Float64}, ΔZ::Vector{Float64},
+  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rho::Float64,
   cp_coeffs::Vector{Float64},
@@ -300,9 +296,9 @@ function solve_cgm!(
   grad_last = zeros(ni, nj, nt - 1) # CHECK: メモリ事前確保
   p_n_last = zeros(ni, nj, nt - 1)  # CHECK: メモリ事前確保
 
-
-  bottom_idx = 2   # Julia 1-indexed（裏面 S2） PBICGSTAB ガイドセル考慮
-  top_idx = nk-1   # Julia 1-indexed（表面 S1） PBICGSTAB ガイドセル考慮
+  # 底面・表面インデックス（Phase B: マトリクスフリー化前、ガイドセルなし）
+  bottom_idx = 1   # Julia 1-indexed（底面）
+  top_idx = nk     # Julia 1-indexed（表面）
 
   # 停止判定パラメータ
   stop_params = (
@@ -318,11 +314,10 @@ function solve_cgm!(
       println("\n=== CGM反復 $(it) ===")
     end
 
-    # Step 1: 直接問題求解（DHCP）
+    # Step 1: 直接問題求解（DHCP）- Phase B: 旧API使用
     T_cal = solve_dhcp!(
-      T_init, q, work,
-      nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, Z, ΔZ, dt;
+      T_init, q, nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, dz, dz_b, dz_t, dt;
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
     )
 
@@ -335,7 +330,7 @@ function solve_cgm!(
       @printf("J = %.5e\n", J)
     end
 
-    # Step 3: 随伴問題求解（勾配計算）
+    # Step 3: 随伴問題求解（勾配計算）- Phase B: 旧API使用
     grad = compute_gradient!(
       T_cal, Y_obs, rho, cp_coeffs, k_coeffs,
       dx, dy, dz, dz_b, dz_t, dt,
@@ -368,7 +363,7 @@ function solve_cgm!(
 
     p_n_last = copy(p_n)
 
-    # Step 5: 感度問題求解（dT計算）
+    # Step 5: 感度問題求解（dT計算）- Phase B: 旧API使用
     dT_init = zeros(ni, nj, nk)
     dT = compute_sensitivity!(
       dT_init, p_n, nt, rho, cp_coeffs, k_coeffs,

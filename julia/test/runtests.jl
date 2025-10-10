@@ -12,6 +12,10 @@ IHCP_CGMプロジェクトのメインテストランナー
 
 using Test
 
+# IHCP_CGMモジュールを一度だけ読み込み（各テストファイルで使用）
+include("../src/IHCP_CGM.jl")
+using .IHCP_CGM
+
 println("\n" * "="^70)
 println("IHCP_CGM.jl テストスイート")
 println("="^70)

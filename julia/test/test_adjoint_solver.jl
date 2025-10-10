@@ -24,12 +24,7 @@ using LinearAlgebra
 using Statistics
 using JSON
 
-# テスト対象モジュール
-include("../src/solvers/AdjointSolver.jl")
-using .AdjointSolver
-
-include("../src/ThermalProperties.jl")
-using .ThermalProperties
+# IHCP_CGMはruntests.jlで既に読み込み済み（Mainスコープで利用可能）
 
 # JSON読み込みヘルパー（Phase 2で実装済み）
 include("../src/utils/json_helpers.jl")

@@ -55,9 +55,9 @@ end
 - `k_coeffs`: 熱伝導率の多項式係数 [a, b, c, d]
 """
 function thermal_properties!(
-  Temperature::Array{Float64, 3},
-  cp::Array{Float64, 3},
-  λ::Array{Float64, 3},
+  Temperature::AbstractArray{Float64, 3},
+  cp::AbstractArray{Float64, 3},
+  λ::AbstractArray{Float64, 3},
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64}
 )

@@ -15,6 +15,8 @@ DHCPSolver.jl
 module DHCPSolver
 
 using LinearAlgebra
+using SparseArrays
+using IterativeSolvers
 
 import ..Commons
 using ..Commons: WorkBuffers, λf, get_backend
@@ -22,7 +24,7 @@ using ..Commons: WorkBuffers, λf, get_backend
 import ..ThermalProperties
 using ..ThermalProperties: thermal_properties!
 
-export solve_dhcp!
+export build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!, dhcp_index
 
 """
 DHCP（直接熱伝導問題）ソルバー
@@ -181,7 +183,31 @@ end
 
 
 """
-    build_dhcp_system!(T_initial, q_surface, rho, cp, k, dx, dy, dz, dz_b, dz_t, dt)
+    dhcp_index(i, j, k, ni, nj) -> Int
+
+Fortran順序（列優先）でのグローバルインデックス計算
+
+Pythonオリジナルコード:
+    p = i + j*ni + k*ni*nj  (0-indexed)
+
+Julia変換（1-indexed）:
+    p = (i-1) + (j-1)*ni + (k-1)*ni*nj + 1
+      = i + (j-1)*ni + (k-1)*ni*nj
+
+Args:
+  i, j, k: ローカルインデックス (1:ni, 1:nj, 1:nk)
+  ni, nj: グリッドサイズ
+
+Returns:
+  p: グローバルインデックス (1:N)
+"""
+@inline function dhcp_index(i::Int, j::Int, k::Int, ni::Int, nj::Int)
+  return i + (j - 1) * ni + (k - 1) * ni * nj
+end
+
+
+"""
+    build_dhcp_system!(T_initial, q_surface, rho, cp, k, dx, dy, dz, dz_bottom, dz_top, dt)
       -> (a_w, a_e, a_s, a_n, a_b, a_t, a_p, b)
 
 直接熱伝導問題（DHCP）の係数とRHSベクトル構築
@@ -194,8 +220,9 @@ Args:
   cp: 比熱場 (ni, nj, nk) [J/(kg·K)]
   k: 熱伝導率場 (ni, nj, nk) [W/(m·K)]
   dx, dy: x, y方向格子幅 [m]
-  Z: z方向格子配列 (nk,) [m]
-  ΔZ: CV幅 (nk,) [m]
+  dz: セル中心幅 (nk,) [m]
+  dz_bottom: 下方向セル幅 (nk,) [m]
+  dz_top: 上方向セル幅 (nk,) [m]
   dt: 時間刻み [s]
 
 Returns:
@@ -210,8 +237,9 @@ function build_dhcp_system!(
   k::AbstractArray{Float64,3},
   dx::Float64,
   dy::Float64,
-  Z::Vector{Float64},
-  ΔZ::Vector{Float64},
+  dz::Vector{Float64},
+  dz_bottom::Vector{Float64},
+  dz_top::Vector{Float64},
   dt::Float64
 )
   ni, nj, nk = size(T_initial)
@@ -233,8 +261,8 @@ function build_dhcp_system!(
 
     # 格子幅取得
     dz_k = dz[k_idx]
-    dz_t_k = dz_t[k_idx]
-    dz_b_k = dz_b[k_idx]
+    dz_t_k = dz_top[k_idx]
+    dz_b_k = dz_bottom[k_idx]
 
     # 中心セル熱伝導率
     k_p = k[i, j, k_idx]
@@ -309,11 +337,104 @@ function build_dhcp_system!(
 end
 
 
+"""
+    assemble_dhcp_matrix(ni, nj, nk, a_w, a_e, a_s, a_n, a_b, a_t, a_p) -> SparseMatrixCSC
+
+7点ステンシルから疎行列を組み立て（Fortran順序）
+
+Args:
+  ni, nj, nk: グリッドサイズ
+  a_w, a_e, a_s, a_n, a_b, a_t, a_p: 係数配列 (N,)
+
+Returns:
+  A: 疎行列 (N×N, CSC形式)
+"""
+function assemble_dhcp_matrix(
+  ni::Int, nj::Int, nk::Int,
+  a_w::Vector{Float64},
+  a_e::Vector{Float64},
+  a_s::Vector{Float64},
+  a_n::Vector{Float64},
+  a_b::Vector{Float64},
+  a_t::Vector{Float64},
+  a_p::Vector{Float64}
+)
+  N = ni * nj * nk
+
+  # オフセット計算（Fortran順序）
+  off_i = 1           # i方向（南北）
+  off_j = ni          # j方向（西東）
+  off_k = ni * nj     # k方向（上下）
+
+  # COO形式（I, J, V）で係数を収集
+  I_list = Int[]
+  J_list = Int[]
+  V_list = Float64[]
+
+  # 予約サイズ（7点ステンシル: 最大7*N個の非ゼロ要素）
+  sizehint!(I_list, 7 * N)
+  sizehint!(J_list, 7 * N)
+  sizehint!(V_list, 7 * N)
+
+  for p in 1:N
+    # 対角成分
+    push!(I_list, p)
+    push!(J_list, p)
+    push!(V_list, a_p[p])
+
+    # i-1 (南)
+    if p > off_i
+      push!(I_list, p)
+      push!(J_list, p - off_i)
+      push!(V_list, -a_s[p])
+    end
+
+    # i+1 (北)
+    if p <= N - off_i
+      push!(I_list, p)
+      push!(J_list, p + off_i)
+      push!(V_list, -a_n[p])
+    end
+
+    # j-1 (西)
+    if p > off_j
+      push!(I_list, p)
+      push!(J_list, p - off_j)
+      push!(V_list, -a_w[p])
+    end
+
+    # j+1 (東)
+    if p <= N - off_j
+      push!(I_list, p)
+      push!(J_list, p + off_j)
+      push!(V_list, -a_e[p])
+    end
+
+    # k-1 (下)
+    if p > off_k
+      push!(I_list, p)
+      push!(J_list, p - off_k)
+      push!(V_list, -a_b[p])
+    end
+
+    # k+1 (上)
+    if p <= N - off_k
+      push!(I_list, p)
+      push!(J_list, p + off_k)
+      push!(V_list, -a_t[p])
+    end
+  end
+
+  # COO→CSC変換（Juliaのデフォルト疎行列形式）
+  A = sparse(I_list, J_list, V_list, N, N)
+
+  return A
+end
 
 
 """
-    solve_dhcp!(T_initial, q_surface, work, nt, rho, cp_coeffs, k_coeffs,
-                dx, dy, dz, dz_b, dz_t, dt;
+    solve_dhcp!(T_initial, q_surface, nt, rho, cp_coeffs, k_coeffs,
+                dx, dy, dz, dz_bottom, dz_top, dt;
                 rtol=1e-8, maxiter=1000, verbose=false) -> T_all
 
 複数時間ステップDHCPソルバー（ホットスタート対応）
@@ -335,12 +456,14 @@ end
 Args:
   T_initial: 初期温度場 (ni, nj, nk) [K]
   q_surface: 表面熱流束時系列 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
-  work: Heat3d用配列群
   nt: 時間ステップ数
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数 [c0, c1, c2, c3]
   k_coeffs: 熱伝導率多項式係数 [k0, k1, k2, k3]
-  dx, dy, Z, ΔZ : 格子情報
+  dx, dy: x, y方向格子幅 [m]
+  dz: セル中心幅 (nk,) [m]
+  dz_bottom: 下方向セル幅 (nk,) [m]
+  dz_top: 上方向セル幅 (nk,) [m]
   dt: 時間刻み [s]
   rtol: CG相対許容誤差（デフォルト: 1e-8）
   maxiter: CG最大反復回数（デフォルト: 1000）
@@ -352,15 +475,15 @@ Returns:
 function solve_dhcp!(
   T_initial::Array{Float64,3},
   q_surface::Array{Float64,3},
-  work::WorkBuffers,
   nt::Int,
   rho::Float64,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64},
   dx::Float64,
   dy::Float64,
-  Z::Vector{Float64},
-  ΔZ::Vector{Float64},
+  dz::Vector{Float64},
+  dz_bottom::Vector{Float64},
+  dz_top::Vector{Float64},
   dt::Float64;
   rtol::Float64=1e-8,
   maxiter::Int=1000,
@@ -391,15 +514,19 @@ function solve_dhcp!(
     println("="^60)
   end
 
+  # 熱物性値配列の事前確保
+  cp = zeros(Float64, ni, nj, nk)
+  k = zeros(Float64, ni, nj, nk)
+
   # 時間積分ループ
   for t in 2:nt
     # 前ステップ温度から熱物性値計算（メモリビュー使用: Phase 2.2）
     T_prev = @view T_all[:, :, :, t-1]
-    cp, k = thermal_properties_calculator(T_prev, cp_coeffs, k_coeffs)
+    thermal_properties!(T_prev, cp, k, cp_coeffs, k_coeffs)
 
     # 係数とRHS構築（熱流束も時間次元を最後に: Phase 2.2）
     a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = build_dhcp_system!(
-      T_prev, @view(q_surface[:, :, t-1]), rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
+      T_prev, @view(q_surface[:, :, t-1]), rho, cp, k, dx, dy, dz, dz_bottom, dz_top, dt
     )
 
     # 疎行列組み立て
@@ -427,10 +554,15 @@ function solve_dhcp!(
       cg!(x0, A, b; Pl=Pl, reltol=rtol, maxiter=maxiter)
     end
 
-
     # 数値異常チェック
     if any(isnan.(x0)) || any(isinf.(x0))
       error("[t=$(t)] 数値異常が発生しました（NaN/Inf検出）")
+    end
+
+    # 解をT_allに書き戻す（メモリレイアウト最適化: Phase 2.2）
+    for k_idx in 1:nk, j in 1:nj, i in 1:ni
+      p = dhcp_index(i, j, k_idx, ni, nj)
+      T_all[i, j, k_idx, t] = x0[p]
     end
   end
 

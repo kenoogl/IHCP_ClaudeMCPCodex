@@ -22,9 +22,7 @@ using LinearAlgebra
 using SparseArrays
 using JSON
 
-# テスト用にIHCP_CGMモジュールをインクルード
-include("../src/IHCP_CGM.jl")
-using .IHCP_CGM
+# IHCP_CGMはruntests.jlで既に読み込み済み（Mainスコープで利用可能）
 
 # JSON変換ヘルパーのインクルード
 include("../src/utils/json_helpers.jl")
