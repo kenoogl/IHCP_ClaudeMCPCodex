@@ -400,6 +400,11 @@
 
 ## 🔗 参考リンク
 
+- **tuning3ドキュメント**:
+  - `docs/tuning3_recovery_plan.md`: 本ドキュメント（全体計画・進捗）
+  - `docs/tuning3_quick_reference.md`: 実務手順・コマンド集
+  - `docs/tuning3_phase_c_plan.md`: Phase C詳細計画（3セッション分割）
+  - `docs/logs/tuning3_phase_b_session_log.md`: Phase B実施記録
 - **tuning2コミット履歴**: `git log 99b321f..tuning2 --oneline`
 - **Codex調査結果**: 本セッション冒頭のCodex出力参照
 - **検証スクリプト**:
