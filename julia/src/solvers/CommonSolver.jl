@@ -18,6 +18,22 @@ using ..Commons: WorkBuffers, FloatMin, λf, get_backend
 
 export PBiCGSTAB!
 
+"""
+@brief 配列のコピー（並列対応版）
+@param [out]    a    コピー先配列
+@param [in]     b    コピー元配列
+@param [in]     par  バックエンド
+"""
+function mycopy!(a::Array{Float64,3}, b::Array{Float64,3}, par::String)
+  backend = get_backend(par)
+  SZ = size(a)
+
+  @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
+    a[i,j,k] = b[i,j,k]
+  end
+
+end
+
 
 """
 @brief PBiCGSTAB反復
