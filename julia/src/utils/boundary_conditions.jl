@@ -382,10 +382,14 @@ function print_boundary_conditions(bc_set::BoundaryConditionSet)
         if bc.type == ISOTHERMAL
             println("Isothermal (θ = $(bc.temperature) K)")
         elseif bc.type == HEAT_FLUX
-            if bc.heat_flux == 0.0
-                println("Adiabatic")
+            if bc.distribution == true
+                println("Distribution")
             else
-                println("Heat flux (q = $(bc.heat_flux) W/m²)")
+                if bc.heat_flux == 0.0
+                    println("Adiabatic")
+                else
+                    println("Heat flux (q = $(bc.heat_flux) W/m²)")
+                end
             end
         elseif bc.type == CONVECTION
             println("Heat transfer (h = $(bc.heat_transfer_coefficient) W/(m²⋅K),  θ_∞ = $(bc.ambient_temperature) K)")

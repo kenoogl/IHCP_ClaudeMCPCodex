@@ -61,7 +61,7 @@ function set_adjoint_bc_parameters(nk::Int)
     x_plus_bc  = adiabatic_bc()
     y_minus_bc = adiabatic_bc()
     y_plus_bc  = adiabatic_bc()
-    z_minus_bc = isothermal_bc(0.0, true) # 分布を与える, 0.0はダミー
+    z_minus_bc = heat_flux_bc(0.0, true) # 分布を与える, 0.0はダミー
     z_plus_bc  = adiabatic_bc()
 
     # 境界条件セットを作成
