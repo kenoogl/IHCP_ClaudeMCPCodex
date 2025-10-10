@@ -33,6 +33,7 @@ using ..Commons: WorkBuffers
 
 # Phase 2, 3モジュールは親モジュールで既にinclude済み
 using ..DHCPSolver
+using ..DHCPSolver: solve_dhcp_cg!
 using ..AdjointSolver
 using ..StoppingCriteria
 
@@ -165,13 +166,22 @@ function compute_sensitivity!(
   rtol::Float64=1e-8,
   maxiter::Int=20000
 )
-  # DHCPソルバーを流用（初期温度ゼロ、熱流束=p_n）
-  dT = solve_dhcp!(
-    T_init, p_n, work,
+  # 感度問題は旧API（疎行列cg!）を使用
+  # 理由: マトリクスフリー版は順問題の境界条件のみ対応（Session C-3で感度問題対応予定）
+
+  # Phase 2.2形状 (ni, nj, nt-1) → 旧API形状 (nt-1, ni, nj)
+  p_n_old = permutedims(p_n, (3, 1, 2))
+
+  # 旧API版DHCP（疎行列cg!使用）
+  dT_old = solve_dhcp_cg!(
+    T_init, p_n_old,
     nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, Z, ΔZ, dt;
+    dx, dy, dz, dz_b, dz_t, dt;
     rtol=rtol, maxiter=maxiter, verbose=false
   )
+
+  # 旧API形状 (nt, ni, nj, nk) → Phase 2.2形状 (ni, nj, nk, nt)
+  dT = permutedims(dT_old, (2, 3, 4, 1))
 
   return dT
 end
