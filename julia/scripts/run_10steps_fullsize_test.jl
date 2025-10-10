@@ -62,11 +62,10 @@ function build_z_grid(nk::Int, Lz::Float64, stretch_factor::Float64)
 end
 
 function load_material_properties()
-  rho_coeffs = [2.00929659e-10, -3.42605571e-07, 1.34927936e-01, 4.69852860e+02]
   cp_coeffs = [2.00929659e-10, -3.42605571e-07, 1.34927936e-01, 4.69852860e+02]
   k_coeffs = [4.79912245e-12, -8.18299348e-09, 1.61765445e-02, 8.11751748e+00]
-  rho = 7823.493962874829
-  return rho, cp_coeffs, k_coeffs, rho_coeffs
+  rho = 7823.493962874829  # 定数として扱う
+  return rho, cp_coeffs, k_coeffs
 end
 
 function load_measurement_subset(nt::Int)
@@ -133,7 +132,7 @@ function main()
   dz, dz_bottom, dz_top, z_faces = build_z_grid(nk, Lz, stretch_factor)
   # Z, dZ_guard = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)  # tuning2以降で使用
 
-  rho, cp_coeffs, k_coeffs, rho_coeffs = load_material_properties()
+  rho, cp_coeffs, k_coeffs = load_material_properties()
   println(@sprintf("  rho (reference): %.6f kg/m^3", rho))
 
   # Input preparation ------------------------------------------------------
@@ -219,7 +218,6 @@ function main()
     "dz_top" => dz_top,
     "z_faces" => z_faces,
     "rho" => rho,
-    "rho_coeffs" => rho_coeffs,
     "cp_coeffs" => cp_coeffs,
     "k_coeffs" => k_coeffs,
     "J_history" => collect(J_history),
