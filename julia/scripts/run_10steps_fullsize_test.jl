@@ -169,7 +169,7 @@ function main()
     P = 10,
     eta = 1.0e-4,
     beta_max = 1.0e8,
-    verbose = true,
+    verbose = true
   )
 
   q_result, T_result, J_history = solve_cgm!(
@@ -181,14 +181,11 @@ function main()
     dy,
     Z,  # ガイドセルグリッド追加
     ΔZ,
-    dz,
-    dz_bottom,
-    dz_top,
     dt,
     rho,
     cp_coeffs,
     k_coeffs;
-    params = cgm_params,
+    params = cgm_params
   )
 
   cgm_elapsed = time() - solve_start

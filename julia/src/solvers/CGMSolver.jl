@@ -33,7 +33,6 @@ using ..Commons: WorkBuffers, get_backend, reset_work_buffers!
 
 # 親モジュールで既にinclude済み
 using ..DHCPSolver
-using ..DHCPSolver: solve_dhcp_cg!
 using ..AdjointSolver
 using ..SensitivitySolver
 using ..StoppingCriteria
@@ -107,9 +106,10 @@ function compute_gradient!(
   k_coeffs::Vector{Float64},
   dx::Float64, dy::Float64,
   Z::Vector{Float64}, ΔZ::Vector{Float64},
-  dt::Float64,
+  dt::Float64;
   rtol::Float64=1e-8,
   maxiter::Int=20000,
+  verbose::Bool=false,
   par::String="sequential"
 )
   ni, nj, nk, nt = size(T_cal)
@@ -118,7 +118,7 @@ function compute_gradient!(
   lambda_field, cg_iters = solve_adjoint_mf!(
     T_cal, Y_obs, work, nt, rho, cp_coeffs, k_coeffs,
     dx, dy, Z, ΔZ, dt;
-    rtol=rtol, maxiter=maxiter, verbose=false, par=par
+    rtol=rtol, maxiter=maxiter, verbose=verbose, par=par
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
@@ -282,7 +282,7 @@ function solve_cgm!(
       T_init, q, work,
       nt, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt;
-      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
+      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=verbose
     )
 
     # Step 2: 目的関数計算
@@ -299,7 +299,7 @@ function solve_cgm!(
     grad = compute_gradient!(
       T_cal, Y_obs, work, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt,
-      rtol_adjoint, maxiter_cg, par
+      rtol=rtol_adjoint, maxiter=maxiter_cg, verbose=verbose, par=par
     )
 
     # Step 4: 共役勾配方向計算（ポラック・リビエール）
@@ -337,7 +337,7 @@ function solve_cgm!(
       dx, dy, Z, ΔZ, dt,
       rtol=rtol_adjoint,
       maxiter=maxiter_cg,
-      verbose=false,
+      verbose=verbose,
       par=par
     )
 
