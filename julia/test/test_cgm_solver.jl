@@ -129,7 +129,6 @@ end
       wk,
       dx, dy,
       Z, ΔZ,
-      dz, dz_b, dz_t,
       dt,
       rho, cp_coeffs, k_coeffs;
       params = cgm_params,

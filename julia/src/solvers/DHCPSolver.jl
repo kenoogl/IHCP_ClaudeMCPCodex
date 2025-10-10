@@ -178,8 +178,6 @@ function solve_dhcp!(
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
   HF, HT = set_BC_coef(bc_set) # 時間変化なし
-  SZ = (ni+2, nj+2, nk+2)
-  Nf = (SZ[1]-2)*(SZ[2]-2)*(z_range[2]-z_range[1]+1) # cg!と判定基準を合わせるため
   
 
 # 時間積分ループ
@@ -198,7 +196,7 @@ function solve_dhcp!(
 
     if verbose
       isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol*Nf, maxItr=maxiter, smoother="", par=par)
+          tol=rtol, maxItr=maxiter, smoother="", par=par)
       if isconverged
         println("[t=$(t)/$(nt)] CG収束: $(itr)回 初期残差: $(res0)")
       else
@@ -206,7 +204,7 @@ function solve_dhcp!(
       end
     else
       PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol*Nf, maxItr=maxiter, smoother="", par=par)
+          tol=rtol, maxItr=maxiter, smoother="", par=par)
     end
 
     # 数値異常チェック

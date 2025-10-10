@@ -95,7 +95,6 @@ Returns:
 function solve_sliding_window_cgm(
   Y_obs::Array{Float64,3}, T0::Array{Float64,3}, work::WorkBuffers,
   dx::Float64, dy::Float64, Z::Vector{Float64}, ΔZ::Vector{Float64},
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rho::Float64, cp_coeffs::Vector{Float64}, k_coeffs::Vector{Float64},
   window_size::Int, overlap::Int, q_init_value::Float64, cgm_iteration::Int;
@@ -175,7 +174,7 @@ function solve_sliding_window_cgm(
     )
     q_win, T_cal_win, J_hist = solve_cgm!(
       T_init, Y_obs_win, q_init_win, work,
-      dx, dy, Z, ΔZ, dz, dz_b, dz_t,
+      dx, dy, Z, ΔZ,
       dt, rho, cp_coeffs, k_coeffs; params=cgm_params
     )
 

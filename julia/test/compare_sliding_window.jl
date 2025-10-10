@@ -85,7 +85,7 @@ println("="^70)
 
 q_result, window_info = solve_sliding_window_cgm(
   Y_obs, T_init, work,
-  dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt,
+  dx, dy, Z, ΔZ, dt,
   rho, cp_coeffs, k_coeffs,
   window_size, overlap, q_init_value, cgm_iteration;
   rtol_dhcp = 1e-6,

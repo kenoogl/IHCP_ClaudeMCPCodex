@@ -29,7 +29,7 @@ using Printf
 
 # 共通モジュール
 import ..Commons
-using ..Commons: WorkBuffers, λf, get_backend, reset_work_buffers!
+using ..Commons: WorkBuffers, get_backend, reset_work_buffers!
 
 # 親モジュールで既にinclude済み
 using ..DHCPSolver
@@ -132,65 +132,6 @@ end
 
 
 """
-    compute_sensitivity!(T_init, p_n, rho, cp_coeffs, k_coeffs, dx, dy, dz, dz_b, dz_t, dt,
-                          rtol, maxiter) -> dT
-
-感度問題求解（熱流束微小変化に対する温度応答）
-
-感度問題は、探索方向p_nを表面熱流束として与えたDHCP問題：
-  dT = DHCP(T_init=0, q=p_n)
-
-物理的意味:
-  熱流束がp_n方向に微小変化した場合の温度場の変化
-
-Args:
-  T_init: 初期温度場（ゼロ） (ni, nj, nk)
-  p_n: 探索方向（熱流束の方向） (ni, nj, nt-1) ※Phase 2.2: 時間次元を最後に配置
-  rho: 密度 [kg/m³]
-  cp_coeffs: 比熱多項式係数
-  k_coeffs: 熱伝導率多項式係数
-  dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
-  dt: 時間刻み [s]
-  rtol: CG相対許容誤差
-  maxiter: CG最大反復数
-
-Returns:
-  dT: 感度場（温度応答） (ni, nj, nk, nt) ※Phase 2.2: 時間次元を最後に配置
-"""
-function compute_sensitivity!(
-  T_init::Array{Float64,3},
-  p_n::Array{Float64,3},
-  work::WorkBuffers,
-  nt::Int,
-  rho::Float64,
-  cp_coeffs::Vector{Float64},
-  k_coeffs::Vector{Float64},
-  dx::Float64, dy::Float64,
-  Z::Vector{Float64}, ΔZ::Vector{Float64},
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
-  dt::Float64,
-  rtol::Float64=1e-8,
-  maxiter::Int=20000,
-  par::String="sequential"
-)
-  dT = solve_sensitivity!(
-    T_init, p_n, work,
-    nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, Z, ΔZ, dt,
-    rtol=rtol,
-    maxiter=maxiter,
-    verbose=false,
-    par=par
-  )
-
-  return dT
-end
-
-
-"""
     compute_step_size(res_T, Sp, eps) -> beta
 
 ステップサイズ計算（ライン検索）
@@ -281,7 +222,6 @@ function solve_cgm!(
   work::WorkBuffers,
   dx::Float64, dy::Float64,
   Z::Vector{Float64}, ΔZ::Vector{Float64},
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
   dt::Float64,
   rho::Float64,
   cp_coeffs::Vector{Float64},

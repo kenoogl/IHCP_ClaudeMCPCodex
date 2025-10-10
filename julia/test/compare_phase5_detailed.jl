@@ -49,9 +49,13 @@ T_init = permutedims(cat([[[input["T_init"][i+1][j+1][k+1]
 Y_obs = permutedims(cat([[[input["Y_obs"][t+1][i+1][j+1]
                             for j in 0:nj-1] for i in 0:ni-1] for t in 0:nt-1]..., dims=3), (3,2,1))
 
+# WorkBuffersとZ, ΔZを作成
+work = IHCP_CGM.WorkBuffers(ni+2, nj+2, nk+2)
+Z, ΔZ = IHCP_CGM.convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
 # Julia実行
 q_global_julia, windows_info = IHCP_CGM.solve_sliding_window_cgm(
-  Y_obs, T_init, dx, dy, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
+  Y_obs, T_init, work, dx, dy, Z, ΔZ, dt, rho, cp_coeffs, k_coeffs,
   window_size, overlap, q_init_value, cgm_iteration
 )
 
@@ -116,9 +120,13 @@ T_init2 = permutedims(cat([[[input2["T_init"][i+1][j+1][k+1]
 Y_obs2 = permutedims(cat([[[input2["Y_obs"][t+1][i+1][j+1]
                              for j in 0:nj2-1] for i in 0:ni2-1] for t in 0:nt2-1]..., dims=3), (3,2,1))
 
+# WorkBuffersとZ, ΔZを作成
+work2 = IHCP_CGM.WorkBuffers(ni2+2, nj2+2, nk2+2)
+Z2, ΔZ2 = IHCP_CGM.convert_to_guard_cell_grid(nk2, dz2, dz_b2, dz_t2)
+
 # Julia実行
 q_global_julia2, windows_info2 = IHCP_CGM.solve_sliding_window_cgm(
-  Y_obs2, T_init2, dx2, dy2, dz2, dz_b2, dz_t2, dt2, rho2, cp_coeffs2, k_coeffs2,
+  Y_obs2, T_init2, work2, dx2, dy2, Z2, ΔZ2, dt2, rho2, cp_coeffs2, k_coeffs2,
   window_size2, overlap2, q_init_value2, cgm_iteration2
 )
 

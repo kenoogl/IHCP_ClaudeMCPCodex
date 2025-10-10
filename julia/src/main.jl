@@ -194,8 +194,8 @@ function run_full_calculation(config::Dict, output_file::String)
 
         Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
         @info @sprintf("IHCP-Heat3d")
-        println(Z)
-        println(ΔZ)
+        #println(Z)
+        #println(ΔZ)
 
         # 入力データ読み込み
         @info "\n入力データ読み込み中..."
