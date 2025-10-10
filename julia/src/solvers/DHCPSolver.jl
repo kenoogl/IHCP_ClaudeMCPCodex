@@ -20,7 +20,7 @@ import ..Commons
 using ..Commons: WorkBuffers, get_backend
 
 import ..ThermalProperties
-using ..ThermalProperties: thermal_properties!, set_properties!
+using ..ThermalProperties: set_properties!
 
 import ..BoundaryConditions
 using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet,

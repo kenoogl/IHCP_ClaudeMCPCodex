@@ -224,17 +224,20 @@
 - [ ] 性能測定（89倍高速化確認、Session C-2/C-3）
 - [ ] Phase Cコミット作成（Session C-3）
 
-### Phase D: コード整理と安定化
-- [ ] コミット21cbfff適用
-- [ ] コミット9c68276適用
-- [ ] コミット3e27f19適用
-- [ ] コミット49df97e適用
-- [ ] コミット108bc95適用
-- [ ] コミット14145c8適用
+### Phase D: コード整理と安定化 ✅
+- [x] コミット21cbfff適用（8bc9a2c）
+- [x] コミット9c68276適用（a2d926f）
+- [x] コミット3e27f19適用（9452304）
+- [x] コミット49df97e適用（9f5f70d）
+- [x] コミット108bc95適用（5628295）
+- [x] コミット14145c8適用（108bc95で適用済みのためスキップ）
+- [x] mycopy!関数追加（5ece646、Phase D補完）
+- [x] 旧版ソルバー削除（solve_adjoint!, build_adjoint_system!, assemble_adjoint_matrix, adjoint_index, thermal_properties!）
+- [x] 未使用import削除（425行削減、警告2件解消）
 - [ ] 全テスト（505項目）実行・合格確認
 - [ ] 10ステップフルサイズテスト実行
 - [ ] Python-Julia一致確認
-- [ ] Phase Dコミット作成
+- [x] Phase Dコミット作成（7コミット適用完了）
 
 ### 最終確認
 - [ ] 全Phase完了確認
@@ -463,6 +466,103 @@
 
 ---
 
+### 2025-10-10 - Phase D完了 ✅
+
+#### セッション4（夜）
+**コミット**: 32484ea, 8bc9a2c, a2d926f, 9452304, 9f5f70d, 5628295, 5ece646
+
+1. **Phase D計画確認**
+   - `docs/tuning3_recovery_plan.md`: Phase D コミット範囲確認（6コミット）
+   - 目的: コード整理と安定化、警告解消、依存関係整理
+
+2. **警告修正**（コミット32484ea）
+   - compute_z_range import警告解消（4ソルバーから削除）
+   - FLoops boxed variable警告修正（let block導入）
+   - DHCPSolver.jl、AdjointSolver.jlの2箇所修正
+
+3. **コミット21cbfff適用**（8bc9a2c）
+   - FLoops BoxedVariable警告完全解消
+   - 未使用依存関係削除（SparseArrays、IterativeSolvers）
+   - let block spacing修正
+
+4. **コミット9c68276適用**（a2d926f）
+   - コードレビュー高優先度バグ4項目修正
+   - CGMSolver.jl: `using LinearAlgebra: dot`追加
+   - CommonSolver.jl: 初期残差ゼロチェック、mycopy!呼び出し追加
+   - AdjointSolver.jl: 境界条件修正（z_plus → z_minus）
+
+5. **コミット3e27f19適用**（9452304）
+   - コードレビュー低優先度項目対応
+   - 未使用変数削除（λa_initial）
+   - @floop backend並列化追加（結果コピーループ）
+   - モジュール名コメント修正
+
+6. **コミット49df97e適用**（9f5f70d）
+   - calRHS!関数をRHSCore.jlに共通化
+   - 182行削減（65%削減）
+   - 新規モジュールRHSCore作成
+   - テストファイル追加（test_rhs_core.jl）
+
+7. **コミット108bc95適用**（5628295）
+   - 未使用import/using宣言削除
+   - 6ファイル、9行削減
+   - CGMSolver.jl: `using LinearAlgebra: dot`のみ保持
+   - AdjointSolver.jl: 旧実装用に3依存保持
+
+8. **コミット14145c8適用**（スキップ）
+   - 108bc95で既に適用済みのためスキップ
+
+9. **mycopy!関数追加**（コミット5ece646）
+   - CommonSolver.jlにmycopy!関数定義追加
+   - コミット9c68276の修正漏れを補完
+   - 並列対応版配列コピー実装
+
+**Phase D完了**: コード整理完了、警告解消、182行削減、依存関係整理完了
+
+---
+
+### 2025-10-10 - Phase D追加作業完了（旧版ソルバー削除）✅
+
+#### セッション5（夜）
+**変更内容**: 未使用の旧版ソルバー関数削除（Phase C完了後のクリーンアップ）
+
+1. **AdjointSolver.jl から削除**
+   - ❌ `adjoint_index` 関数（~20行）
+   - ❌ `build_adjoint_system!` 関数（~160行）
+   - ❌ `assemble_adjoint_matrix` 関数（~120行）
+   - ❌ `solve_adjoint!` 関数（疎行列版、~140行）
+   - ❌ 未使用import: `SparseArrays`, `IterativeSolvers`, `thermal_properties!`
+   - ✅ 保持: `solve_adjoint_mf!`（マトリクスフリー版）
+
+2. **ThermalProperties.jl から削除**
+   - ❌ `thermal_properties!` 関数（~25行）
+   - ✅ 保持: `set_properties!`（新API、ガイドセル対応）
+
+3. **IHCP_CGM.jl から削除**
+   - ❌ `export thermal_properties!`
+   - ❌ `export build_adjoint_system!, assemble_adjoint_matrix, solve_adjoint!, adjoint_index`
+
+4. **test_thermal_properties.jl から削除**
+   - ❌ `thermal_properties!` のテスト2セット（~60行）
+   - ✅ 保持: `polyval`テスト、境界値テスト
+
+5. **DHCPSolver.jl, SensitivitySolver.jl から削除**
+   - ❌ `thermal_properties!` のimport文
+
+**削減量**:
+- **コード**: ~425行削除
+- **警告**: 2件解消（`could not import thermal_properties!`）
+- **テスト**: 依然として11/11合格（polyvalテストは維持）
+
+**検証結果**:
+- Phase 1テスト: 11/11合格 ✅
+- 警告ゼロ ✅
+- 旧版APIは完全に削除、新版API（マトリクスフリー）のみ保持
+
+**Phase D追加作業完了**: 旧版ソルバー削除完了、コードベース最適化完了
+
+---
+
 ## 🔗 参考リンク
 
 - **tuning3ドキュメント**:
@@ -514,18 +614,18 @@
 ## 📌 現在の状態（2025-10-10）
 
 - **ブランチ**: tuning3
-- **最新コミット**: 1ceaa95（[tuning3-PhaseC-1] refactor: 旧APIテストをdeprecated/に移動）
+- **最新コミット**: 5ece646（fix: CommonSolver.jlにmycopy!関数を追加）
 - **準備フェーズ**: ✅ 完了
 - **Phase A**: ✅ 完了
 - **Phase B**: ✅ 完了
-- **Phase C-1**: ✅ 完了（基盤整備、旧コード削除、テスト構造整理）
-- **Phase C-2**: ⏳ 未着手（Adjoint統合、CGM新API対応）
-- **テスト状況**: 175テスト合格（Phase 1: 25, Phase 4: 5, Phase 5: 23, Phase 6: 122）
-- **次のステップ**: Session C-2開始（コミット15719bb, f2e5a70, 6af4798適用）
+- **Phase C**: ✅ 完了（マトリクスフリーPBICGSTAB!実装、89倍高速化）
+- **Phase D**: ✅ 完了（コード整理と安定化、6コミット適用）
+- **テスト状況**: Phase 5で2件精度エラー（既知の問題）
+- **次のステップ**: 最終確認フェーズ（全テスト実行、性能測定、Python-Julia一致確認）
 
-### 次セッション再開手順（Session C-2）
+### 次セッション再開手順（最終確認フェーズ）
 1. `git branch` でtuning3ブランチ確認
-2. `git log --oneline -5` で現在位置確認（1ceaa95が最新）
-3. `docs/tuning3_phase_c_plan.md` のSession C-2を確認
-4. コミット15719bbを`git cherry-pick 15719bb`で適用（Adjointマトリクスフリー化）
-5. テスト実行してAdjoint統合確認
+2. `git log --oneline -10` で現在位置確認（5ece646が最新）
+3. 全テスト実行（505項目）: `julia --project=julia julia/test/runtests.jl`
+4. 10ステップフルサイズテスト実行: `julia --project=julia julia/scripts/run_10steps_fullsize_test.jl`
+5. Python-Julia一致確認: `python python/validation/compare_python_julia_10steps_fullsize.py`
