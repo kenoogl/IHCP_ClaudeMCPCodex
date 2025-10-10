@@ -130,7 +130,7 @@ function main()
   println(@sprintf("  time steps: nt=%d, dt=%.3e s", nt, dt))
 
   dz, dz_bottom, dz_top, z_faces = build_z_grid(nk, Lz, stretch_factor)
-  # Z, dZ_guard = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)  # tuning2以降で使用
+  Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
 
   rho, cp_coeffs, k_coeffs = load_material_properties()
   println(@sprintf("  rho (reference): %.6f kg/m^3", rho))
@@ -151,7 +151,7 @@ function main()
 
   # Phase A: メモリレイアウト最適化 - (nt-1,ni,nj) → (ni,nj,nt-1)
   q_init = zeros(Float64, ni, nj, nt - 1)
-  # work = WorkBuffers(ni + 2, nj + 2, nk + 2)  # tuning2以降で使用
+  work = WorkBuffers(ni + 2, nj + 2, nk + 2)
 
   # CGM solve --------------------------------------------------------------
   println("\n[3/5] Running CGM solver (single window, 1 iteration)")
@@ -176,8 +176,11 @@ function main()
     T_init,
     Y_obs,
     q_init,
+    work,  # WorkBuffers追加
     dx,
     dy,
+    Z,  # ガイドセルグリッド追加
+    ΔZ,
     dz,
     dz_bottom,
     dz_top,

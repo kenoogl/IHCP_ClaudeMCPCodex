@@ -169,7 +169,7 @@ function compute_sensitivity!(
   dT = solve_dhcp!(
     T_init, p_n, work,
     nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, Z, ΔZ, dz, dz_b, dz_t, dt;
+    dx, dy, Z, ΔZ, dt;
     rtol=rtol, maxiter=maxiter, verbose=false
   )
 
@@ -305,8 +305,8 @@ function solve_cgm!(
   p_n_last = zeros(ni, nj, nt - 1)  # CHECK: メモリ事前確保
 
 
-  bottom_idx = 2   # Julia 1-indexed（裏面 S2） PBICGSTAB ガイドセル考慮
-  top_idx = nk-1   # Julia 1-indexed（表面 S1） PBICGSTAB ガイドセル考慮
+  bottom_idx = 1   # Julia 1-indexed（裏面 S2）
+  top_idx = nk     # Julia 1-indexed（表面 S1）
 
   # 停止判定パラメータ
   stop_params = (
