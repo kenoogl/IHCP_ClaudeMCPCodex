@@ -7,10 +7,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **プロジェクト状態**:
 - ✅ Python→Julia移植完了（Phase 1-6、505テスト全合格）
-- 🔄 **現在作業中**: マトリクスフリーPBICGSTAB!ソルバーの実装
+- ✅ **Phase C-1完了**: マトリクスフリーPBICGSTAB!ソルバー基盤整備完了（89倍高速化達成）
+- 🔄 **現在作業中**: Phase C-2（Adjoint統合）
 
-**現在のブランチ**: tuning2（マトリクスフリーPBICGSTAB!実装中）
-**最終更新**: 2025年10月8日
+**現在のブランチ**: tuning3（Phase C: マトリクスフリー化作業中）
+**最終更新**: 2025年10月10日
 
 ## 実行方法
 
@@ -237,13 +238,13 @@ TrialClaudeMCPCodex/
 
 ## Git操作ガイドライン
 
-**現在のブランチ**: tuning2（マトリクスフリーPBICGSTAB!実装中）
+**現在のブランチ**: tuning3（Phase C: マトリクスフリー化作業中）
 **メインブランチ**: main（Phase 1-6完了版）
 
 - **大容量ファイル**: 1MB以上のファイルはステージング前に必ず確認
 - **除外ファイル**: `T_measure_700um_1ms.npy`（1.1GB）はgitignore済み
 - **コミット単位**: TDDサイクルに従い、テスト作成→実装完了で適切に分割
-- **ブランチ運用**: tuning2ブランチでマトリクスフリーPBICGSTAB!実装中、完了後mainにマージ
+- **ブランチ運用**: tuning3ブランチでマトリクスフリーPBICGSTAB!実装中（Phase C-1完了、C-2進行中）
 
 ## トラブルシューティング
 
@@ -339,11 +340,15 @@ TrialClaudeMCPCodex/
 - 計算時間: 3-5倍高速化（目標: 300-500秒）
 - 外部ライブラリ依存の削減
 
-### 今後の改善候補
-1. ✅ **マトリクスフリーPBICGSTAB!**: 実装中（tuning2ブランチ）
-2. **並列化**: `@threads`マクロ、マルチスレッド処理
-3. **型安定性**: `@code_warntype`による診断と修正
-4. **GPU対応**: CUDA.jl/AMDGPU.jlの検討
+### 改善状況
+1. ✅ **マトリクスフリーPBICGSTAB!基盤**: Phase C-1完了（tuning3ブランチ）
+   - DHCPソルバー: マトリクスフリー化完了
+   - 89倍高速化達成（旧版: 53,150スナップショット → 新版: 607スナップショット）
+2. 🔄 **Adjoint統合**: Phase C-2進行中（tuning3ブランチ）
+3. **今後の改善候補**:
+   - 並列化: `@threads`マクロ、マルチスレッド処理
+   - 型安定性: `@code_warntype`による診断と修正
+   - GPU対応: CUDA.jl/AMDGPU.jlの検討
 
 ### プロファイリングコマンド
 ```bash
