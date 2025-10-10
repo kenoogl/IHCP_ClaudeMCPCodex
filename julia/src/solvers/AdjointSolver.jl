@@ -27,6 +27,7 @@ module AdjointSolver
 
 using LinearAlgebra
 using FLoops
+using Statistics
 
 import ..Commons
 using ..Commons: WorkBuffers, get_backend

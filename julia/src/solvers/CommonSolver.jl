@@ -23,15 +23,45 @@ export PBiCGSTAB!
 @param [out]    a    コピー先配列
 @param [in]     b    コピー元配列
 @param [in]     par  バックエンド
+
+シングルスレッド時は組み込みのcopyto!を使用（SIMD最適化）
+マルチスレッド時は並列ループで処理
 """
 function mycopy!(a::Array{Float64,3}, b::Array{Float64,3}, par::String)
-  backend = get_backend(par)
-  SZ = size(a)
-
-  @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
-    a[i,j,k] = b[i,j,k]
+  if par == "sequential" || Threads.nthreads() == 1
+    # シングルスレッド: 高速な組み込み関数を使用
+    copyto!(a, b)
+  else
+    # マルチスレッド: 並列ループ
+    backend = get_backend(par)
+    SZ = size(a)
+    @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
+      a[i,j,k] = b[i,j,k]
+    end
   end
+end
 
+"""
+@brief 並列用のfill（任意値の代入）
+@param [out]    a    配列
+@param [in]     val  代入値
+@param [in]     par  バックエンド
+
+シングルスレッド時は組み込みのfill!を使用（SIMD最適化）
+マルチスレッド時は並列ループで処理
+"""
+function myfill!(a::Array{Float64,3}, val::Float64, par::String)
+  if par == "sequential" || Threads.nthreads() == 1
+    # シングルスレッド: 高速な組み込み関数を使用
+    fill!(a, val)
+  else
+    # マルチスレッド: 並列ループ
+    backend = get_backend(par)
+    SZ = size(a)
+    @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
+      a[i,j,k] = val
+    end
+  end
 end
 
 
@@ -70,7 +100,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     par::String,
                     verbose::Bool=false)
     SZ = size(wk.θ)
-    wk.pcg_q .= 0.0  #fill!(pcg_q, 0.0)
+    myfill!(wk.pcg_q, 0.0, par)
     res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
     if verbose
         println("Inital residual = ", res0)
@@ -95,18 +125,20 @@ function PBiCGSTAB!(wk::WorkBuffers,
         rho = Fdot2(wk.pcg_r, wk.pcg_r0, z_range, par) # 非計算部分はゼロのこと
 
         if abs(rho) < FloatMin
-            itr = 0
+            # rhoがゼロに近い場合は数値的に不安定（未収束として扱う）
+            isconverged = false
+            itr = 0  # 反復回数を0にリセット（警告メッセージ対策）
             break
         end
 
         if itr == 1
-            wk.pcg_p .= wk.pcg_r  #copy!(pcg_p, pcg_r)
+            mycopy!(wk.pcg_p, wk.pcg_r, par)  #copy!(pcg_p, pcg_r)
         else
             beta = rho / rho_old * alpha / omega
             BiCG1!(wk.pcg_p, wk.pcg_r, wk.pcg_q, beta, omega, z_range, par)
         end
 
-        wk.pcg_p_ .= 0.0  #fill!(pcg_p_, 0.0)
+        myfill!(wk.pcg_p_, 0.0, par)  #fill!(pcg_p_, 0.0)
         Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par)
 
         CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
@@ -114,7 +146,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
         r_alpha = -alpha
         Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, z_range, par)
 
-        wk.pcg_s_ .= 0.0  #fill!(pcg_s_, 0.0)
+        myfill!(wk.pcg_s_, 0.0, par)  #fill!(pcg_s_, 0.0)
         Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par);
 
         CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
@@ -122,6 +154,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
         # 分母ゼロ対策（数値安定性）
         denom = Fdot1(wk.pcg_t_, z_range, par)
         if abs(denom) < FloatMin
+            # 分母がゼロに近い場合は数値的に不安定（未収束として扱う）
             isconverged = false
             break
         end
