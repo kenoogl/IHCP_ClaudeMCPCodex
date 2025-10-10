@@ -19,7 +19,9 @@ Phase 5テスト: スライディングウィンドウCGMソルバー
 using Test
 using JSON
 
-# IHCP_CGMはruntests.jlで既に読み込み済み（Mainスコープで利用可能）
+# IHCP_CGMモジュールと必要な関数をインポート
+using IHCP_CGM
+using IHCP_CGM: solve_sliding_window_cgm, WindowInfo, WorkBuffers, convert_to_guard_cell_grid
 
 
 """
