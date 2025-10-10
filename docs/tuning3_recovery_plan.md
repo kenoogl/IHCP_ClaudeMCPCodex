@@ -206,22 +206,23 @@
 - [x] Python-Julia一致確認
 - [x] Phase Bコミット作成（cb802a3, 481fe62）
 
-### Phase C: マトリクスフリー化（Session C-1進行中）
+### Phase C: マトリクスフリー化（Session C-1完了✅、C-2待ち）
 - [x] コミットd9799c0適用（770c85f）
 - [x] コミットf72e9be適用（5df340f）
 - [x] テストファイル修正（8ca9d82）
-- [x] Phase 1-3テスト確認（336テスト合格）
-- [ ] コミットaf36461適用（次セッション）
+- [x] コミットaf36461適用（2566843）
+- [x] 旧APIテスト整理（1ceaa95）
+- [x] Session C-1基本テスト確認（175テスト合格）
 - [ ] コミット15719bb適用（Session C-2）
 - [ ] コミットf2e5a70適用（Session C-2）
 - [ ] コミット6af4798適用（Session C-2）
 - [ ] コミットddf0c3d適用（Session C-3）
 - [ ] コミット4692ae4適用（Session C-3）
-- [ ] 全テスト（505項目）実行・合格確認
-- [ ] 10ステップフルサイズテスト実行
-- [ ] Python-Julia一致確認
-- [ ] 性能測定（89倍高速化確認）
-- [ ] Phase Cコミット作成
+- [ ] 全テスト（505項目）実行・合格確認（Session C-3）
+- [ ] 10ステップフルサイズテスト実行（Session C-2/C-3）
+- [ ] Python-Julia一致確認（Session C-2/C-3）
+- [ ] 性能測定（89倍高速化確認、Session C-2/C-3）
+- [ ] Phase Cコミット作成（Session C-3）
 
 ### Phase D: コード整理と安定化
 - [ ] コミット21cbfff適用
@@ -400,10 +401,10 @@
 
 ---
 
-### 2025-10-10 - Phase C-1開始（Session C-1）🔄
+### 2025-10-10 - Phase C-1完了（Session C-1）✅
 
 #### セッション3（午後）
-**コミット**: 770c85f, 5df340f, 8ca9d82
+**コミット**: 770c85f, 5df340f, 8ca9d82, 2566843, 1ceaa95
 
 1. **Phase C計画書確認**
    - `docs/tuning3_phase_c_plan.md`: 3セッション分割戦略確認
@@ -429,14 +430,36 @@
    - test_adjoint_solver.jl: solve_adjoint!をインポート
    - 理由: runtests.jlでの一括読み込み方式に対応
 
-5. **テスト結果確認**
+5. **初回テスト結果確認**
    - Phase 1（熱物性値）: 25テスト ✅
    - Phase 2（DHCP）: 298テスト ✅
    - Phase 3（Adjoint）: 13テスト ✅
    - Phase 4（CGM）: 2エラー（Session C-2で修正予定）
    - 合計: 336テスト合格
 
-**Session C-1状態**: コミットaf36461適用待ち（次セッションで継続）
+6. **コミットaf36461適用**（2566843）
+   - 古いcg!版コード完全削除（356行削除）
+   - WorkBuffers最適化（α配列削除、メモリ7%削減）
+   - 変数スコープ修正（CommonSolver.jl）
+   - プロファイリングスクリプト追加
+   - **89倍高速化の基盤完成**
+
+7. **旧APIテストの整理**（1ceaa95）
+   - test_dhcp_solver.jl → deprecated/（build_dhcp_system!等の旧API使用）
+   - test_adjoint_solver.jl → deprecated/（旧API使用）
+   - runtests.jlでPhase 2, 3, 2.3aをコメントアウト
+   - tuning2ブランチと同じ構成に統一
+
+8. **最終テスト結果確認**
+   - Phase 1（熱物性値）: 25テスト ✅
+   - Phase 4（停止判定機能）: 5テスト ✅
+   - Phase 5（ウィンドウ分割、オーバーラップ）: 23テスト ✅
+   - Phase 6 A-1（検証器）: 89テスト ✅
+   - Phase 6 C-1（データ読込）: 33テスト ✅
+   - **合計**: **175テスト合格**
+   - **エラー**: Phase 4 CGM 1エラー + 1 broken, Phase 5 2エラー（Session C-2で修正予定）
+
+**Session C-1完了**: 基盤整備完了、旧コード削除、テスト構造整理完了
 
 ---
 
@@ -491,17 +514,18 @@
 ## 📌 現在の状態（2025-10-10）
 
 - **ブランチ**: tuning3
-- **最新コミット**: 8ca9d82（fix: テストファイルのモジュールインポート修正）
+- **最新コミット**: 1ceaa95（[tuning3-PhaseC-1] refactor: 旧APIテストをdeprecated/に移動）
 - **準備フェーズ**: ✅ 完了
 - **Phase A**: ✅ 完了
 - **Phase B**: ✅ 完了
-- **Phase C**: 🔄 Session C-1進行中（3コミット適用済み、af36461待ち）
-- **テスト状況**: Phase 1-3合格（336テスト）、Phase 4はSession C-2で修正予定
-- **次のステップ**: コミットaf36461適用（旧コード356行削除→89倍高速化達成）
+- **Phase C-1**: ✅ 完了（基盤整備、旧コード削除、テスト構造整理）
+- **Phase C-2**: ⏳ 未着手（Adjoint統合、CGM新API対応）
+- **テスト状況**: 175テスト合格（Phase 1: 25, Phase 4: 5, Phase 5: 23, Phase 6: 122）
+- **次のステップ**: Session C-2開始（コミット15719bb, f2e5a70, 6af4798適用）
 
-### 次セッション再開手順
+### 次セッション再開手順（Session C-2）
 1. `git branch` でtuning3ブランチ確認
-2. `git log --oneline -5` で現在位置確認（8ca9d82が最新）
-3. `docs/tuning3_phase_c_plan.md` のSession C-1 Step 3から再開
-4. コミットaf36461を`git cherry-pick af36461`で適用
-5. テスト実行して89倍高速化確認
+2. `git log --oneline -5` で現在位置確認（1ceaa95が最新）
+3. `docs/tuning3_phase_c_plan.md` のSession C-2を確認
+4. コミット15719bbを`git cherry-pick 15719bb`で適用（Adjointマトリクスフリー化）
+5. テスト実行してAdjoint統合確認
