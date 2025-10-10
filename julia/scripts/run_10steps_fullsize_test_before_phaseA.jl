@@ -142,15 +142,13 @@ function main()
     error("Measurement grid mismatch: file has $(ni_file)x$(nj_file), expected $(ni)x$(nj)")
   end
 
-  # Phase A: メモリレイアウト最適化 - (nt,ni,nj) → (ni,nj,nt)
-  Y_obs = permutedims(Y_obs_python, (2, 3, 1))  # (nt, ni, nj) → (ni, nj, nt)
+  Y_obs = permutedims(Y_obs_python, (1, 2, 3))  # (nt, ni, nj)
   Y_obs_python = nothing
 
-  T_init = build_initial_temperature(@view(Y_obs[:, :, 1]), nk)
+  T_init = build_initial_temperature(@view(Y_obs[1, :, :]), nk)
   println(@sprintf("  initial temperature range: %.2f ~ %.2f K", minimum(T_init), maximum(T_init)))
 
-  # Phase A: メモリレイアウト最適化 - (nt-1,ni,nj) → (ni,nj,nt-1)
-  q_init = zeros(Float64, ni, nj, nt - 1)
+  q_init = zeros(Float64, nt - 1, ni, nj)
   # work = WorkBuffers(ni + 2, nj + 2, nk + 2)  # tuning2以降で使用
 
   # CGM solve --------------------------------------------------------------
@@ -194,8 +192,7 @@ function main()
 
   # Residual diagnostics ---------------------------------------------------
   println("\n[4/5] Residual analysis")
-  # Phase A: メモリレイアウト最適化 - T_result[ni,nj,nk,nt] の底面(k=1)
-  T_bottom = @view T_result[:, :, 1, :]  # (ni, nj, nt)
+  T_bottom = @view T_result[:, :, :, 1]  # (nt, ni, nj)
   residual = T_bottom .- Y_obs
   rms_error = sqrt(mean(residual .^ 2))
   max_error = maximum(abs.(residual))
@@ -207,8 +204,7 @@ function main()
   println("\n[5/5] Saving outputs")
   mkpath(dirname(RESULT_PATH))
 
-  # Phase A: メモリレイアウト最適化後の形状
-  # q_result: (ni, nj, nt-1), T_result: (ni, nj, nk, nt), Y_obs: (ni, nj, nt)
+  # q_result: (nt-1, ni, nj), T_result: (nt, ni, nj, nk) - already Python order
   metadata = Dict(
     "T" => T_result,
     "q" => q_result,

@@ -206,15 +206,18 @@ julia --project=. -e 'using Pkg; Pkg.test()'
 
 ### 10ステップフルサイズテスト
 ```bash
-# Python版実行
-python python/validation/run_10steps_fullsize_test.py
+# Python版実行（Phase A-Dでは通常不要、準備フェーズで実行済み）
+# python python/validation/run_10steps_fullsize_test.py
 
-# Julia版実行
+# Julia版実行（これだけ実行すればOK）
 julia --project=. julia/scripts/run_10steps_fullsize_test.jl
 
-# 結果比較
+# 結果比較（既存のPython結果と比較）
 python python/validation/compare_python_julia_10steps_fullsize.py
 ```
+
+**💡 注意**: Phase A-DではJulia側のみの変更のため、Python版の再実行は不要です。
+準備フェーズで実行済みの結果（`shared/results/python_10steps_fullsize.npz`）と比較します。
 
 ### 結果確認
 ```bash

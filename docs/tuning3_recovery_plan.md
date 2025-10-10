@@ -34,8 +34,13 @@
 
 **検証方法**:
 1. Phase 1-6全テスト（505項目）実行
-2. 10ステップフルサイズテスト実行
-3. Python-Julia結果比較
+2. 10ステップフルサイズテスト実行（Julia版のみ）
+3. Python-Julia結果比較（既存Python結果と比較）
+
+**💡 検証効率化のヒント**:
+- **Phase AではPython版の再実行は不要**（Julia側のみの変更のため）
+- Python結果は準備フェーズで既に保存済み（`shared/results/python_10steps_fullsize.npz`）
+- Julia版のみ実行して既存Python結果と比較すればOK
 
 **期待される結果**:
 - 全テスト合格
@@ -156,15 +161,17 @@
 - **全テスト実行**: `julia --project=. -e 'using Pkg; Pkg.test()'`
 - **10ステップテスト**:
   ```bash
-  # Python版
+  # Python版（Phase A-Dでは通常不要、準備フェーズで実行済み）
   python python/validation/run_10steps_fullsize_test.py
 
-  # Julia版
+  # Julia版（これだけ実行すればOK）
   julia --project=. julia/scripts/run_10steps_fullsize_test.jl
 
-  # 比較
+  # 比較（既存のPython結果と比較）
   python python/validation/compare_python_julia_10steps_fullsize.py
   ```
+
+**💡 ヒント**: Phase A-DではJulia側のみ変更するため、Python版の再実行は不要です。Julia版実行後に既存のPython結果（`shared/results/python_10steps_fullsize.npz`）と比較してください。
 
 ---
 

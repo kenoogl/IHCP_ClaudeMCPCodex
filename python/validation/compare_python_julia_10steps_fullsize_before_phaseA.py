@@ -51,14 +51,8 @@ def load_results() -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
 
     q_python = python_bundle["q"].astype(np.float64, copy=False)
     T_python = python_bundle["T"].astype(np.float64, copy=False)
-    q_julia_raw = julia_bundle["q"].astype(np.float64, copy=False)
-    T_julia_raw = julia_bundle["T"].astype(np.float64, copy=False)
-
-    # Phase A: Julia配列のメモリレイアウトが変更された
-    # q: (ni,nj,nt-1) → (nt-1,ni,nj)
-    # T: (ni,nj,nk,nt) → (nt,ni,nj,nk)
-    q_julia = np.transpose(q_julia_raw, (2, 0, 1))  # (ni,nj,nt-1) → (nt-1,ni,nj)
-    T_julia = np.transpose(T_julia_raw, (3, 0, 1, 2))  # (ni,nj,nk,nt) → (nt,ni,nj,nk)
+    q_julia = julia_bundle["q"].astype(np.float64, copy=False)
+    T_julia = julia_bundle["T"].astype(np.float64, copy=False)
 
     if q_python.shape != q_julia.shape:
         raise ValueError(
