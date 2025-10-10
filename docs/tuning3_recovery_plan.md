@@ -135,6 +135,9 @@
    - このドキュメントの「進捗チェックリスト」を更新
    - 問題が発生した場合は「トラブルシューティング記録」に記載
 
+5. **ユーザーインタラクション**
+   - 処理を行う前に適用する処理の概要を伝え、実行して良いか必ずユーザに確認する。
+
 ### コード変更時の注意
 1. **配列の軸順序に注意**
    - tuning3（Phase A前）: (nt, ni, nj, nk)
@@ -171,7 +174,10 @@
 - [x] tuning3ブランチ作成（コミット99b321fから）
 - [x] 10ステップフルサイズ検証テストコード作成
 - [x] Python-Julia一致確認（ベースライン）
-- [x] 計画書作成
+- [x] 計画書作成（tuning3_recovery_plan.md, tuning3_quick_reference.md）
+- [x] CLAUDE.md更新（tuning3作業対応）
+- [x] run_10steps_fullsize_test.jl修正（rho_coeffs削除）
+- [x] 最終動作確認（Python-Julia一致維持）
 
 ### Phase A: メモリレイアウト最適化
 - [ ] コミット3368d60適用
@@ -267,12 +273,31 @@
 
 ---
 
+#### [2025-10-10] 準備: run_10steps_fullsize_test.jlの不要なrho_coeffs
+**症状**:
+- `load_material_properties()`が不要な`rho_coeffs`を戻り値として返していた
+- `rho`は定数として扱うため、多項式係数は不要
+
+**原因**:
+- Codexが作成時に誤って含めた（cp_coeffsと混同した可能性）
+
+**対応**（コミット21742a1）:
+- `load_material_properties()`から`rho_coeffs`定義と戻り値を削除
+- 呼び出し側の受け取り変数を修正
+- メタデータ保存から`rho_coeffs`を削除
+
+**結果**:
+- 正常動作、Python-Julia一致維持（温度T相対誤差1.36e-05、熱流束q絶対誤差1.98e-07）
+
+---
+
 ## 📈 性能測定記録
 
-### ベースライン（tuning3初期状態、コミット99b321f）
-- **CGM実行時間**: 23.13秒（10ステップ、フルサイズ）
-- **Total実行時間**: 25.85秒
+### ベースライン（tuning3初期状態、コミット21742a1）
+- **CGM実行時間**: 22.72秒（10ステップ、フルサイズ）
+- **Total実行時間**: 25.62秒
 - **メモリ使用量**: TBD
+- **検証結果**: 温度T最大相対誤差 1.36e-05、熱流束q最大絶対誤差 1.98e-07 W/m²
 
 ### Phase A完了時
 - **CGM実行時間**: TBD
@@ -302,17 +327,37 @@
 
 ## 📝 作業ログ
 
-### 2025-10-10 - 準備フェーズ完了
-- tuning3ブランチ作成（コミット99b321f）
-- 10ステップフルサイズ検証テストコード作成
-  - `python/validation/run_10steps_fullsize_test.py`
-  - `julia/scripts/run_10steps_fullsize_test.jl`
-  - `python/validation/compare_python_julia_10steps_fullsize.py`
-  - `config/test_10steps_fullsize.toml`
-- Python-Julia一致確認完了
-  - 温度場T最大相対誤差: 1.36e-05 (0.00136%)
-  - 熱流束q最大絶対誤差: 1.98e-07 W/m²
-- 計画書作成完了
+### 2025-10-10 - 準備フェーズ完了 ✅
+
+#### セッション1（午前）
+**コミット**: 89c6a2e, 90240d2, 21742a1
+
+1. **tuning3ブランチ作成**（コミット99b321fから）
+2. **10ステップフルサイズ検証テストコード作成**
+   - `python/validation/run_10steps_fullsize_test.py`
+   - `julia/scripts/run_10steps_fullsize_test.jl`
+   - `python/validation/compare_python_julia_10steps_fullsize.py`
+   - `config/test_10steps_fullsize.toml`
+   - Julia版スクリプトをコミット99b321fのAPIに手動修正
+3. **ベースライン検証完了**
+   - Python版実行: 4.64秒
+   - Julia版実行: 25.85秒
+   - 温度場T最大相対誤差: 1.36e-05 (0.00136%)
+   - 熱流束q最大絶対誤差: 1.98e-07 W/m²
+   - ✅ Python-Julia完全一致確認
+4. **ドキュメント作成**
+   - `docs/tuning3_recovery_plan.md`: 詳細計画・進捗チェックリスト
+   - `docs/tuning3_quick_reference.md`: 実務手順・コマンド集
+   - コミット89c6a2e
+5. **CLAUDE.md更新**（コミット90240d2）
+   - tuning3作業セクション追加
+   - コンテキスト管理強化（tuning3ドキュメント参照追加）
+   - 不要な詳細削除、現在の状態に焦点
+6. **run_10steps_fullsize_test.jl修正**（コミット21742a1）
+   - 不要なrho_coeffsを削除（rhoは定数として扱う）
+   - 動作確認完了（25.62秒、Python-Julia一致維持）
+
+**準備完了**: Phase A開始準備完了、全ドキュメント整備完了
 
 ---
 
@@ -333,7 +378,7 @@
 1. **ブランチ確認**
    ```bash
    git branch  # tuning3であることを確認
-   git log --oneline -5  # 現在位置確認
+   git log --oneline -5  # 現在位置確認（21742a1が最新）
    ```
 
 2. **このドキュメント確認**
@@ -342,11 +387,28 @@
    ```
 
 3. **進捗チェックリスト確認**
-   - 次に実行すべきPhaseを確認
+   - **準備フェーズ**: ✅ 完了
+   - **次のステップ**: Phase A（メモリレイアウト最適化）開始
 
 4. **作業開始**
-   - 該当Phaseのコミットを適用
-   - 検証実行
+   - Phase Aのコミット3368d60から適用開始
+   - 各コミット後に検証実行
    - 結果記録
 
+5. **クイックリファレンス参照**
+   ```bash
+   cat docs/tuning3_quick_reference.md
+   ```
+
 **⚠️ 必ず各Phase完了後にこのドキュメントを更新してください！**
+
+---
+
+## 📌 現在の状態（2025-10-10）
+
+- **ブランチ**: tuning3
+- **最新コミット**: 21742a1（run_10steps_fullsize_test.jl rho_coeffs削除）
+- **準備フェーズ**: ✅ 完了
+- **次のステップ**: Phase A開始
+- **ベースライン性能**: CGM 22.72秒、Total 25.62秒
+- **ベースライン精度**: 温度T相対誤差1.36e-05、熱流束q絶対誤差1.98e-07 W/m²
