@@ -206,15 +206,17 @@
 - [x] Python-Julia一致確認
 - [x] Phase Bコミット作成（cb802a3, 481fe62）
 
-### Phase C: マトリクスフリー化
-- [ ] コミットd9799c0適用
-- [ ] コミットf72e9be適用
-- [ ] コミットaf36461適用
-- [ ] コミット15719bb適用
-- [ ] コミットf2e5a70適用
-- [ ] コミット6af4798適用
-- [ ] コミットddf0c3d適用
-- [ ] コミット4692ae4適用
+### Phase C: マトリクスフリー化（Session C-1進行中）
+- [x] コミットd9799c0適用（770c85f）
+- [x] コミットf72e9be適用（5df340f）
+- [x] テストファイル修正（8ca9d82）
+- [x] Phase 1-3テスト確認（336テスト合格）
+- [ ] コミットaf36461適用（次セッション）
+- [ ] コミット15719bb適用（Session C-2）
+- [ ] コミットf2e5a70適用（Session C-2）
+- [ ] コミット6af4798適用（Session C-2）
+- [ ] コミットddf0c3d適用（Session C-3）
+- [ ] コミット4692ae4適用（Session C-3）
 - [ ] 全テスト（505項目）実行・合格確認
 - [ ] 10ステップフルサイズテスト実行
 - [ ] Python-Julia一致確認
@@ -398,6 +400,46 @@
 
 ---
 
+### 2025-10-10 - Phase C-1開始（Session C-1）🔄
+
+#### セッション3（午後）
+**コミット**: 770c85f, 5df340f, 8ca9d82
+
+1. **Phase C計画書確認**
+   - `docs/tuning3_phase_c_plan.md`: 3セッション分割戦略確認
+   - Session C-1: 基盤整備（3コミット、2-3時間）
+   - Session C-2: Adjoint統合（3コミット、1-2時間）
+   - Session C-3: 仕上げ（2コミット、1-2時間）
+
+2. **コミットd9799c0適用**（770c85f）
+   - Codex MCPで分析実施
+   - 5ファイルコンフリクト発生（--theirsで解消）
+   - 変更: 9ファイル、747行追加、104行削除
+   - 内容: 新API対応、WorkBuffers使用、Z/ΔZ変換
+   - 検証ファイル追加: compare_medium_problem.jl等
+
+3. **コミットf72e9be適用**（5df340f）
+   - PBICGSTAB!ソルバー実装
+   - 依存パッケージ追加: FLoops v0.2.2, ThreadsX v0.1.12
+   - 変更: 12ファイル、837行追加、366行削除
+   - 1ファイルコンフリクト（.claude/CLAUDE.md、--theirsで解消）
+
+4. **テストファイル修正**（8ca9d82）
+   - test_dhcp_solver.jl: WorkBuffers, convert_to_guard_cell_grid等をインポート
+   - test_adjoint_solver.jl: solve_adjoint!をインポート
+   - 理由: runtests.jlでの一括読み込み方式に対応
+
+5. **テスト結果確認**
+   - Phase 1（熱物性値）: 25テスト ✅
+   - Phase 2（DHCP）: 298テスト ✅
+   - Phase 3（Adjoint）: 13テスト ✅
+   - Phase 4（CGM）: 2エラー（Session C-2で修正予定）
+   - 合計: 336テスト合格
+
+**Session C-1状態**: コミットaf36461適用待ち（次セッションで継続）
+
+---
+
 ## 🔗 参考リンク
 
 - **tuning3ドキュメント**:
@@ -449,10 +491,17 @@
 ## 📌 現在の状態（2025-10-10）
 
 - **ブランチ**: tuning3
-- **最新コミット**: 481fe62（[tuning3-PhaseB] Phase C依存テストをスキップ化）
+- **最新コミット**: 8ca9d82（fix: テストファイルのモジュールインポート修正）
 - **準備フェーズ**: ✅ 完了
 - **Phase A**: ✅ 完了
 - **Phase B**: ✅ 完了
-- **次のステップ**: Phase C（マトリクスフリー化）開始
-- **Phase B性能**: CGM 22.72秒、Total 25.64秒
-- **Phase B精度**: 温度T相対誤差1.36e-05、熱流束q絶対誤差1.98e-07 W/m²
+- **Phase C**: 🔄 Session C-1進行中（3コミット適用済み、af36461待ち）
+- **テスト状況**: Phase 1-3合格（336テスト）、Phase 4はSession C-2で修正予定
+- **次のステップ**: コミットaf36461適用（旧コード356行削除→89倍高速化達成）
+
+### 次セッション再開手順
+1. `git branch` でtuning3ブランチ確認
+2. `git log --oneline -5` で現在位置確認（8ca9d82が最新）
+3. `docs/tuning3_phase_c_plan.md` のSession C-1 Step 3から再開
+4. コミットaf36461を`git cherry-pick af36461`で適用
+5. テスト実行して89倍高速化確認
