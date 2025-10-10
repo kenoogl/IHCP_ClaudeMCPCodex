@@ -23,6 +23,9 @@ using SparseArrays
 using JSON
 
 # IHCP_CGMはruntests.jlで既に読み込み済み（Mainスコープで利用可能）
+using Main.IHCP_CGM
+import Main.IHCP_CGM: WorkBuffers, convert_to_guard_cell_grid, dhcp_index,
+                       build_dhcp_system!, assemble_dhcp_matrix, solve_dhcp!
 
 # JSON変換ヘルパーのインクルード
 include("../src/utils/json_helpers.jl")
