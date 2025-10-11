@@ -1,9 +1,24 @@
 # 性能改善提案書
 
 **作成日**: 2025年10月11日
-**対象コミット**: 22fde2d
-**ブランチ**: tuning3
+**最終更新**: 2025年10月12日
+**対象コミット**: 22fde2d（ベースライン）
+**現在のブランチ**: tuning4
 **ベースライン性能**: 1072.43秒（約17.9分、80×100×20格子、10ステップ）
+
+## 📋 実装状況サマリー
+
+| フェーズ | 提案 | 状態 | 実装日 |
+|---------|------|------|-------|
+| Phase 0 | **配列アロケーション削減** | ✅ **完了** | 2025-10-12 |
+| Phase 1 | 型安定化（提案2） | 🔜 予定 | - |
+| Phase 1 | 初期推定値改善（提案4） | 🔜 予定 | - |
+| Phase 1 | 前処理改善（提案1） | 🔜 予定 | - |
+| Phase 1 | BLASスレッド最適化（提案7） | 🔜 予定 | - |
+| Phase 2 | WorkBuffers共有化（提案6） | 🔜 予定 | - |
+| Phase 2 | メモリアクセス最適化（提案3） | 🔄 一部完了 | 2025-10-12 |
+| Phase 2 | 適応的収束判定（提案5） | 🔜 予定 | - |
+| Phase 3 | 並列化（提案8） | 📅 将来対応 | - |
 
 ## エグゼクティブサマリー
 
@@ -253,11 +268,18 @@ end
 **期待効果**: 実行時間10-20%削減
 **実装難易度**: 高
 **実装期間**: 2-3週間
+**実装状況**: 🔄 **一部完了**（2025-10-12）
 
-#### 現状の問題点
-- キャッシュミスの発生
-- 不要なメモリアロケーション
-- SIMD化の余地
+#### 実装済み項目（Phase 0）
+
+✅ **3-B: @simd最適化** - `tensor_dot`関数を`@simd`ループに変更完了
+✅ **3-D: プリアロケーションの徹底** - CGMループ内の全バッファを事前確保完了
+
+詳細は「実装完了レポート > Phase 0」参照。
+
+#### 現状の問題点（残課題）
+- キャッシュミスの発生（ループ順序最適化未実施）
+- SIMD化の余地（一部のみ実施、他関数への展開可能）
 
 #### 改善案
 
@@ -527,7 +549,124 @@ end
 
 ---
 
-### 【提案6】並列化（超高効果・高実装）
+### 【提案6】WorkBuffers内部配列の共有化（中効果・中実装）
+
+**優先度**: ★★★☆☆
+**期待効果**: メモリ使用量10-20%削減、キャッシュ効率向上
+**実装難易度**: 中
+**実装期間**: 1-2週間
+**提案元**: Codex（cgm_allocation_reduction_report.md）
+
+#### 現状の問題点
+- 各ソルバー（DHCP/Adjoint/Sensitivity）が独立した`WorkBuffers`を使用
+- 同時に複数のWorkBuffersがメモリに存在
+- 内部配列（`pcg_r`, `pcg_z`, `pcg_p`など）の重複
+
+#### 改善案
+
+```julia
+# julia/src/solvers/SharedWorkBuffers.jl (新規作成)
+"""
+複数ソルバー間で共有可能なWorkBuffers
+"""
+mutable struct SharedWorkBuffers
+  # 共有可能なバッファ
+  shared_temp1::Array{Float64,3}
+  shared_temp2::Array{Float64,3}
+  shared_temp3::Array{Float64,3}
+
+  # ソルバー別ビュー
+  dhcp_buffers::WorkBuffers
+  adjoint_buffers::WorkBuffers
+  sensitivity_buffers::WorkBuffers
+
+  function SharedWorkBuffers(ni::Int, nj::Int, nk::Int)
+    # 共有バッファを1回だけ確保
+    temp1 = zeros(Float64, ni, nj, nk)
+    temp2 = zeros(Float64, ni, nj, nk)
+    temp3 = zeros(Float64, ni, nj, nk)
+
+    # 各ソルバーは共有バッファへのビューを使用
+    dhcp = WorkBuffers(ni, nj, nk, shared_arrays=(temp1, temp2, temp3))
+    adjoint = WorkBuffers(ni, nj, nk, shared_arrays=(temp1, temp2, temp3))
+    sensitivity = WorkBuffers(ni, nj, nk, shared_arrays=(temp1, temp2, temp3))
+
+    new(temp1, temp2, temp3, dhcp, adjoint, sensitivity)
+  end
+end
+```
+
+#### 実装ステップ
+1. **Week 1**: SharedWorkBuffers設計と実装
+2. **Week 1-2**: 各ソルバーの統合とテスト
+3. **Week 2**: ベンチマークと効果測定
+
+#### 検証基準
+- メモリ使用量: 現状の70-80%以下
+- 実行時間: 現状維持または改善
+- 全テスト通過
+
+---
+
+### 【提案7】BLASスレッド設定の最適化（小効果・低実装）
+
+**優先度**: ★★☆☆☆
+**期待効果**: 実行時間5-10%削減（環境依存）
+**実装難易度**: 低
+**実装期間**: 2-3日
+**提案元**: Codex（cgm_allocation_reduction_report.md）
+
+#### 現状の問題点
+- BLASスレッド数がデフォルト設定（環境依存）
+- 過剰なスレッド数でオーバーヘッド増加の可能性
+- ユーザーが手動で`BLAS.set_num_threads()`を設定する必要
+
+#### 改善案
+
+```julia
+# julia/src/utils/config.jl
+using LinearAlgebra
+
+"""
+実行環境に応じた最適なBLASスレッド数を自動設定
+"""
+function configure_blas_threads()
+  # 利用可能なCPUコア数を取得
+  available_cores = Sys.CPU_THREADS
+
+  # 最適なスレッド数を計算
+  # - 小規模問題: 2-4スレッド（オーバーヘッド削減）
+  # - 大規模問題: コア数の50-75%（HT考慮）
+  optimal_threads = if available_cores <= 4
+    min(2, available_cores)
+  else
+    div(available_cores * 3, 4)  # 75%使用
+  end
+
+  BLAS.set_num_threads(optimal_threads)
+
+  @info "BLAS threads configured" threads=optimal_threads available_cores
+
+  return optimal_threads
+end
+
+# モジュールロード時に自動実行
+__init__() = configure_blas_threads()
+```
+
+#### 実装ステップ
+1. **Day 1**: 自動設定関数実装
+2. **Day 2**: 異なるスレッド数でベンチマーク
+3. **Day 3**: 最適値の決定とドキュメント化
+
+#### 検証基準
+- 小規模問題（10×10×10）: 2-4スレッドで最速
+- 大規模問題（80×100×20）: 6-8スレッドで最速
+- 環境変数`JULIA_NUM_THREADS`との整合性確保
+
+---
+
+### 【提案8】並列化（超高効果・高実装）
 
 **優先度**: ★★★☆☆（将来対応）
 **期待効果**: 実行時間50-90%削減（環境依存）
@@ -589,6 +728,16 @@ end
 ---
 
 ## 実装ロードマップ
+
+### ✅ Phase 0（配列アロケーション削減、完了）
+- **実装日**: 2025年10月12日
+- **実装者**: Codex
+- **内容**: CGMループのインプレース化、バッファ再利用、`tensor_dot`最適化
+- **結果**: テスト505件全通過、後方互換性維持
+
+**次のアクション**: ベンチマーク実施（BenchmarkToolsによる定量評価）
+
+---
 
 ### Phase 1（優先実装、1ヶ月）
 1. **Week 1**: 型安定化（提案2）
@@ -678,12 +827,19 @@ end
 ## まとめ
 
 ### 推奨実装順序
+
+#### ✅ 完了済み
+0. **配列アロケーション削減**（Phase 0）: 2025-10-12完了
+
+#### 次のフェーズ
 1. **型安定化**（提案2）: 低リスク・中効果、基盤整備
 2. **初期推定値改善**（提案4）: 低リスク・中効果、早期成果
 3. **前処理改善**（提案1）: 中リスク・高効果、最大の改善
-4. **メモリ最適化**（提案3）: 高リスク・中効果、専門性要
-5. **適応的収束判定**（提案5）: 低リスク・小効果、補助的
-6. **並列化**（提案6）: 高リスク・超高効果、将来対応
+4. **BLASスレッド最適化**（提案7）: 低リスク・小効果、簡単実装
+5. **WorkBuffers共有化**（提案6）: 中リスク・中効果、メモリ効率
+6. **メモリ最適化**（提案3残り）: 高リスク・中効果、専門性要
+7. **適応的収束判定**（提案5）: 低リスク・小効果、補助的
+8. **並列化**（提案8）: 高リスク・超高効果、将来対応
 
 ### 期待される最終性能
 - **Phase 1完了後**: 600-700秒（30-40%削減）
@@ -695,6 +851,77 @@ end
 2. Phase 1実装ブランチ作成（`performance-opt-phase1`）
 3. 型安定性チェックスクリプト作成
 4. 実装開始
+
+---
+
+## 🎉 実装完了レポート
+
+### ✅ Phase 0: 配列アロケーション削減（2025-10-12実装完了）
+
+**実装者**: Codex (GPT-5ベース)
+**実装ブランチ**: tuning4
+**レポート**: `docs/reports/benchmarks/cgm_allocation_reduction_report.md`
+
+#### 実装内容
+
+1. **CGMループのインプレース化**
+   - 残差・勾配・探索方向用バッファを事前確保（`CGMSolver.jl:272`）
+   - ビュー演算と`@.`マクロによるインプレース演算に変更
+   - 一時配列生成を大幅に削減
+
+2. **ソルバーAPIのバッファ再利用対応**
+   - DHCP/Adjoint/Sensitivityソルバーに外部バッファ受け取り機能追加
+   - キーワード引数: `T_buffer`, `lambda_buffer`, `iter_buffer`
+   - バッファサイズバリデーション（`ArgumentError`による安全性確保）
+
+3. **テンソル内積の最適化**
+   ```julia
+   # 変更前
+   function tensor_dot(a::Array{T}, b::Array{T}) where T <: Real
+     return Float64(dot(vec(a), vec(b)))  # vec()でコピー発生
+   end
+
+   # 変更後
+   function tensor_dot(a::AbstractArray{T1}, b::AbstractArray{T2}) where {T1 <: Real, T2 <: Real}
+     acc = zero(promote_type(T1, T2))
+     @inbounds @simd for idx in eachindex(a, b)
+       acc += a[idx] * b[idx]  # コピーなし、SIMD最適化
+     end
+     return Float64(acc)
+   end
+   ```
+
+4. **勾配計算のバッファ再活用**
+   - `compute_gradient!`で外部バッファを受け取り可能に
+   - CGMループ内での繰り返しアロケーションを回避
+
+#### 変更ファイル
+
+- `julia/src/solvers/CGMSolver.jl`: CGMループ最適化
+- `julia/src/solvers/DHCPSolver.jl`: バッファ再利用対応
+- `julia/src/solvers/AdjointSolver.jl`: バッファ再利用対応
+- `julia/src/solvers/SensitivitySolver.jl`: バッファ再利用対応
+
+#### テスト結果
+
+- ✅ **505件のテスト全て通過**
+- ✅ 既存機能の後方互換性維持（デフォルトでは新規バッファ確保）
+- ✅ Julia 1.12.0で検証済み
+
+#### 期待効果
+
+- **GC負荷削減**: CGM外層ループでのアロケーションが1回のみ
+- **メモリ効率向上**: スライディングウィンドウ計算での大幅なメモリ削減
+- **キャッシュ効率向上**: バッファ再利用によるキャッシュヒット率向上
+
+#### 次のアクション
+
+1. ✅ テスト実行（完了）
+2. ⏳ ベンチマーク実施（BenchmarkTools使用）
+   - アロケーション数の定量化
+   - 実行時間の測定
+   - ベースライン（22fde2d）との比較
+3. ⏳ 性能改善レポート作成
 
 ---
 

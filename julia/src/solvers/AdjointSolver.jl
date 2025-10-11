@@ -181,17 +181,28 @@ function solve_adjoint_mf!(
   rtol::Float64=1e-8,
   maxiter::Int=1000,
   verbose::Bool=false,
-  par::String="sequential"
+  par::String="sequential",
+  lambda_buffer::Union{Nothing,Array{Float64,4}}=nothing,
+  iter_buffer::Union{Nothing,Vector{Int}}=nothing
 )
   ni, nj, nk = size(T_cal[:, :, :, 1])
   N = ni * nj * nk
   Δh = (dx, dy, 1.0) # 1.0はダミー
 
   # 随伴場の初期化
-  λa_all = zeros(Float64, ni, nj, nk, nt)
-  λa_all[:, :, :, nt] .= 0.0  # 終端条件（Pythonオリジナル1322行）
+  λa_all = isnothing(lambda_buffer) ? zeros(Float64, ni, nj, nk, nt) : lambda_buffer
+  expected_shape = (ni, nj, nk, nt)
+  if size(λa_all) != expected_shape
+    throw(ArgumentError("lambda_buffer size mismatch: expected $(expected_shape), got $(size(λa_all))"))
+  end
+  fill!(λa_all, 0.0) # 終端条件含む初期化
 
-  cg_iters = zeros(Int, nt-1)
+  cg_iters = isnothing(iter_buffer) ? zeros(Int, nt-1) : iter_buffer
+  expected_len = nt - 1
+  if length(cg_iters) != expected_len
+    throw(ArgumentError("iter_buffer length mismatch: expected $(expected_len), got $(length(cg_iters))"))
+  end
+  fill!(cg_iters, 0)
 
   if verbose
     println("Adjoint求解開始（後退時間積分）")

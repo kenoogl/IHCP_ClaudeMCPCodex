@@ -62,8 +62,13 @@ Returns:
 メモリ効率化:
   一時配列を生成しないdot(vec(), vec())を使用
 """
-function tensor_dot(a::Array{T}, b::Array{T}) where T <: Real
-  return Float64(dot(vec(a), vec(b)))
+function tensor_dot(a::AbstractArray{T1}, b::AbstractArray{T2}) where {T1 <: Real, T2 <: Real}
+  @assert size(a) == size(b)
+  acc = zero(promote_type(T1, T2))
+  @inbounds @simd for idx in eachindex(a, b)
+    acc += a[idx] * b[idx]
+  end
+  return Float64(acc)
 end
 
 
@@ -111,7 +116,10 @@ function compute_gradient!(
   rtol::Float64=1e-8,
   maxiter::Int=20000,
   verbose::Bool=false,
-  par::String="sequential"
+  par::String="sequential",
+  gradient_buffer::Union{Nothing,Array{Float64,3}}=nothing,
+  adjoint_buffer::Union{Nothing,Array{Float64,4}}=nothing,
+  iter_buffer::Union{Nothing,Vector{Int}}=nothing
 )
   ni, nj, nk, nt = size(T_cal)
 
@@ -119,13 +127,19 @@ function compute_gradient!(
   lambda_field, cg_iters = solve_adjoint_mf!(
     T_cal, Y_obs, work, nt, rho, cp_coeffs, k_coeffs,
     dx, dy, Z, ΔZ, dt;
-    rtol=rtol, maxiter=maxiter, verbose=verbose, par=par
+    rtol=rtol, maxiter=maxiter, verbose=verbose, par=par,
+    lambda_buffer=adjoint_buffer,
+    iter_buffer=iter_buffer
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
-  gradient = zeros(Float64, ni, nj, nt - 1)
+  gradient = isnothing(gradient_buffer) ? zeros(Float64, ni, nj, nt - 1) : gradient_buffer
+  expected_shape = (ni, nj, nt - 1)
+  if size(gradient) != expected_shape
+    throw(ArgumentError("gradient_buffer size mismatch: expected $(expected_shape), got $(size(gradient))"))
+  end
   for n in 1:(nt - 1)
-    gradient[:, :, n] = lambda_field[:, :, nk, n]  # 表面（上端）
+    @views gradient[:, :, n] .= lambda_field[:, :, nk, n]  # 表面（上端）
   end
 
   return gradient, cg_iters
@@ -153,7 +167,7 @@ Args:
 Returns:
   beta: ステップサイズ
 """
-function compute_step_size(res_T::Array{Float64,3}, Sp::Array{Float64,3}, eps::Float64=1e-12)
+function compute_step_size(res_T::AbstractArray{<:Real,3}, Sp::AbstractArray{<:Real,3}, eps::Float64=1e-12)
   numerator = tensor_dot(res_T, Sp)
   denominator = tensor_dot(Sp, Sp)
   beta = numerator / (denominator + eps)
@@ -255,13 +269,25 @@ function solve_cgm!(
   M = ni * nj
   epsilon = M * (sigma^2) * (nt - 1)  # Discrepancy基準値
 
-  grad = zeros(Float64, ni, nj, nt - 1)      # CHECK: メモリ事前確保
-  grad_last = zeros(Float64, ni, nj, nt - 1) # CHECK: メモリ事前確保
-  p_n_last = zeros(Float64, ni, nj, nt - 1)  # CHECK: メモリ事前確保
+  grad = zeros(Float64, ni, nj, nt - 1)
+  grad_last = zeros(Float64, ni, nj, nt - 1)
+  p_n = zeros(Float64, ni, nj, nt - 1)
+  p_n_last = zeros(Float64, ni, nj, nt - 1)
+  tmp_dir = zeros(Float64, ni, nj, nt - 1)
+  res_T = zeros(Float64, ni, nj, nt - 1)
+
+  dhcp_T_buffer = zeros(Float64, ni, nj, nk, nt)
+  dhcp_iter_buffer = zeros(Int, nt)
+
+  adjoint_buffer = zeros(Float64, ni, nj, nk, nt)
+  adjoint_iter_buffer = zeros(Int, nt - 1)
+
+  sensitivity_buffer = zeros(Float64, ni, nj, nk, nt)
+  sensitivity_iter_buffer = zeros(Int, nt)
+  dT_init = zeros(Float64, ni, nj, nk)
 
 
   bottom_idx = 1   # Julia 1-indexed（裏面 S2）
-  top_idx = nk     # Julia 1-indexed（表面 S1）
 
   # 停止判定パラメータ
   stop_params = (
@@ -284,7 +310,9 @@ function solve_cgm!(
       T_init, q, work,
       nt, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt;
-      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=verbose, par=par
+      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=verbose, par=par,
+      T_buffer=dhcp_T_buffer,
+      iter_buffer=dhcp_iter_buffer
     )
     dhcp_time = time() - dhcp_start
 
@@ -294,7 +322,7 @@ function solve_cgm!(
               dhcp_time, nt, total_iters, avg_iters)
 
     # Step 2: 目的関数計算
-    res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1) CHECK:
+    @views @. res_T = T_cal[:, :, bottom_idx, 2:nt] - Y_obs[:, :, 2:nt]
     J = tensor_dot(res_T, res_T)
     push!(J_hist, J)
 
@@ -308,7 +336,10 @@ function solve_cgm!(
     grad, grad_iters = compute_gradient!(
       T_cal, Y_obs, work, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt,
-      rtol=rtol_adjoint, maxiter=maxiter_cg, verbose=verbose, par=par
+      rtol=rtol_adjoint, maxiter=maxiter_cg, verbose=verbose, par=par,
+      gradient_buffer=grad,
+      adjoint_buffer=adjoint_buffer,
+      iter_buffer=adjoint_iter_buffer
     )
     gradient_time = time() - gradient_start
 
@@ -320,32 +351,30 @@ function solve_cgm!(
     # Step 4: 共役勾配方向計算（ポラック・リビエール）
     if it == 0 || tensor_dot(grad, p_n_last) <= 0 || it % dire_reset_every == 0
       # 最急降下方向にリセット
-      p_n = copy(grad)
+      @. p_n = grad
       gamma = 0.0
     else
       # ポラック・リビエール係数
-      y = grad .- grad_last
+      @. tmp_dir = grad - grad_last
       denom = tensor_dot(grad_last, grad_last) + eps
-      gamma = max(0.0, tensor_dot(grad, y) / denom)
+      gamma = max(0.0, tensor_dot(grad, tmp_dir) / denom)
 
       # 探索方向候補
-      p_n_candidate = grad .+ gamma .* p_n_last
+      @. tmp_dir = grad + gamma * p_n_last
 
       # 下降方向チェック
-      if tensor_dot(grad, p_n_candidate) > 0
-        p_n = p_n_candidate
+      if tensor_dot(grad, tmp_dir) > 0
+        @. p_n = tmp_dir
       else
         # 下降方向でない場合はリセット
-        p_n = copy(grad)
+        @. p_n = grad
         gamma = 0.0
       end
     end
 
-    p_n_last = copy(p_n)
-
     # Step 5: 感度問題求解（dT計算）
     reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
-    dT_init = zeros(Float64, ni, nj, nk)
+    fill!(dT_init, 0.0)
     sensitivity_start = time()
     dT, sens_iters = solve_sensitivity!(
       dT_init, p_n, work,
@@ -354,7 +383,9 @@ function solve_cgm!(
       rtol=rtol_adjoint,
       maxiter=maxiter_cg,
       verbose=verbose,
-      par=par
+      par=par,
+      T_buffer=sensitivity_buffer,
+      iter_buffer=sensitivity_iter_buffer
     )
     sensitivity_time = time() - sensitivity_start
 
@@ -364,7 +395,7 @@ function solve_cgm!(
               sensitivity_time, nt, total_iters, avg_iters)
 
     # Step 6: ステップサイズ計算
-    Sp = dT[:, :, bottom_idx, 2:nt]  # (ni, nj, nt-1)
+    Sp = @view dT[:, :, bottom_idx, 2:nt]  # (ni, nj, nt-1)
     beta = compute_step_size(res_T, Sp, eps)
 
     # ステップサイズ制限（初回のみ）
@@ -380,10 +411,11 @@ function solve_cgm!(
     end
 
     # Step 7: 熱流束更新
-    q .= q .- beta .* p_n
+    @. q = q - beta * p_n
 
     # Step 8: 勾配更新
-    grad_last = copy(grad)
+    @. grad_last = grad
+    @. p_n_last = p_n
 
     # Step 9: 停止判定（更新後にチェック）
     status = check_stopping_criteria(J, J_hist, res_T, it, stop_params)

@@ -141,18 +141,30 @@ function solve_sensitivity!(
   rtol=1e-6,
   maxiter=20000,
   verbose=false,
-  par::String="sequential"
+  par::String="sequential",
+  T_buffer::Union{Nothing,Array{Float64,4}}=nothing,
+  iter_buffer::Union{Nothing,Vector{Int}}=nothing
 )
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
   Δh = (dx, dy, 1.0) # 1.0はダミー
   backend = get_backend(par)
 
-  T_all = zeros(Float64, ni, nj, nk, nt)
-  T_all[:, :, :, 1] = T_initial
+  T_all = isnothing(T_buffer) ? zeros(Float64, ni, nj, nk, nt) : T_buffer
+  expected_shape = (ni, nj, nk, nt)
+  if size(T_all) != expected_shape
+    throw(ArgumentError("T_buffer size mismatch: expected $(expected_shape), got $(size(T_all))"))
+  end
+  fill!(T_all, 0.0)
+  @views T_all[:, :, :, 1] .= T_initial
 
   # 反復回数を記録
-  iter_counts = zeros(Int, nt)
+  iter_counts = isnothing(iter_buffer) ? zeros(Int, nt) : iter_buffer
+  expected_len = nt
+  if length(iter_counts) != expected_len
+    throw(ArgumentError("iter_buffer length mismatch: expected $(expected_len), got $(length(iter_counts))"))
+  end
+  fill!(iter_counts, 0)
 
   if verbose
     println("="^60)

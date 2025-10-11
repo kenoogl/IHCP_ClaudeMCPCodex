@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "codex": {
+      "command": "/opt/homebrew/bin/codex-mcp-wrapper"
+    }
+  }
+}
