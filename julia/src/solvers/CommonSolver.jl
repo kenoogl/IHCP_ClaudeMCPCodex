@@ -121,17 +121,17 @@ function PBiCGSTAB!(wk::WorkBuffers,
     isconverged::Bool = false
     itr::Int = 0
 
-    for itr in 1:maxItr
+    for k in 1:maxItr
+        itr = k
         rho = Fdot2(wk.pcg_r, wk.pcg_r0, z_range, par) # 非計算部分はゼロのこと
 
         if abs(rho) < FloatMin
             # rhoがゼロに近い場合は数値的に不安定（未収束として扱う）
             isconverged = false
-            itr = 0  # 反復回数を0にリセット（警告メッセージ対策）
             break
         end
 
-        if itr == 1
+        if k == 1
             mycopy!(wk.pcg_p, wk.pcg_r, par)  #copy!(pcg_p, pcg_r)
         else
             beta = rho / rho_old * alpha / omega
@@ -332,7 +332,7 @@ end
 @param [in]     ρ    密度
 @param [in]     Δh   セル幅
 @param [in]     Δt   時間積分幅
-@param [in]     smoother  ["jacobi", "dor", ""]
+@param [in]     smoother  ["gs", ""]
 @param [in]     Z    CV境界座標
 @param [in]     ΔZ   CV幅
 @param [in]     z_range Zループ開始/終了インデクス

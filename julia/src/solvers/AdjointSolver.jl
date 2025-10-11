@@ -220,6 +220,7 @@ function solve_adjoint_mf!(
   # 後退時間ループ（Pythonオリジナル1328行: range(nt-2, -1, -1)）
   for t in (nt-1):-1:1
     # 次ステップ（時間的に後）の随伴場を初期値とする（wk.θに保持されているためホットスタート）
+    step_start = time()
 
     # 温度場から熱物性値計算（Pythonオリジナル1332行: T_cal[t]）
     set_properties!(@view(T_cal[:, :, :, t]), wk.cp, wk.λ, cp_coeffs, k_coeffs)
@@ -232,20 +233,19 @@ function solve_adjoint_mf!(
     calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), HF, dx, dy, dt, ΔZ, z_range,
       true, ρ, par)
 
+    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
+          tol=rtol, maxItr=maxiter, smoother="gs", par=par)
+    cg_iters[t] = itr
+    step_time = time() - step_start
+
     if verbose
-      isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="", par=par)
       if isconverged
-        println("[t=$(t)/$(nt)] CG収束: $(itr)回 初期残差: $(res0)")
+        println("[t=$(t)/$(nt)] converged: Iteration= $(itr) : Res_0= $(res0) : time=$(step_time)")
       else
-        @warn "[t=$(t)/$(nt)] CG未収束: $(itr)回 初期残差: $(res0)"
+        @warn "[t=$(t)/$(nt)] not converged: Iteration=$(itr) : Res_0= $(res0) : time=$(step_time)"
       end
-      # 反復回数記録
-      cg_iters[t] = itr
-    else
-      PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="", par=par)
     end
+
 
     # 結果保存 ガイドセルを除いて内点データを返す
     backend = get_backend(par)
@@ -253,9 +253,9 @@ function solve_adjoint_mf!(
       λa_all[i, j, k, t] = wk.θ[i+1, j+1, k+1]
     end
 
-    if verbose && (t % 10 == 0 || t == nt-1)
-      println("  t=$t: CG収束 (iter=$(cg_iters[t]))")
-    end
+    #if verbose && (t % 10 == 0 || t == nt-1)
+    #  println("  t=$t: Converged (iter=$(cg_iters[t]))")
+    #end
   end
 
   if verbose

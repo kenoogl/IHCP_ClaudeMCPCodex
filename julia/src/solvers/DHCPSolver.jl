@@ -15,6 +15,7 @@ DHCPSolver.jl
 module DHCPSolver
 
 using FLoops
+using Printf
 
 import ..Commons
 using ..Commons: WorkBuffers, get_backend
@@ -124,7 +125,8 @@ verbose: 進捗表示フラグ（デフォルト: false）
 par: バックエンド
 
 # 戻り値
-T_all: 新時刻の温度場 (ni, nj, nk, nt) [K] 
+T_all: 新時刻の温度場 (ni, nj, nk, nt) [K]
+iter_counts: 各時間ステップの反復回数 (nt) [回]
 """
 
 function solve_dhcp!(
@@ -152,6 +154,8 @@ function solve_dhcp!(
   T_all = zeros(Float64, ni, nj, nk, nt)
   T_all[:, :, :, 1] = T_initial
 
+  # 反復回数を記録
+  iter_counts = zeros(Int, nt)
 
   if verbose
     println("="^60)
@@ -182,6 +186,8 @@ function solve_dhcp!(
 
 # 時間積分ループ
   for t in 2:nt
+    step_start = time()
+
     # 前ステップ温度から熱物性値計算
     set_properties!(@view(T_all[:, :, :, t-1]), wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
@@ -192,19 +198,20 @@ function solve_dhcp!(
     calRHS!(wk, HF, dx, dy, dt, ΔZ, z_range,
       @view(q_surface[:, :, t-1]),
       true, ρ, par)
-    
+
+
+    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
+        tol=rtol, maxItr=maxiter, smoother="gs", par=par)
+
+    iter_counts[t] = itr
+    step_time = time() - step_start
 
     if verbose
-      isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="", par=par)
       if isconverged
-        println("[t=$(t)/$(nt)] CG収束: $(itr)回 初期残差: $(res0)")
+        println("[t=$(t)/$(nt)] converged: Iteration= $(itr) : Res_0= $(res0) : time=$(step_time)")
       else
-        @warn "[t=$(t)/$(nt)] CG未収束: $(itr)回 初期残差: $(res0)"
+        @warn "[t=$(t)/$(nt)] not converged: Iteration=$(itr) : Res_0= $(res0) : time=$(step_time)"
       end
-    else
-      PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="", par=par)
     end
 
     # 数値異常チェック
@@ -227,7 +234,7 @@ function solve_dhcp!(
     println("="^60)
   end
 
-  return T_all
+  return T_all, iter_counts
 end
 
 

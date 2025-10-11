@@ -96,6 +96,7 @@ Args:
 
 Returns:
   gradient: 勾配場 (ni, nj, nt-1) ※Phase 2.2: 時間次元を最後に配置
+  cg_iters: 各時間ステップの反復回数
 """
 function compute_gradient!(
   T_cal::Array{Float64,4},
@@ -127,7 +128,7 @@ function compute_gradient!(
     gradient[:, :, n] = lambda_field[:, :, nk, n]  # 表面（上端）
   end
 
-  return gradient
+  return gradient, cg_iters
 end
 
 
@@ -278,12 +279,19 @@ function solve_cgm!(
 
     # Step 1: 順問題求解（DHCP）
     reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
-    T_cal = solve_dhcp!(
+    dhcp_start = time()
+    T_cal, iter_counts = solve_dhcp!(
       T_init, q, work,
       nt, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt;
-      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=verbose
+      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=verbose, par=par
     )
+    dhcp_time = time() - dhcp_start
+
+    total_iters = sum(iter_counts[2:end])
+    avg_iters = total_iters / (nt - 1)
+    @printf("  DHCP solve time: %.3f s (nt=%d steps, total_iters=%d, avg=%.1f)\n",
+              dhcp_time, nt, total_iters, avg_iters)
 
     # Step 2: 目的関数計算
     res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1) CHECK:
@@ -296,11 +304,18 @@ function solve_cgm!(
 
     # Step 3: 随伴問題求解（勾配計算）
     reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
-    grad = compute_gradient!(
+    gradient_start = time()
+    grad, grad_iters = compute_gradient!(
       T_cal, Y_obs, work, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt,
       rtol=rtol_adjoint, maxiter=maxiter_cg, verbose=verbose, par=par
     )
+    gradient_time = time() - gradient_start
+
+    total_iters = sum(grad_iters[2:end])
+    avg_iters = total_iters / (nt - 1)
+    @printf("  Gradient solve time: %.3f s (nt=%d steps, total_iters=%d, avg=%.1f)\n",
+              gradient_time, nt, total_iters, avg_iters)
 
     # Step 4: 共役勾配方向計算（ポラック・リビエール）
     if it == 0 || tensor_dot(grad, p_n_last) <= 0 || it % dire_reset_every == 0
@@ -331,7 +346,8 @@ function solve_cgm!(
     # Step 5: 感度問題求解（dT計算）
     reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
     dT_init = zeros(Float64, ni, nj, nk)
-    dT = solve_sensitivity!(
+    sensitivity_start = time()
+    dT, sens_iters = solve_sensitivity!(
       dT_init, p_n, work,
       nt, rho, cp_coeffs, k_coeffs,
       dx, dy, Z, ΔZ, dt,
@@ -340,6 +356,12 @@ function solve_cgm!(
       verbose=verbose,
       par=par
     )
+    sensitivity_time = time() - sensitivity_start
+
+    total_iters = sum(sens_iters[2:end])
+    avg_iters = total_iters / (nt - 1)
+    @printf("  Sensitivity solve time: %.3f s (nt=%d steps, total_iters=%d, avg=%.1f)\n",
+              sensitivity_time, nt, total_iters, avg_iters)
 
     # Step 6: ステップサイズ計算
     Sp = dT[:, :, bottom_idx, 2:nt]  # (ni, nj, nt-1)
