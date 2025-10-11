@@ -1,7 +1,7 @@
 """
 CGMSolver.jl
 
-Phase 4: 共役勾配法（CGM）による逆問題ソルバー
+共役勾配法（CGM）による逆問題ソルバー
 
 共役勾配法（ポラック・リビエール型）による表面熱流束の逆解析：
 1. 勾配計算（随伴場λの表面値）
@@ -24,18 +24,21 @@ Phase 4: 共役勾配法（CGM）による逆問題ソルバー
 
 module CGMSolver
 
-using LinearAlgebra
-using SparseArrays
+using LinearAlgebra: dot
 using Printf
 
-# Phase 2, 3モジュールの読み込み
-include("DHCPSolver.jl")
-include("AdjointSolver.jl")
-include("StoppingCriteria.jl")
+# 共通モジュール
+import ..Commons
+using ..Commons: WorkBuffers, get_backend, reset_work_buffers!
 
-using .DHCPSolver
-using .AdjointSolver
-using .StoppingCriteria
+# 親モジュールで既にinclude済み
+using ..DHCPSolver
+using ..AdjointSolver
+using ..SensitivitySolver
+using ..StoppingCriteria
+
+import ..CommonSolver
+using ..CommonSolver: PBiCGSTAB!
 
 export solve_cgm!, compute_gradient!, compute_sensitivity!, compute_step_size
 
@@ -54,9 +57,13 @@ Args:
 
 Returns:
   内積値（スカラー）
+  CHECK: 型安定性のため、Array{Float64,3}
+
+メモリ効率化:
+  一時配列を生成しないdot(vec(), vec())を使用
 """
 function tensor_dot(a::Array{T}, b::Array{T}) where T <: Real
-  return Float64(sum(a .* b))
+  return Float64(dot(vec(a), vec(b)))
 end
 
 
@@ -75,103 +82,53 @@ end
   ここでJは目的関数（残差二乗和）
 
 Args:
-  T_cal: DHCP計算温度場 (nt, ni, nj, nk)
-  Y_obs: 観測温度（底面） (nt, ni, nj) [K]
+  T_cal: DHCP計算温度場 (ni, nj, nk, nt) ※Phase 2.2: 時間次元を最後に配置
+  Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
+  work: 
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数
   k_coeffs: 熱伝導率多項式係数
   dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
+  Z, ΔZ: Z方向格子情報
   dt: 時間刻み [s]
   rtol: CG相対許容誤差
   maxiter: CG最大反復数
 
 Returns:
-  gradient: 勾配場 (nt-1, ni, nj)
+  gradient: 勾配場 (ni, nj, nt-1) ※Phase 2.2: 時間次元を最後に配置
+  cg_iters: 各時間ステップの反復回数
 """
 function compute_gradient!(
   T_cal::Array{Float64,4},
   Y_obs::Array{Float64,3},
+  work::WorkBuffers,
   rho::Float64,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64},
   dx::Float64, dy::Float64,
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
-  dt::Float64,
+  Z::Vector{Float64}, ΔZ::Vector{Float64},
+  dt::Float64;
   rtol::Float64=1e-8,
-  maxiter::Int=20000
+  maxiter::Int=20000,
+  verbose::Bool=false,
+  par::String="sequential"
 )
-  nt, ni, nj, nk = size(T_cal)
+  ni, nj, nk, nt = size(T_cal)
 
   # 随伴場求解（Phase 3）
-  lambda_field, cg_iters = solve_adjoint!(
-    T_cal, Y_obs, nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, dz, dz_b, dz_t, dt;
-    rtol=rtol, maxiter=maxiter, verbose=false
+  lambda_field, cg_iters = solve_adjoint_mf!(
+    T_cal, Y_obs, work, nt, rho, cp_coeffs, k_coeffs,
+    dx, dy, Z, ΔZ, dt;
+    rtol=rtol, maxiter=maxiter, verbose=verbose, par=par
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
-  gradient = zeros(nt - 1, ni, nj)
+  gradient = zeros(Float64, ni, nj, nt - 1)
   for n in 1:(nt - 1)
-    gradient[n, :, :] = lambda_field[n, :, :, nk]  # 表面（上端）
+    gradient[:, :, n] = lambda_field[:, :, nk, n]  # 表面（上端）
   end
 
-  return gradient
-end
-
-
-"""
-    compute_sensitivity!(T_init, p_n, rho, cp_coeffs, k_coeffs, dx, dy, dz, dz_b, dz_t, dt,
-                          rtol, maxiter) -> dT
-
-感度問題求解（熱流束微小変化に対する温度応答）
-
-感度問題は、探索方向p_nを表面熱流束として与えたDHCP問題：
-  dT = DHCP(T_init=0, q=p_n)
-
-物理的意味:
-  熱流束がp_n方向に微小変化した場合の温度場の変化
-
-Args:
-  T_init: 初期温度場（ゼロ） (ni, nj, nk)
-  p_n: 探索方向（熱流束の方向） (nt-1, ni, nj)
-  rho: 密度 [kg/m³]
-  cp_coeffs: 比熱多項式係数
-  k_coeffs: 熱伝導率多項式係数
-  dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
-  dt: 時間刻み [s]
-  rtol: CG相対許容誤差
-  maxiter: CG最大反復数
-
-Returns:
-  dT: 感度場（温度応答） (nt, ni, nj, nk)
-"""
-function compute_sensitivity!(
-  T_init::Array{Float64,3},
-  p_n::Array{Float64,3},
-  nt::Int,
-  rho::Float64,
-  cp_coeffs::Vector{Float64},
-  k_coeffs::Vector{Float64},
-  dx::Float64, dy::Float64,
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
-  dt::Float64,
-  rtol::Float64=1e-8,
-  maxiter::Int=20000
-)
-  # DHCPソルバーを流用（初期温度ゼロ、熱流束=p_n）
-  dT = solve_dhcp!(
-    T_init, p_n, nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, dz, dz_b, dz_t, dt;
-    rtol=rtol, maxiter=maxiter, verbose=false
-  )
-
-  return dT
+  return gradient, cg_iters
 end
 
 
@@ -189,8 +146,8 @@ end
   Sp: 感度場の底面値（dT[:, :, :, 1]）
 
 Args:
-  res_T: 残差場 (nt-1, ni, nj) [K]
-  Sp: 感度場の底面値 (nt-1, ni, nj) [K]
+  res_T: 残差場 (ni, nj, nt-1) [K] ※Phase 2.2: 時間次元を最後に配置
+  Sp: 感度場の底面値 (ni, nj, nt-1) [K] ※Phase 2.2: 時間次元を最後に配置
   eps: ゼロ除算防止の微小値（デフォルト1e-12）
 
 Returns:
@@ -230,12 +187,12 @@ CGMアルゴリズム（ポラック・リビエール型）:
 
 Args:
   T_init: 初期温度場 (ni, nj, nk) [K]
-  Y_obs: 観測温度（底面） (nt, ni, nj) [K]
-  q_init: 初期熱流束推定 (nt-1, ni, nj) [W/m²]
+  Y_obs: 観測温度（底面） (ni, nj, nt) [K] ※Phase 2.2: 時間次元を最後に配置
+  q_init: 初期熱流束推定 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
+  work: Heat3d用配列群
   dx, dy: x, y方向格子幅 [m]
-  dz: z方向格子幅配列 (nk,) [m]
-  dz_b: 下側界面距離 (nk,) [m]
-  dz_t: 上側界面距離 (nk,) [m]
+  Z: z方向格子配列 (nk,) [m]
+  ΔZ: CV幅 (nk,) [m]
   dt: 時間刻み [s]
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数
@@ -255,21 +212,23 @@ Args:
     - verbose: 詳細出力フラグ（デフォルトtrue）
 
 Returns:
-  q_final: 最終逆解析熱流束 (nt-1, ni, nj) [W/m²]
-  T_cal_final: 最終温度場 (nt, ni, nj, nk) [K]
+  q_final: 最終逆解析熱流束 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
+  T_cal_final: 最終温度場 (ni, nj, nk, nt) [K] ※Phase 2.2: 時間次元を最後に配置
   J_hist: 目的関数履歴 (vector)
 """
 function solve_cgm!(
   T_init::Array{Float64,3},
   Y_obs::Array{Float64,3},
   q_init::Array{Float64,3},
+  work::WorkBuffers,
   dx::Float64, dy::Float64,
-  dz::Vector{Float64}, dz_b::Vector{Float64}, dz_t::Vector{Float64},
+  Z::Vector{Float64}, ΔZ::Vector{Float64},
   dt::Float64,
   rho::Float64,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64};
-  params::NamedTuple=(;)
+  params::NamedTuple=(;),
+  par::String="sequential"
 )
   # パラメータ展開（デフォルト値付き）
   max_iter = get(params, :max_iter, 20000)
@@ -285,8 +244,8 @@ function solve_cgm!(
   beta_max = get(params, :beta_max, 1e8)
   verbose = get(params, :verbose, true)
 
-  # 問題サイズ
-  nt, ni, nj = size(Y_obs)
+  # 問題サイズ（メモリレイアウト最適化: Phase 2.2）
+  ni, nj, nt = size(Y_obs)
   nk = size(T_init, 3)
 
   # 初期化
@@ -296,12 +255,13 @@ function solve_cgm!(
   M = ni * nj
   epsilon = M * (sigma^2) * (nt - 1)  # Discrepancy基準値
 
-  grad = zeros(nt - 1, ni, nj)
-  grad_last = zeros(nt - 1, ni, nj)
-  p_n_last = zeros(nt - 1, ni, nj)
+  grad = zeros(Float64, ni, nj, nt - 1)      # CHECK: メモリ事前確保
+  grad_last = zeros(Float64, ni, nj, nt - 1) # CHECK: メモリ事前確保
+  p_n_last = zeros(Float64, ni, nj, nt - 1)  # CHECK: メモリ事前確保
 
-  bottom_idx = 1   # Julia 1-indexed（底面）
-  top_idx = nk     # Julia 1-indexed（表面）
+
+  bottom_idx = 1   # Julia 1-indexed（裏面 S2）
+  top_idx = nk     # Julia 1-indexed（表面 S1）
 
   # 停止判定パラメータ
   stop_params = (
@@ -317,15 +277,24 @@ function solve_cgm!(
       println("\n=== CGM反復 $(it) ===")
     end
 
-    # Step 1: 直接問題求解（DHCP）
-    T_cal = solve_dhcp!(
-      T_init, q, nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt;
-      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=false
+    # Step 1: 順問題求解（DHCP）
+    reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
+    dhcp_start = time()
+    T_cal, iter_counts = solve_dhcp!(
+      T_init, q, work,
+      nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dt;
+      rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=verbose, par=par
     )
+    dhcp_time = time() - dhcp_start
+
+    total_iters = sum(iter_counts[2:end])
+    avg_iters = total_iters / (nt - 1)
+    @printf("  DHCP solve time: %.3f s (nt=%d steps, total_iters=%d, avg=%.1f)\n",
+              dhcp_time, nt, total_iters, avg_iters)
 
     # Step 2: 目的関数計算
-    res_T = T_cal[2:nt, :, :, bottom_idx] .- Y_obs[2:nt, :, :]  # (nt-1, ni, nj)
+    res_T = T_cal[:, :, bottom_idx, 2:nt] .- Y_obs[:, :, 2:nt]  # (ni, nj, nt-1) CHECK:
     J = tensor_dot(res_T, res_T)
     push!(J_hist, J)
 
@@ -334,11 +303,19 @@ function solve_cgm!(
     end
 
     # Step 3: 随伴問題求解（勾配計算）
-    grad = compute_gradient!(
-      T_cal, Y_obs, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt,
-      rtol_adjoint, maxiter_cg
+    reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
+    gradient_start = time()
+    grad, grad_iters = compute_gradient!(
+      T_cal, Y_obs, work, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dt,
+      rtol=rtol_adjoint, maxiter=maxiter_cg, verbose=verbose, par=par
     )
+    gradient_time = time() - gradient_start
+
+    total_iters = sum(grad_iters[2:end])
+    avg_iters = total_iters / (nt - 1)
+    @printf("  Gradient solve time: %.3f s (nt=%d steps, total_iters=%d, avg=%.1f)\n",
+              gradient_time, nt, total_iters, avg_iters)
 
     # Step 4: 共役勾配方向計算（ポラック・リビエール）
     if it == 0 || tensor_dot(grad, p_n_last) <= 0 || it % dire_reset_every == 0
@@ -367,15 +344,27 @@ function solve_cgm!(
     p_n_last = copy(p_n)
 
     # Step 5: 感度問題求解（dT計算）
-    dT_init = zeros(ni, nj, nk)
-    dT = compute_sensitivity!(
-      dT_init, p_n, nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, dz, dz_b, dz_t, dt,
-      rtol_adjoint, maxiter_cg
+    reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
+    dT_init = zeros(Float64, ni, nj, nk)
+    sensitivity_start = time()
+    dT, sens_iters = solve_sensitivity!(
+      dT_init, p_n, work,
+      nt, rho, cp_coeffs, k_coeffs,
+      dx, dy, Z, ΔZ, dt,
+      rtol=rtol_adjoint,
+      maxiter=maxiter_cg,
+      verbose=verbose,
+      par=par
     )
+    sensitivity_time = time() - sensitivity_start
+
+    total_iters = sum(sens_iters[2:end])
+    avg_iters = total_iters / (nt - 1)
+    @printf("  Sensitivity solve time: %.3f s (nt=%d steps, total_iters=%d, avg=%.1f)\n",
+              sensitivity_time, nt, total_iters, avg_iters)
 
     # Step 6: ステップサイズ計算
-    Sp = dT[2:nt, :, :, bottom_idx]  # (nt-1, ni, nj)
+    Sp = dT[:, :, bottom_idx, 2:nt]  # (ni, nj, nt-1)
     beta = compute_step_size(res_T, Sp, eps)
 
     # ステップサイズ制限（初回のみ）

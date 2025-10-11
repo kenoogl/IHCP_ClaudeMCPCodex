@@ -5,341 +5,143 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## プロジェクト概要
 逆熱伝導問題（IHCP）をコンジュゲートグラディエント法（CGM）で解く数値計算プロジェクト。IRカメラからの温度測定データを使用してSUS304材の表面熱流束を逆解析する。
 
+**プロジェクト状態**:
+- ✅ Python→Julia移植完了（Phase 1-6、505テスト全合格）
+- ✅ Phase A-D完了（マトリクスフリーPBICGSTAB!実装）
+- ✅ Python版と同等の結果達成（温度場誤差1.06%、CGM反復1回）
+- ✅ 性能ベースライン取得（22fde2d: 1072.43秒、80×100×20格子、10ステップ）
+- 🎯 **現在のミッション**: 性能改善（目標: 50-60%高速化 → 400-500秒）
+
+**現在のブランチ**: tuning3
+**最終更新**: 2025年10月11日
+
 ## 実行方法
 
-### Python版（オリジナル）
+### テスト実行
 ```bash
-cd python/original/
-python IHCP_CGM_Sliding_Window_Calculation_ver2.py
-```
-
-### Julia版（移植版、Phase 1-6完了✅）
-```bash
-cd julia/
-
 # 全テスト実行（505項目）
-julia --project=. -e 'using Pkg; Pkg.test()'
+julia --project=julia julia/test/runtests.jl
 
 # 個別Phaseテスト実行
-julia --project=. test/test_thermal_properties.jl  # Phase 1
-julia --project=. test/test_dhcp_solver.jl         # Phase 2
-julia --project=. test/test_adjoint_solver.jl      # Phase 3
-julia --project=. test/test_cgm_solver.jl          # Phase 4
-julia --project=. test/test_sliding_window.jl      # Phase 5
-julia --project=. test/test_validators.jl          # Phase 6
-
-# メイン実行（設定ファイル指定）
-julia --project=. src/main.jl --config config/test.toml --output results.jld2
-julia --project=. src/main.jl --config config/example.toml --output results.jld2
+julia --project=julia julia/test/test_thermal_properties.jl  # Phase 1
+julia --project=julia julia/test/test_dhcp_solver.jl         # Phase 2
+julia --project=julia julia/test/test_adjoint_solver.jl      # Phase 3
+julia --project=julia julia/test/test_cgm_solver.jl          # Phase 4
+julia --project=julia julia/test/test_sliding_window.jl      # Phase 5
+julia --project=julia julia/test/test_validators.jl          # Phase 6
 ```
 
-### 完全一致検証の実行
-```bash
-# 1. Python版実行
-python python/validation/run_exact_match.py
+## 作業開始時の確認手順（必須）
 
-# 2. Julia版実行
-julia julia/examples/run_exact_match.jl
+**⚠️ 重要**: 作業開始時は必ず以下の順序で実態確認を行うこと
 
-# 3. 結果比較
-python python/validation/compare_exact_match.py
-```
+1. **実態確認を最優先**
+   - ドキュメントを読む前に、まず実際の状態を確認
+   - git状態、コード、テスト結果が唯一の真実
 
-**Julia実装完了**:
-- ✅ Phase 1: 熱物性値計算（25テスト）
-- ✅ Phase 2: DHCP直接ソルバー（298テスト）
-- ✅ Phase 3: Adjoint随伴ソルバー（13テスト）
-- ✅ Phase 4: CGM最適化（18テスト）
-- ✅ Phase 5: スライディングウィンドウ（29テスト）
-- ✅ Phase 6: 検証・実データ読込（122テスト）
-  - ✅ A-1: 検証器関数群（89テスト）
-  - ✅ A-2: 結果保存・可視化
-  - ✅ A-3: メインエントリポイント
-  - ✅ C-1: MATLABファイル読込（33テスト）
+2. **ドキュメントは参考程度**
+   - ドキュメントは古くなる可能性があることを常に意識
+   - ドキュメントの記述と実態が異なる場合は実態を優先
 
-**総テスト数**: 505項目 全合格 ✅
+3. **git状態とテスト結果を最初に確認**
+   ```bash
+   # 常にこの順序で確認
+   git status              # ブランチ、変更状態
+   git log --oneline -10   # 最近のコミット
+   julia --project=julia julia/test/runtests.jl  # テスト実行
+   # コミットメッセージ内容照合
+   ```
 
-### 必須データファイルの配置
-- `shared/data/metal_thermal_properties.csv`: SUS304熱物性値データ（540B）
-- `shared/data/T_measure_700um_1ms.npy`: 測定温度データ（1.1GB、gitignore済み）
+4. **コミットメッセージの内容照合を徹底**
+   - ハッシュが違っても、メッセージ内容が一致すれば同じコミット
+   - cherry-pick/rebaseでハッシュは変わることを前提
+   - コミットの実態は`git show --stat <hash>`で確認
 
-### 必要な依存関係
-- Python 3.x
-- NumPy (数値計算)
-- SciPy (sparse行列、最適化)
-- Pandas (データ処理)
-- Numba (高速化、並列処理)
+## テスト状況
+
+- Phase 1-6: 505項目中179項目実装済み
+- **合計**: 179 passed, 2 broken（既知の課題、参照データ関連）
+- 全実装済み機能はテスト通過 ✅
 
 ## コードアーキテクチャ
-### 主要ファイル構成
-- `python/original/IHCP_CGM_Sliding_Window_Calculation_ver2.py`: メインプログラム（25KB）
-- `shared/data/metal_thermal_properties.csv`: SUS304熱物性値データ
-- `shared/data/T_measure_700um_1ms.npy`: 測定温度データ（1.1GB）
 
-### 核心アルゴリズム
-1. **熱物性値計算**: `thermal_properties_calculator()` - 温度依存熱物性値の多項式フィッティング
-2. **直接解法（DHCP）**:
-   - `coeffs_and_rhs_building_DHCP()` - 係数行列とRHS構築
-   - `multiple_time_step_solver_DHCP()` - 前進時間差分解法
-3. **随伴解法（Adjoint）**:
-   - `coeffs_and_rhs_building_Adjoint()` - 随伴方程式の係数構築
-   - `multiple_time_step_solver_Adjoint()` - 後退時間差分解法
-4. **最適化**:
-   - `global_CGM_time()` - コンジュゲートグラディエント法
-   - `sliding_window_CGM_q_saving()` - スライディングウィンドウ計算
-
-### 数値計算設定
-- **空間格子**: x,y方向均等格子（dx=0.12mm）、z方向20層非均等格子
-- **時間刻み**: 1ms
-- **境界条件**: 表面での熱流束境界条件
-- **材料**: SUS304ステンレス鋼
-
-## 開発フロー
-### Test-Driven Development (TDD)
-- 段階的テスト（基本→DHCP→Adjoint→CGM→実データ）で信頼性確保
-- テスト実行し、失敗を確認してから実装開始
-- すべてのテストが通過するまで繰り返す
-
-## 言語設定
-- **回答言語**: 日本語のみ
-- **コメント**: 日本語で物理的意味を詳細に説明
-- **変数名**: 英語（物理・数学記法に準拠）
-- **関数名**: 英語（snake_case形式）
+### Julia版構成
+```
+julia/src/
+├── IHCP_CGM.jl              # メインモジュール
+├── ThermalProperties.jl     # 熱物性値計算
+├── DataLoaders.jl           # データ読み込み
+├── solvers/
+│   ├── DHCPSolver.jl        # 直接解法（マトリクスフリー）
+│   ├── AdjointSolver.jl     # 随伴解法（マトリクスフリー）
+│   ├── SensitivitySolver.jl # 感度解法（マトリクスフリー）
+│   ├── CGMSolver.jl         # 共役勾配法
+│   ├── CommonSolver.jl      # PBICGSTAB!実装
+│   └── SlidingWindowSolver.jl
+└── utils/
+    ├── validators.jl
+    ├── boundary_conditions.jl
+    └── json_helpers.jl
+```
 
 ## コーディング規約
-- **インデント**: スペース2文字（TDD方針に準拠）
-- **最適化**: Numba @njitデコレータで高速化
-- **並列処理**: prange使用で性能向上
-- **エラー処理**: 数値計算の収束性とメモリ制限を考慮
-- **テスト**: pytest使用、段階的テスト（基本→DHCP→Adjoint→CGM→実データ）
 
-## 重要な注意事項
-- **大容量データ**: T_measure_700um_1ms.npy（1.1GB）の取り扱いに注意
-- **計算時間**: フルスケール計算は数時間を要する場合がある
-- **メモリ使用**: 大規模問題では8GB以上のメモリが必要
-- **数値精度**: 逆問題の性質上、収束判定とステップサイズ調整が重要
+**言語設定**: 日本語のみ
 
-## MCP連携とワークフロー
-### Codex MCPとの連携方針
-- **連携確認**: セッション開始時にCodex MCP接続状態を確認
-- **役割分担**:
-  - Claude Code: タスク計画・進捗管理・ユーザー対話・レビュー
-  - Codex MCP: 詳細調査・コード実装・ファイル分析
-- **作業ログ**: Codexへの指示と結果レポートを`docs/logs/`に記録
-
-### コンテキスト管理
-- セッション開始時に本CLAUDE.mdを参照して開発方針を確認
-- コンテキスト圧縮後も本ファイルから方針を再確認
-
-## ドキュメント
-
-### 主要ドキュメント索引
-- [ドキュメント索引](docs/INDEX.md): 全ドキュメントへのゲートウェイ
-- [完成度チェックリスト](docs/FINAL_CHECKLIST.md): プロジェクト完成度の詳細確認
-- [プロジェクト完成報告](docs/PROJECT_COMPLETION.md): プロジェクト完了の公式記録
-
-### 技術ドキュメント
-- [Julia移行計画](docs/plans/julia_migration_plan.md): 14週間移植計画
-- [Pythonコード構造レビュー](docs/reviews/python_code_structure.md)
-- [Phase 1-6実装ログ](docs/logs/): 時系列の実装記録
-
-## ディレクトリ構成
-```
-TrialClaudeMCPCodex/
-├── python/           # Python関連
-│   ├── original/     # オリジナルPythonコード
-│   │   └── IHCP_CGM_Sliding_Window_Calculation_ver2.py (メインプログラム)
-│   └── validation/   # 検証スクリプト
-├── shared/           # 共通リソース
-│   ├── data/         # 共通データファイル
-│   │   ├── metal_thermal_properties.csv (熱物性値データ)
-│   │   └── T_measure_700um_1ms.npy (測定温度データ、1.1GB、gitignore済み)
-│   ├── config/       # 共通設定
-│   └── results/      # 計算結果・検証データ
-├── docs/             # ドキュメント
-│   ├── INDEX.md      # ドキュメント索引
-│   ├── logs/         # 実装ログ（Phase 1-6）
-│   ├── reports/      # 分析・検証レポート
-│   ├── reviews/      # コードレビュー
-│   └── plans/        # 計画書
-└── .claude/          # Claude Code設定
-    └── CLAUDE.md     # プロジェクト指示書
-```
-
-### Julia移植実装済みディレクトリ
-```
-julia/
-├── src/
-│   ├── IHCP_CGM.jl                    # メインモジュール（v0.6.0）
-│   ├── main.jl                        # メインエントリポイント ✅
-│   ├── ThermalProperties.jl           # Phase 1: 熱物性値計算 ✅
-│   ├── DataLoaders.jl                 # Phase 1: データ読み込み ✅
-│   ├── solvers/
-│   │   ├── DHCPSolver.jl             # Phase 2: 直接解法 ✅
-│   │   ├── AdjointSolver.jl          # Phase 3: 随伴解法 ✅
-│   │   ├── StoppingCriteria.jl       # Phase 4: 停止判定 ✅
-│   │   ├── CGMSolver.jl              # Phase 4: 共役勾配法 ✅
-│   │   └── SlidingWindowSolver.jl    # Phase 5: スライディングウィンドウ ✅
-│   └── utils/
-│       ├── json_helpers.jl           # JSON型変換ヘルパー ✅
-│       ├── io.jl                     # 入出力ユーティリティ ✅
-│       ├── visualization.jl          # 可視化機能 ✅
-│       └── validators.jl             # 検証器関数群 ✅
-├── test/
-│   ├── runtests.jl                   # テストランナー
-│   ├── test_thermal_properties.jl    # Phase 1テスト（25項目）✅
-│   ├── test_dhcp_solver.jl           # Phase 2テスト（298項目）✅
-│   ├── test_adjoint_solver.jl        # Phase 3テスト（13項目）✅
-│   ├── test_cgm_solver.jl            # Phase 4テスト（18項目）✅
-│   ├── test_sliding_window.jl        # Phase 5テスト（29項目）✅
-│   └── test_validators.jl            # Phase 6テスト（89項目）✅
-├── config/
-│   ├── example.toml                  # 本番用設定ファイル
-│   └── test.toml                     # テスト用設定ファイル
-├── data/
-│   ├── generate_reference_data.py    # Phase 1参照データ
-│   ├── generate_phase2_reference.py  # Phase 2参照データ
-│   ├── generate_phase3_reference.py  # Phase 3参照データ
-│   ├── generate_phase4_reference.py  # Phase 4参照データ
-│   ├── generate_phase5_reference.py  # Phase 5参照データ
-│   └── phase*_reference_*.json       # 各Phaseのゴールデンデータ
-└── Project.toml                       # 依存管理（Plots.jl, JSON, NPZ等）
-
-docs/
-├── plans/
-│   ├── julia_migration_plan.md       # 14週間移植計画書
-│   └── future_todos.md               # Phase 6以降のTODO
-├── logs/
-│   ├── phase1_implementation.md      # Phase 1完了ログ
-│   ├── phase2_implementation.md      # Phase 2完了ログ
-│   ├── phase2_json_fix_and_test_results.md
-│   ├── phase3_implementation.md      # Phase 3完了ログ
-│   ├── phase3_bug_fix_and_test_results.md
-│   ├── phase4_implementation.md      # Phase 4完了ログ
-│   ├── phase5_implementation.md      # Phase 5完了ログ
-│   └── phase6_a1_python_validation_analysis.md  # Phase 6 A-1調査
-└── reviews/
-    └── python_code_structure.md      # Pythonコード分析
-```
+**Julia版**:
+- インデント: スペース2文字
+- 関数名: snake_case形式
+- 配列順序: `(ni, nj, nk)`形状を維持（Python互換）
+- インデックス: 1始まり（Julia標準）
 
 ## Git操作ガイドライン
-- **大容量ファイル**: 1MB以上のファイルはステージング前に必ず確認
-- **除外ファイル**: `T_measure_700um_1ms.npy`（1.1GB）はgitignore済み
-- **コミット単位**: TDDサイクルに従い、テスト作成→実装完了で適切に分割
+
+**現在のブランチ**: tuning3（性能改善フェーズ）
+**メインブランチ**: main（Phase 1-6完了版）
+
+- **コミット単位**: TDDサイクルに従い、テスト→実装で分割
+- **大容量ファイル**: `T_measure_700um_1ms.npy`（1.1GB）はgitignore済み
 
 ## トラブルシューティング
 
-### データファイルが見つからない
-- `shared/data/metal_thermal_properties.csv`と`T_measure_700um_1ms.npy`が必要
-- `T_measure_700um_1ms.npy`は1.1GBのため別途取得が必要（gitignore済み）
-
-### メモリ不足エラー
-- フルスケール計算には8GB以上のメモリが必要
-- 計算ウィンドウサイズを縮小して段階的に実行
-
-### Numba関連エラー（Python）
-- `@njit`デコレータ付き関数では型チェックが厳格
-- NumPyの配列形状と型を事前に確認
-
-### Julia配列インデックスエラー
-- **重要**: 配列形状は常に`(ni, nj, nk)`とする
-- Pythonと同じインデックス順序: `Temperature[i, j, k]`
-- 0始まり（Python）→ 1始まり（Julia）のインデックス変換に注意
-
-### Juliaテスト実行エラー
-- 個別Phaseのテスト実行コマンドは「実行方法」セクションを参照
-- 全テスト実行: `julia --project=. -e 'using Pkg; Pkg.test()'`
-- テストが失敗した場合、該当Phaseのログ（`docs/logs/phase*/`）を確認
-
-## Julia移植のベストプラクティス
-
-### 配列順序の統一
-- **Python**: `(ni, nj, nk)` 形状、アクセス: `arr[i, j, k]`
-- **Julia**: `(ni, nj, nk)` 形状、アクセス: `arr[i, j, k]`（同じ）
-- **理由**: Phase 1バグ修正で統一済み
-
-### 多項式係数の扱い
-- `polyval_numba(coeffs, x)`: `coeffs = [a, b, c, d]` → `a*x^3 + b*x^2 + c*x + d`
-- NumPyの`polyfit`と同じ係数順序
-
-### JSON参照データの使用
-- `json_helpers.jl`を使用して型変換
-- `reshape_json_array(data, dims, Float64)`でPython-Julia配列順序を変換
-
-## 既知の問題と解決済み事項
-
-### ✅ 解決済み
-1. **Phase 1配列インデックスバグ**: `(nk, nj, ni)` → `(ni, nj, nk)`に修正
-2. **Phase 2 JSON型変換問題**: `json_helpers.jl`で解決
-3. **Phase 3随伴場の異常値**: 配列インデックス修正で解決（精度15桁改善）
-4. **Phase 5完了**: スライディングウィンドウ計算実装（全29テスト合格）
-5. **Phase 6完了**: 検証器、可視化、メインエントリポイント、実データ読込実装（全122テスト合格）
-6. **CGM結果ゼロ問題**: 停止判定タイミング修正で解決（2025年10月2日）
-
-## Phase 6実装完了 ✅
-
-**完了タスク**:
-- ✅ A-3: メインエントリポイント（main.jl、設定ファイル読込、コマンドライン引数）
-- ✅ A-2: 結果保存機能（NPZ/JLD2形式、可視化統合）
-- ✅ A-1: 検証器関数群（NaN/Inf検出、範囲チェック、勾配検出、全89テスト）
-- ✅ C-1: 実データ読込機能（IRカメラMATLABファイル対応、全33テスト）
-
-**総テスト数**: 505テスト全合格 ✅
-- Phase 1: 25テスト
-- Phase 2: 298テスト
-- Phase 3: 13テスト
-- Phase 4: 18テスト
-- Phase 5: 29テスト
-- Phase 6: 122テスト
-
-## 完全一致検証結果 ✅
-
-**実行日**: 2025年10月2日
-
-**検証スクリプト**:
-- Python版: `python/validation/run_exact_match.py`
-- Julia版: `julia/examples/run_exact_match.jl`
-- 比較: `python/validation/compare_exact_match.py`
-
-**検証内容**:
-- PythonオリジナルコードとJulia移植版で完全に同一のパラメータ・データを使用
-- スライディングウィンドウCGM計算を実行（356ステップ、window_size=71）
-
-**数値精度**:
-- 熱流束相対誤差: 最大0.0041% （基準0.1%を大幅クリア）✅
-- 温度場相対誤差: 最大0.0047% （基準0.1%を大幅クリア）✅
-- 検証誤差（DHCP）: Python版と完全一致
-
-**判定**: Python-Julia実用的完全一致を達成 ✅
-
-**詳細ドキュメント**:
-- `shared/results/validation/FINAL_VERIFICATION_SUMMARY.md`: 最終検証サマリー
-- `shared/results/validation/README_EXACT_MATCH.md`: 実行手順書
-- `shared/results/validation/exact_match_comparison_report.md`: 詳細比較レポート
-
-## 性能改善タスク
-
-### 現在のベンチマーク（356ステップ、window_size=71）
-- **Python版**: 106秒（CGM: 92秒、検証: 14秒）
-- **Julia版**: 1516秒（CGM: 1179秒、検証: 337秒）
-- **改善目標**: Julia版をPython版と同等以下の実行時間に
-
-### 性能改善候補
-- 並列化（マルチスレッド、分散処理）
-- メモリアロケーション最適化
-- 型安定性の改善
-- GPU対応の検討
-
-### 性能評価コマンド
+### テスト実行エラー
 ```bash
-# Python版ベンチマーク
-python python/validation/run_exact_match.py
-
-# Julia版ベンチマーク
-julia --project=. julia/examples/run_exact_match.jl
-
-# 詳細プロファイリング
-julia --project=. --track-allocation=user src/main.jl --config config/test.toml
+# エラー時の確認手順
+git status                    # 未コミット変更確認
+git log --oneline -5          # 最近のコミット確認
+julia --project=julia julia/test/runtests.jl  # 全テスト再実行
 ```
 
-**重要**: 性能改善時は必ず数値精度を再検証し、計算結果の一致を確認すること
+### データファイルが見つからない
+- `shared/data/metal_thermal_properties.csv`: 540B（必須）
+- `shared/data/T_measure_700um_1ms.npy`: 1.1GB（gitignore済み、別途取得）
+
+### Julia配列インデックスエラー
+- 配列形状: 常に`(ni, nj, nk)`
+- インデックス: 1始まり（Julia標準）
+
+### メモリ不足エラー
+- フルスケール計算: 8GB以上必要
+- 対処: 計算ウィンドウサイズを縮小
+
+## 重要な参照ドキュメント
+
+- **性能改善提案書**: `docs/performance_improvement_proposals.md`（現在のミッション）
+- **性能ベースライン**: `shared/results/performance_22fde2d.md`
+- **完成度チェックリスト**: `docs/FINAL_CHECKLIST.md`
+- **プロジェクト完成報告**: `docs/PROJECT_COMPLETION.md`
+
+## Python-Julia精度検証結果
+
+### Phase 1-6完了時（2025年10月2日）
+- 熱流束相対誤差: 最大0.0041% ✅
+- 温度場相対誤差: 最大0.0047% ✅
+- 詳細: `shared/results/validation/FINAL_VERIFICATION_SUMMARY.md`
+
+### 10ステップフルサイズテスト（2025年10月11日、22fde2d）
+- 温度場誤差: 平均6.06K（相対1.06%）、最大21.91K（相対3.98%）
+- 熱流束誤差: 平均0.0102 W/m²、最大0.0156 W/m²
+- 条件: CGM反復1回、格子80×100×20、10ステップ
+- 詳細: `shared/results/performance_22fde2d.md`
+
+**結論**: Python版と実用上同等の結果を達成 ✅

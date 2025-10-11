@@ -88,6 +88,12 @@ docs/
 - [Julia移行計画](plans/julia_migration_plan.md)
 - [今後のTODO](plans/future_todos.md)
 
+### tuning3リカバリープロジェクト
+- [tuning3リカバリー計画書](tuning3_recovery_plan.md) - 全体計画・進捗チェックリスト
+- [tuning3クイックリファレンス](tuning3_quick_reference.md) - 実務手順・コマンド集
+- [tuning3 Phase C作業計画書](tuning3_phase_c_plan.md) - Phase C詳細計画（3セッション分割）
+- [tuning3 Phase B作業ログ](logs/tuning3_phase_b_session_log.md) - Phase B実施記録
+
 ---
 
 ## 🎓 プロジェクト完成ドキュメント

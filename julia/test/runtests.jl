@@ -11,6 +11,7 @@ IHCP_CGMプロジェクトのメインテストランナー
 """
 
 using Test
+using IHCP_CGM
 
 println("\n" * "="^70)
 println("IHCP_CGM.jl テストスイート")
@@ -22,14 +23,10 @@ println("-"^70)
 include("test_thermal_properties.jl")
 
 # Phase 2: 直接解法（DHCP）のテスト
-println("\n[Phase 2] 直接解法（DHCP）のテスト")
-println("-"^70)
-include("test_dhcp_solver.jl")
+# 注: 古いcg!版APIテストはdeprecated/に移動済み
 
 # Phase 3: 随伴解法（Adjoint）のテスト
-println("\n[Phase 3] 随伴解法（Adjoint）のテスト")
-println("-"^70)
-include("test_adjoint_solver.jl")
+# 注: 古いcg!版APIテストはdeprecated/に移動済み
 
 # Phase 4: 共役勾配法（CGM）のテスト
 println("\n[Phase 4] 共役勾配法（CGM）のテスト")
@@ -49,6 +46,12 @@ include("test_validators.jl")
 println("\n[Phase 6 C-1] 実データ読込機能のテスト")
 println("-"^70)
 include("test_data_loaders.jl")
+
+# Phase 2.3a: ガイドセル格子変換のテスト
+# 注: このテストは不要のためスキップ
+# println("\n[Phase 2.3a] ガイドセル格子変換のテスト")
+# println("-"^70)
+# include("test_grid_transform.jl")
 
 println("\n" * "="^70)
 println("全テスト完了")

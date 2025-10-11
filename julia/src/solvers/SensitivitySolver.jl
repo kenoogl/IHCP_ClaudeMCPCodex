@@ -1,18 +1,14 @@
 """
-DHCPSolver.jl
+SensitivitySolver.jl
 
-直接熱伝導問題（DHCP）ソルバー
-
-陰解法による熱伝導方程式の数値解法：
-    (I - α∇²)T^(n+1) = T^n + q_boundary
-    α = (k·dt) / (ρ·cp·dx²)
+感度問題ソルバー
 
 
 主要関数:
-- solve_dhcp!: 複数時間ステップCG求解（ホットスタート対応）
+- solve_sensitivity!: 複数時間ステップCG求解（ホットスタート対応）
 """
 
-module DHCPSolver
+module SensitivitySolver
 
 using FLoops
 using Printf
@@ -36,14 +32,14 @@ using ..RHSCore: calRHS_core!
 import ..CommonSolver
 using ..CommonSolver: PBiCGSTAB!
 
-export solve_dhcp!
+export solve_sensitivity!
 
 """
 順問題の境界条件  
 Z下面: 断熱、Z上面: 熱流束、側面: 断熱
 """
 
-function set_dhcp_bc_parameters(nk::Int)
+function set_sensitivity_bc_parameters(nk::Int)
     x_minus_bc = adiabatic_bc()
     x_plus_bc  = adiabatic_bc()
     y_minus_bc = adiabatic_bc()
@@ -79,7 +75,7 @@ function calRHS!(wk::WorkBuffers,
     ΔZ::Vector{Float64},
     z_range::Vector{Int64},
     qsrf::AbstractArray{Float64,2},
-    q_dist::Bool,
+    distribution::Bool,
     ρ::Float64,
     par::String
     )
@@ -88,8 +84,8 @@ function calRHS!(wk::WorkBuffers,
     SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
     backend = get_backend(par)
 
-    # DHCP固有: Z上面の熱流束分布
-    if q_dist == true
+    # Sensitivity固有: Z上面の熱流束分布（DHCPと同じ処理）
+    if distribution == true
         let k = z_ed, a = 1.0 / ΔZ[z_ed]
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
                 wk.b[i,j,k] -= qsrf[i-1,j-1] * a
@@ -97,22 +93,22 @@ function calRHS!(wk::WorkBuffers,
         end
     end
 
-    # DHCP固有: 最終RHS計算（内部熱源項含む）
+    # Sensitivity固有: 最終RHS計算（内部熱源項なし）
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         wk.b[i,j,k] = -( ddt * wk.θ[i,j,k]
-                        + (wk.hsrc[i,j,k] + wk.b[i,j,k]) / (ρ * wk.cp[i,j,k])  )
+                        + wk.b[i,j,k] / (ρ * wk.cp[i,j,k])  )
     end
 
 end
 
 
 """
-DHCP（直接熱伝導問題）ソルバー
+Sensitivity（感度問題）ソルバー
 
-各時間ステップで、前ステップ温度から熱物性値計算と反復求解
+微小な熱流束の変化が裏面S2温度に及ぼす影響(感度)を計算
 
 # 引数
-T_prev: 前時刻の温度場 (ni, nj, nk) [K]
+T_initial: 初期温度場 (ni, nj, nk) [K]
 q_surface: 表面熱流束 (ni, nj, nt-1) [W/m²] 
 work: ワーク配列群 (ni+2, nj+2, nk+2)
 nt: 時間ステップ数
@@ -129,9 +125,9 @@ T_all: 新時刻の温度場 (ni, nj, nk, nt) [K]
 iter_counts: 各時間ステップの反復回数 (nt) [回]
 """
 
-function solve_dhcp!(
+function solve_sensitivity!(
   T_initial::Array{Float64,3},
-  q_surface::Array{Float64,3},
+  q_surf::Array{Float64,3},
   wk::WorkBuffers,
   nt::Int,
   ρ::Float64,
@@ -150,6 +146,7 @@ function solve_dhcp!(
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
   Δh = (dx, dy, 1.0) # 1.0はダミー
+  backend = get_backend(par)
 
   T_all = zeros(Float64, ni, nj, nk, nt)
   T_all[:, :, :, 1] = T_initial
@@ -159,17 +156,16 @@ function solve_dhcp!(
 
   if verbose
     println("="^60)
-    println("Start DHCP direct solver")
+    println("Start Sensitivity solver")
     println("="^60)
     println("格子: $(ni)×$(nj)×$(nk) (N=$(N))")
     println("時間ステップ: $(nt), dt=$(dt)s")
     println("CG許容誤差: rtol=$(rtol), maxiter=$(maxiter)")
     println("="^60)
   end
-  
 
    # PBICGSTAB 初期値設定
-  for k in 1:nk, j in 1:nj, i in 1:ni
+  @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
     wk.θ[i+1, j+1, k+1] = T_initial[i, j, k]
     wk.mask[i+1, j+1, k+1] = 1.0
   end
@@ -178,11 +174,11 @@ function solve_dhcp!(
   set_properties!(T_initial, wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
   # Boundary condition
-  z_range, bc_set = set_dhcp_bc_parameters(nk)
+  z_range, bc_set = set_sensitivity_bc_parameters(nk)
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
   HF, HT = set_BC_coef(bc_set) # 時間変化なし
-  
+
 
 # 時間積分ループ
   for t in 2:nt
@@ -196,7 +192,7 @@ function solve_dhcp!(
 
     # work.b (RHS)の計算
     calRHS!(wk, HF, dx, dy, dt, ΔZ, z_range,
-      @view(q_surface[:, :, t-1]),
+      @view(q_surf[:, :, t-1]),
       true, ρ, par)
 
 
@@ -220,7 +216,6 @@ function solve_dhcp!(
     end
 
     # ガイドセルを除いて内点データを返す
-    backend = get_backend(par)
     @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
       T_all[i, j, k, t] = wk.θ[i+1, j+1, k+1]
     end
@@ -229,7 +224,7 @@ function solve_dhcp!(
 
   if verbose
     println("="^60)
-    println("DHCP直接ソルバー完了")
+    println("Sensitivityソルバー完了")
     println("  最終温度範囲: $(minimum(T_all)) - $(maximum(T_all)) K")
     println("="^60)
   end
@@ -239,4 +234,4 @@ end
 
 
 
-end  # module DHCPSolver
+end  # module SensitivitySolver

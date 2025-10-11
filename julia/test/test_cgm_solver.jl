@@ -13,15 +13,10 @@ Phase 4テスト: CGMソルバー
 using Test
 using JSON
 
-# モジュールのパスを追加
-push!(LOAD_PATH, joinpath(@__DIR__, "../src"))
-
-# モジュール読み込み（重複定義を回避）
-if !isdefined(Main, :IHCP_CGM)
-  include("../src/IHCP_CGM.jl")
-end
-
-using .IHCP_CGM
+# IHCP_CGMモジュールとその関数をインポート
+using IHCP_CGM
+using IHCP_CGM: solve_cgm!, WorkBuffers, convert_to_guard_cell_grid
+using IHCP_CGM.StoppingCriteria: check_discrepancy, check_plateau
 
 
 """
@@ -100,10 +95,18 @@ end
     T_init = reshape(T_init_flat, (ni, nj, nk))
 
     Y_obs_flat = Float64[x for sublist in input["Y_obs"] for subsublist in sublist for x in subsublist]
-    Y_obs = reshape(Y_obs_flat, (nt, ni, nj))
+    Y_obs_tmp = reshape(Y_obs_flat, (nt, ni, nj))
+    Y_obs = permutedims(Y_obs_tmp, (2, 3, 1))  # Phase 2.2: (nt,ni,nj) → (ni,nj,nt)
 
     q_init_flat = Float64[x for sublist in input["q_init"] for subsublist in sublist for x in subsublist]
-    q_init = reshape(q_init_flat, (nt - 1, ni, nj))
+    q_init_tmp = reshape(q_init_flat, (nt - 1, ni, nj))
+    q_init = permutedims(q_init_tmp, (2, 3, 1))  # Phase 2.2: (nt-1,ni,nj) → (ni,nj,nt-1)
+
+    # WorkBuffers作成（ガイドセル含む）
+    wk = WorkBuffers(ni+2, nj+2, nk+2)
+
+    # ガイドセルグリッド変換
+    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
 
     # CGM実行
     cgm_params = (
@@ -123,14 +126,19 @@ end
 
     q_final, T_cal_final, J_hist = solve_cgm!(
       T_init, Y_obs, q_init,
-      dx, dy, dz, dz_b, dz_t, dt,
+      wk,
+      dx, dy,
+      Z, ΔZ,
+      dt,
       rho, cp_coeffs, k_coeffs;
-      params = cgm_params
+      params = cgm_params,
+      par = "sequential"
     )
 
     # 参照データと比較
     q_final_ref_flat = Float64[x for sublist in output["q_final"] for subsublist in sublist for x in subsublist]
-    q_final_ref = reshape(q_final_ref_flat, (nt - 1, ni, nj))
+    q_final_ref_tmp = reshape(q_final_ref_flat, (nt - 1, ni, nj))
+    q_final_ref = permutedims(q_final_ref_tmp, (2, 3, 1))  # Phase 2.2: (nt-1,ni,nj) → (ni,nj,nt-1)
 
     J_hist_ref = convert(Vector{Float64}, output["J_hist"])
     n_iter_ref = Int(output["n_iterations"])

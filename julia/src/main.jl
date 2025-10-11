@@ -13,7 +13,6 @@ IHCP CGMソルバー メインエントリポイント
 """
 
 using ArgParse
-using ProgressMeter
 using Logging
 using Printf
 using LinearAlgebra
@@ -96,7 +95,7 @@ end
 """
     setup_threads(args::Dict)
 
-スレッド数を設定
+スレッド数を設定 >> コマンドラインで指定する方式に変更
 """
 function setup_threads(args::Dict)
     if args["threads"] !== nothing
@@ -106,6 +105,8 @@ function setup_threads(args::Dict)
         @info "BLASスレッド数: $(BLAS.get_num_threads()) (自動)"
     end
 end
+
+
 
 """
     run_full_calculation(config::Dict, output_file::String) -> Int
@@ -186,9 +187,15 @@ function run_full_calculation(config::Dict, output_file::String)
             dz_b[k] = z_centers[k] - z_centers[k-1]
         end
 
+        @info @sprintf("IHCP Original")
         @info @sprintf("  格子点数: (%d, %d, %d)", prob["ni"], prob["nj"], prob["nk"])
         @info @sprintf("  格子幅: dx=%.2e, dy=%.2e", prob["dx"], prob["dy"])
         @info @sprintf("  z方向格子幅: %d層, 表面=%.2e, 底面=%.2e", length(dz), dz[1], dz[end])
+
+        Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+        @info @sprintf("IHCP-Heat3d")
+        #println(Z)
+        #println(ΔZ)
 
         # 入力データ読み込み
         @info "\n入力データ読み込み中..."
@@ -221,12 +228,12 @@ function run_full_calculation(config::Dict, output_file::String)
         end
 
         # Y_obsの検証とreshape
-        # 読み込まれた形状が (ni, nj, nt) の場合、(nt, ni, nj) に変換
+        # 読み込まれた形状が (nt, ni, nj) の場合、(ni, nj, nt) に変換
         if ndims(Y_obs) == 3
-            if size(Y_obs, 1) == prob["ni"] && size(Y_obs, 2) == prob["nj"]
-                # (ni, nj, nt) → (nt, ni, nj)
-                Y_obs = permutedims(Y_obs, (3, 1, 2))
-                @info "  観測温度を (nt, ni, nj) 形式に変換しました"
+            if size(Y_obs, 2) == prob["ni"] && size(Y_obs, 3) == prob["nj"]
+                # (nt, ni, nj) → (ni, nj, nt)
+                Y_obs = permutedims(Y_obs, (2, 3, 1))
+                @info "  観測温度を (ni, nj, nt) 形式に変換しました"
             end
         end
 
@@ -254,23 +261,24 @@ function run_full_calculation(config::Dict, output_file::String)
         @info @sprintf("  総時間ステップ数: %d", nt_total)
         @info @sprintf("  ウィンドウ数: %d", n_windows)
 
+        # PBICGSTABソルバー 配列確保
+        SZ = (prob["ni"]+2, prob["nj"]+2, prob["nk"]+2)
+        work = WorkBuffers(SZ)
+
         # メモリ使用量の推定
         element_size = sizeof(Float64)
-        spatial_size = prob["ni"] * prob["nj"]
+        spatial_size = SZ[1]*SZ[2]*SZ[3]
         q_memory_mb = spatial_size * nt_total * element_size / 1e6
         @info @sprintf("  推定メモリ使用量（q配列）: %.2f MB", q_memory_mb)
 
-        # ディスク空き容量チェック
-        required_disk_mb = q_memory_mb * 2  # 余裕を持って2倍
-        check_disk_space(required_disk_mb)
 
         # 計算開始
         println("\n計算開始: $(now())")
         start_time = time()
 
         q_global, windows_info = solve_sliding_window_cgm(
-            Y_obs, T_init,
-            prob["dx"], prob["dy"], dz, dz_b, dz_t, prob["dt"],
+            Y_obs, T_init, work,
+            prob["dx"], prob["dy"], Z, ΔZ, prob["dt"],
             mat["rho"], mat["cp_coeffs"], mat["k_coeffs"],
             window_size, overlap, q_init_value, max_iter
         )
