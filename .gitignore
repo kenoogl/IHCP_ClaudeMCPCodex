@@ -225,3 +225,9 @@ shared/results/*.png
 
 # プロット画像（大容量）
 julia/plots/
+
+# アーカイブディレクトリ（整理済みの旧ファイル）
+archive/
+
+# Julia internal directory
+julia/.juliaup/
