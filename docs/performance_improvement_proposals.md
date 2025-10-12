@@ -856,6 +856,57 @@ end
 
 ## 🎉 実装完了レポート
 
+### ✅ Phase 1-A: 型安定化（2025-10-12実装完了）
+
+**実装者**: Codex + Claude Code
+**実装ブランチ**: tuning5
+**コミット**: 7ac963b
+**レポート**: `shared/results/performance_tuning5_type_stability.md`
+
+#### 実装内容
+
+1. **型パラメータ化**:
+   - 全ソルバーに`T <: AbstractFloat`導入
+   - Float64リテラルを`zero(T)`, `one(T)`, `inv(T)`に置き換え
+   - 型推論の改善
+
+2. **Val型ディスパッチ**:
+   - `smoother`引数を`:none`, `:gs`シンボルに変更
+   - コンパイル時特殊化による実行時ディスパッチ排除
+
+3. **コード品質向上**:
+   - 型安定性チェックツール作成（`julia/scripts/check_type_stability.jl`）
+   - @code_warntypeによる検証
+
+#### 変更ファイル
+
+- `julia/src/solvers/CommonSolver.jl`: Val型dispatch、型パラメータ化
+- `julia/src/solvers/DHCPSolver.jl`: 型アノテーション追加
+- `julia/src/solvers/AdjointSolver.jl`: 型アノテーション追加
+- `julia/src/solvers/SensitivitySolver.jl`: 型アノテーション追加
+- `julia/src/solvers/CGMSolver.jl`: 型アノテーション追加
+
+**変更統計**: -447行/+411行
+
+#### 性能結果
+
+- **実行時間**: 1,067.13秒（ベースライン比: -5.30秒、0.49%改善）
+- **Phase 0比**: -1.61秒（0.15%改善）
+- **CG反復回数**: 変化なし（数値精度完全維持）
+- **テスト**: 505件全通過
+
+#### 考察
+
+型安定化による改善は0.15%と小幅ですが、コンパイラ最適化の基盤が整備されました。今後の最適化（SIMD、インライン化、メモリアクセス）との相乗効果が期待できます。
+
+#### 次のアクション
+
+- ✅ テスト実行（完了）
+- ✅ ベンチマーク実施（完了）
+- ✅ 性能レポート作成（完了）
+
+---
+
 ### ✅ Phase 0: 配列アロケーション削減（2025-10-12実装完了）
 
 **実装者**: Codex (GPT-5ベース)

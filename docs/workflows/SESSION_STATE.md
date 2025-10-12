@@ -25,14 +25,15 @@
    - セッション管理ガイド
    - ベンチマークファイル整理
 
-3. **Phase 1-A: 型安定化**（✅ 完了、プッシュ済み）
+3. **Phase 1-A: 型安定化**（✅ 完了、プッシュ済み、ベンチマーク完了）
    - ブランチ: tuning5
-   - コミット: 7ac963b
+   - コミット: 7ac963b, bba89d3
    - 型パラメータT <: AbstractFloat導入
    - Val型によるsmoother dispatch
    - 型安定性チェックスクリプト作成
    - テスト: 505件全通過
-   - 期待効果: 10-20%改善
+   - **性能**: 1,067.13秒（ベースライン比0.49%改善、Phase 0比0.15%改善）
+   - レポート: shared/results/performance_tuning5_type_stability.md
 
 ### 進行中の作業
 
@@ -61,8 +62,19 @@
 
 - **実行時間**: 1068.74秒
 - **改善**: -3.69秒（0.34%）
-- **採用判断**: SlidingWindow実行（複数反復）での効果期待
 - **詳細**: shared/results/performance_tuning4_allocation_reduction.md
+
+### Phase 1-A結果
+
+- **実行時間**: 1067.13秒
+- **改善**: ベースライン比-5.30秒（0.49%）、Phase 0比-1.61秒（0.15%）
+- **CG反復**: 変化なし（数値精度維持）
+- **詳細**: shared/results/performance_tuning5_type_stability.md
+
+### 累積改善（Phase 0 + Phase 1-A）
+
+- **総改善**: -5.30秒（0.49%）
+- **ベースライン**: 1072.43秒 → **現在**: 1067.13秒
 
 ### 性能改善ロードマップ
 
