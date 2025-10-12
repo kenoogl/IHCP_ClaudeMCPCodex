@@ -101,16 +101,17 @@ function solve_sliding_window_cgm(
   rtol_dhcp::Float64=1e-6,
   maxiter_dhcp::Int=20000,
   rtol_adjoint::Float64=1e-8,
-  maxiter_adjoint::Int=20000
+  maxiter_adjoint::Int=20000,
+  use_window_continuation::Bool=true
 )
 
   ni, nj, nt = size(Y_obs)  # メモリレイアウト最適化: Phase 2.2
-  T_init = copy(T0)
-  nk = size(T_init, 3)
+  T_baseline = copy(T0)
 
   start_idx = 0  # 0始まり（Pythonと同じ）
   q_total = []   # Vector{Array{Float64,3}}型 CHECK: メモリ確保必要？？
   prev_q_win = nothing
+  prev_T_final = nothing
 
   windows_info = WindowInfo[]
 
@@ -135,6 +136,10 @@ function solve_sliding_window_cgm(
     Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]  # メモリレイアウト最適化: Phase 2.2
 
     println("\n--- ウィンドウ $(length(windows_info)+1): [$start_idx, $end_idx] (長さ=$max_L) ---")
+
+    if !use_window_continuation
+      prev_q_win = nothing
+    end
 
     # 初期熱流束の設定（Pythonオリジナル: 1583-1592行、メモリレイアウト最適化: Phase 2.2）
     if isnothing(prev_q_win)
@@ -162,6 +167,16 @@ function solve_sliding_window_cgm(
       end
     end
 
+    if use_window_continuation && !isnothing(prev_T_final) && !isnothing(prev_q_win)
+      println("初期温度場: 前ウィンドウの最終温度を継承")
+    end
+
+    T_init_window = if use_window_continuation && !isnothing(prev_T_final) && length(windows_info) > 0
+      prev_T_final
+    else
+      T_baseline
+    end
+
     # CGM実行（Pythonオリジナル: 1595-1598行）
     # paramsでCGM反復数を指定
     cgm_params = (
@@ -173,12 +188,16 @@ function solve_sliding_window_cgm(
       maxiter_adjoint=maxiter_adjoint
     )
     q_win, T_cal_win, J_hist = solve_cgm!(
-      T_init, Y_obs_win, q_init_win, work,
+      T_init_window, Y_obs_win, q_init_win, work,
       dx, dy, Z, ΔZ,
       dt, rho, cp_coeffs, k_coeffs; params=cgm_params
     )
 
-    prev_q_win = copy(q_win)
+    if use_window_continuation
+      prev_q_win = copy(q_win)
+    else
+      prev_q_win = nothing
+    end
 
     # 結果の拼接（オーバーラップ平均化）（Pythonオリジナル: 1603-1612行、メモリレイアウト最適化: Phase 2.2）
     overlap_steps_actual = 0
@@ -215,7 +234,11 @@ function solve_sliding_window_cgm(
 
     # 温度場の継承（Pythonオリジナル: 1614行、メモリレイアウト最適化: Phase 2.2）
     # solve_cgm!は(ni, nj, nk, nt)を返すので、最終時刻を取得
-    T_init = copy(T_cal_win[:, :, :, end])
+    if use_window_continuation
+      prev_T_final = copy(T_cal_win[:, :, :, end])
+    else
+      prev_T_final = nothing
+    end
 
     # ウィンドウ情報の保存
     win_info = WindowInfo(

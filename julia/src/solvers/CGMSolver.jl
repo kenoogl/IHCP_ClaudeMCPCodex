@@ -119,7 +119,8 @@ function compute_gradient!(
   par::String="sequential",
   gradient_buffer::Union{Nothing,Array{T,3}}=nothing,
   adjoint_buffer::Union{Nothing,Array{T,4}}=nothing,
-  iter_buffer::Union{Nothing,Vector{Int}}=nothing
+  iter_buffer::Union{Nothing,Vector{Int}}=nothing,
+  initial_strategy::Symbol=:residual
 ) where {T <: AbstractFloat}
   ni, nj, nk, nt = size(T_cal)
 
@@ -129,7 +130,8 @@ function compute_gradient!(
     dx, dy, Z, ΔZ, dt;
     rtol=rtol, maxiter=maxiter, verbose=verbose, par=par,
     lambda_buffer=adjoint_buffer,
-    iter_buffer=iter_buffer
+    iter_buffer=iter_buffer,
+    initial_strategy=initial_strategy
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
@@ -258,6 +260,11 @@ function solve_cgm!(
   eps = T(get(params, :eps, 1e-12))
   beta_max = T(get(params, :beta_max, 1e8))
   verbose = get(params, :verbose, true)
+  dhcp_use_previous_solution = get(params, :dhcp_use_previous_solution, true)
+  dhcp_extrapolation = get(params, :dhcp_extrapolation, :none)
+  sensitivity_use_previous_solution = get(params, :sensitivity_use_previous_solution, true)
+  sensitivity_extrapolation = get(params, :sensitivity_extrapolation, :none)
+  adjoint_initial_strategy = get(params, :adjoint_initial_strategy, :residual)
 
   # 問題サイズ（メモリレイアウト最適化: Phase 2.2）
   ni, nj, nt = size(Y_obs)
@@ -313,7 +320,9 @@ function solve_cgm!(
       dx, dy, Z, ΔZ, dt;
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=verbose, par=par,
       T_buffer=dhcp_T_buffer,
-      iter_buffer=dhcp_iter_buffer
+      iter_buffer=dhcp_iter_buffer,
+      use_previous_solution=dhcp_use_previous_solution,
+      extrapolation=dhcp_extrapolation
     )
     dhcp_time = time() - dhcp_start
 
@@ -340,7 +349,8 @@ function solve_cgm!(
       rtol=rtol_adjoint, maxiter=maxiter_cg, verbose=verbose, par=par,
       gradient_buffer=grad,
       adjoint_buffer=adjoint_buffer,
-      iter_buffer=adjoint_iter_buffer
+      iter_buffer=adjoint_iter_buffer,
+      initial_strategy=adjoint_initial_strategy
     )
     gradient_time = time() - gradient_start
 
@@ -386,7 +396,9 @@ function solve_cgm!(
       verbose=verbose,
       par=par,
       T_buffer=sensitivity_buffer,
-      iter_buffer=sensitivity_iter_buffer
+      iter_buffer=sensitivity_iter_buffer,
+      use_previous_solution=sensitivity_use_previous_solution,
+      extrapolation=sensitivity_extrapolation
     )
     sensitivity_time = time() - sensitivity_start
 

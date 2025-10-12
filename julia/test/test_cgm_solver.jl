@@ -121,7 +121,8 @@ end
       dire_reset_every = 5,
       eps = 1e-12,
       beta_max = 1e8,
-      verbose = false
+      verbose = false,
+      adjoint_initial_strategy = :previous
     )
 
     q_final, T_cal_final, J_hist = solve_cgm!(

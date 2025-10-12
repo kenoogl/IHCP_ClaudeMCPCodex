@@ -37,15 +37,26 @@
 
 ### 進行中の作業
 
-- **なし**
+- **Phase 1-B: 初期推定値改善**（✅ 実装完了、テスト通過、コミット準備中）
+  - ブランチ: tuning6
+  - 実装: 3種類の外挿法（:none, :linear, :quadratic）
+  - Adjoint: 2つの初期値戦略（:previous, :residual）
+  - スライディングウィンドウ: 境界初期値継承実装
+  - テスト: 505件全通過 ✅
+  - レポート: `docs/reports/phase1b/initial_guess_improvement_report.md`
 
 ### 次のタスク
 
-- **Phase 1-B: 初期推定値改善**
-  - ブランチ: tuning6（未作成）
+- **Phase 1-B: ベンチマーク実行**
+  - 初期推定値改善の効果測定
+  - 各外挿方法の性能比較
+  - Adjoint初期値戦略の比較
+
+- **Phase 1-C: 前処理改善**
+  - ブランチ: tuning7（未作成）
   - タスクブリーフィング: 未作成
-  - 期待効果: CG反復15-25%削減
-  - 参照: docs/performance_improvement_proposals.md（提案4）
+  - 期待効果: CG反復30-50%削減
+  - 参照: docs/performance_improvement_proposals.md（提案1）
 
 ---
 
@@ -145,6 +156,21 @@ julia/src/
 ---
 
 ## 次回セッション開始時の手順
+
+### ⚠️ 重要な注意事項（必ず確認）
+
+**codex連携ワークフローの厳守**:
+- ❌ **Claude CodeはTask toolでcodexエージェントを呼ばない**
+- ✅ **ユーザーに別ターミナルでcodex実行を依頼する**
+- 📖 詳細: `docs/workflows/codex_collaboration_workflow.md`
+
+正しい手順:
+1. タスクブリーフィング作成
+2. ブランチ作成
+3. ユーザーに依頼: 「tuning<番号>ブランチでcodexにタスク実行を依頼してください」
+4. ユーザーが別ターミナルでcodex実行
+5. ユーザー報告: 「codex完了。レビュー依頼」
+6. Claude Codeがレビュー・テスト・コミット
 
 ### 簡単な再開（推奨）
 

@@ -127,6 +127,38 @@ T_all: 新時刻の温度場 (ni, nj, nk, nt) [K]
 iter_counts: 各時間ステップの反復回数 (nt) [回]
 """
 
+const VALID_EXTRAPOLATION_METHODS = (:none, :linear, :quadratic)
+
+@inline function apply_temporal_initial_guess!(
+  θ::AbstractArray{T,3},
+  history::AbstractArray{T,4},
+  t::Int,
+  use_previous_solution::Bool,
+  extrapolation::Symbol
+) where {T}
+  if !use_previous_solution
+    fill!(θ, zero(T))
+    return
+  end
+
+  ni, nj, nk, _ = size(history)
+  interior = @view θ[2:ni+1, 2:nj+1, 2:nk+1]
+
+  if extrapolation === :quadratic && t >= 4
+    prev1 = @view history[:, :, :, t-1]
+    prev2 = @view history[:, :, :, t-2]
+    prev3 = @view history[:, :, :, t-3]
+    @. interior = 3 * prev1 - 3 * prev2 + prev3
+  elseif (extrapolation === :linear || extrapolation === :quadratic) && t >= 3
+    prev1 = @view history[:, :, :, t-1]
+    prev2 = @view history[:, :, :, t-2]
+    @. interior = 2 * prev1 - prev2
+  else
+    prev1 = @view history[:, :, :, t-1]
+    interior .= prev1
+  end
+end
+
 function solve_sensitivity!(
   T_initial::AbstractArray{T,3},
   q_surf::AbstractArray{T,3},
@@ -145,7 +177,9 @@ function solve_sensitivity!(
   verbose::Bool=false,
   par::String="sequential",
   T_buffer::Union{Nothing,Array{T,4}}=nothing,
-  iter_buffer::Union{Nothing,Vector{Int}}=nothing
+  iter_buffer::Union{Nothing,Vector{Int}}=nothing,
+  use_previous_solution::Bool=true,
+  extrapolation::Symbol=:none
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
@@ -178,6 +212,10 @@ function solve_sensitivity!(
     println("="^60)
   end
 
+  if extrapolation ∉ VALID_EXTRAPOLATION_METHODS
+    throw(ArgumentError("Unsupported extrapolation=:$(extrapolation). Use one of $(VALID_EXTRAPOLATION_METHODS)."))
+  end
+
    # PBICGSTAB 初期値設定
   @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
     wk.θ[i+1, j+1, k+1] = T_initial[i, j, k]
@@ -200,6 +238,8 @@ function solve_sensitivity!(
 
     # 前ステップ温度から熱物性値計算
     set_properties!(@view(T_all[:, :, :, t-1]), wk.cp, wk.λ, cp_coeffs, k_coeffs)
+
+    apply_temporal_initial_guess!(wk.θ, T_all, t, use_previous_solution, extrapolation)
 
     # Z+方向のみ時間とともに更新
     apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_plus, :z_plus)

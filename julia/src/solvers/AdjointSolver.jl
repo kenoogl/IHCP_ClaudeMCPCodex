@@ -50,6 +50,43 @@ using ..CommonSolver: PBiCGSTAB!
 
 export solve_adjoint_mf!
 
+const VALID_ADJOINT_STRATEGIES = (:previous, :residual)
+
+@inline function apply_adjoint_initial_guess!(
+  θ::AbstractArray{T,3},
+  λ_history::AbstractArray{T,4},
+  T_cal::AbstractArray{T,4},
+  Y_obs::AbstractArray{T,3},
+  t::Int,
+  nt::Int,
+  strategy::Symbol
+) where {T}
+  ni, nj, nk, _ = size(λ_history)
+  interior = @view θ[2:ni+1, 2:nj+1, 2:nk+1]
+
+  if strategy === :previous
+    if t == nt - 1
+      fill!(θ, zero(T))
+    else
+      next_field = @view λ_history[:, :, :, t+1]
+      interior .= next_field
+    end
+  elseif strategy === :residual
+    if t == nt - 1
+      fill!(θ, zero(T))
+      surface = @view interior[:, :, 1]
+      obs_plane = @view Y_obs[:, :, t]
+      calc_plane = @view T_cal[:, :, 1, t]
+      @. surface = obs_plane - calc_plane
+    else
+      next_field = @view λ_history[:, :, :, t+1]
+      interior .= next_field
+    end
+  else
+    throw(ArgumentError("Unsupported adjoint initial strategy: $(strategy). Use one of $(VALID_ADJOINT_STRATEGIES)."))
+  end
+end
+
 
 """
 逆問題の境界条件  
@@ -185,7 +222,8 @@ function solve_adjoint_mf!(
   verbose::Bool=false,
   par::String="sequential",
   lambda_buffer::Union{Nothing,Array{T,4}}=nothing,
-  iter_buffer::Union{Nothing,Vector{Int}}=nothing
+  iter_buffer::Union{Nothing,Vector{Int}}=nothing,
+  initial_strategy::Symbol=:residual
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_cal[:, :, :, 1])
   N = ni * nj * nk
@@ -212,6 +250,10 @@ function solve_adjoint_mf!(
     println("  時間ステップ: $nt")
     println("  CG: rtol=$rtol, maxiter=$maxiter")
   end
+
+  if initial_strategy ∉ VALID_ADJOINT_STRATEGIES
+    throw(ArgumentError("Unsupported initial_strategy=:$(initial_strategy). Use one of $(VALID_ADJOINT_STRATEGIES)."))
+  end
   
 
   # PBICGSTAB 初期値設定
@@ -237,6 +279,8 @@ function solve_adjoint_mf!(
 
     # 温度場から熱物性値計算（Pythonオリジナル1332行: T_cal[t]）
     set_properties!(@view(T_cal[:, :, :, t]), wk.cp, wk.λ, cp_coeffs, k_coeffs)
+
+    apply_adjoint_initial_guess!(wk.θ, λa_all, T_cal, Y_obs, t, nt, initial_strategy)
 
     # Z-方向のみ時間とともに更新
     apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_minus, :z_minus)
