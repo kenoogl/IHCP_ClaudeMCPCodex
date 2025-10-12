@@ -1,8 +1,8 @@
 # セッション状態
 
-**最終更新**: 2025年10月12日 22:00
+**最終更新**: 2025年10月13日 00:30
 **現在のブランチ**: tuning6
-**最新コミット**: e1df319 (feat: Phase 1-B完了 - 初期推定値改善実装)
+**最新コミット**: 3bd5a63 (docs: Phase 1-Bセッション状態更新)
 
 ---
 
@@ -35,32 +35,39 @@
    - **性能**: 1,067.13秒（ベースライン比0.49%改善、Phase 0比0.15%改善）
    - レポート: shared/results/performance_tuning5_type_stability.md
 
-4. **Phase 1-B: 初期推定値改善**（✅ 完了、プッシュ済み、ベンチマーク未実施）
+4. **Phase 1-B: 初期推定値改善**（✅ 完了、プッシュ済み、ベンチマーク完了）
    - ブランチ: tuning6
-   - コミット: e1df319
+   - コミット: e1df319, 3bd5a63
    - 外挿法3種類: :none, :linear, :quadratic
    - Adjoint初期値戦略2種類: :previous, :residual
    - スライディングウィンドウ境界初期値継承
    - テスト: 505件全通過 ✅
-   - **性能**: 未測定（ベンチマーク必要）
-   - レポート: docs/reports/phase1b/initial_guess_improvement_report.md
+   - **ベンチマーク結果**: 6シナリオ実行完了（2時間26分）
+   - **有効な改善**: DHCP二次外挿（11.6%改善）✅
+   - **無効な改善**: Adjoint残差戦略、Sensitivity外挿（悪化）❌
+   - **推奨設定**: `dhcp_extrapolation = :quadratic`
+   - レポート: shared/results/performance_tuning6_phase1b.md
 
 ### 進行中の作業
 
-- **なし**（Phase 1-B完了、次はベンチマークまたはPhase 1-C）
+- **なし**（Phase 1-B完了、次はPhase 1-C検討またはブランチマージ）
 
-### 次のタスク
+### 次のタスク（優先順）
 
-- **Phase 1-B: ベンチマーク実行**
-  - 初期推定値改善の効果測定
-  - 各外挿方法の性能比較
-  - Adjoint初期値戦略の比較
+1. **Phase 1-Bの設定適用とマージ**
+   - デフォルト設定変更（dhcp_extrapolation = :quadratic）
+   - ドキュメント更新
+   - tuning6ブランチをmainにマージ
 
-- **Phase 1-C: 前処理改善**
-  - ブランチ: tuning7（未作成）
-  - タスクブリーフィング: 未作成
-  - 期待効果: CG反復30-50%削減
-  - 参照: docs/performance_improvement_proposals.md（提案1）
+2. **Phase 1-C: 前処理改善**（検討中）
+   - Phase 1-Bの結果を踏まえ、実装するか判断
+   - 期待効果: CG反復30-50%削減
+   - 実装難易度: 高
+   - 参照: docs/performance_improvement_proposals.md（提案1）
+
+3. **別のPhase検討**
+   - Phase 2: 並列化（提案3）
+   - Phase 3: アルゴリズム改善（提案5-8）
 
 ---
 
@@ -86,17 +93,32 @@
 - **CG反復**: 変化なし（数値精度維持）
 - **詳細**: shared/results/performance_tuning5_type_stability.md
 
-### Phase 1-B結果（ベンチマーク未実施）
+### Phase 1-B結果（ベンチマーク完了）
 
-- **実行時間**: 未測定
-- **期待改善**: CG反復15-25%削減
-- **実装**: 外挿法3種類、Adjoint初期値戦略2種類
-- **次のアクション**: ベンチマーク実行して効果測定
+**実行日時**: 2025-10-12 21:06
+**総実行時間**: 約2時間26分（6シナリオ）
 
-### 累積改善（Phase 0 + Phase 1-A）
+| シナリオ | 実行時間 | 改善率 | 判定 |
+|---------|---------|--------|------|
+| ベースライン | 1,063.42秒 | - | 基準 |
+| DHCP線形 | 951.78秒 | -10.5% | ✅ |
+| **DHCP二次** | **940.50秒** | **-11.6%** | ✅✅ |
+| Adjoint残差 | 1,075.10秒 | +1.1% | ❌ |
+| Sensitivity線形 | 1,140.86秒 | +7.3% | ❌ |
+| Sensitivity二次 | 1,108.67秒 | +4.3% | ❌ |
 
-- **総改善**: -5.30秒（0.49%）
-- **ベースライン**: 1072.43秒 → **現在**: 1067.13秒（Phase 1-B効果未反映）
+**採用**: DHCP二次外挿（dhcp_extrapolation = :quadratic）
+**不採用**: Adjoint残差戦略、Sensitivity外挿
+
+**詳細**: shared/results/performance_tuning6_phase1b.md
+
+### 累積改善（Phase 0 + Phase 1-A + Phase 1-B）
+
+- **Phase 0**: -3.69秒（0.34%）
+- **Phase 1-A**: -1.61秒（0.15%）
+- **Phase 1-B**: -122.92秒（11.6%）※DHCP二次外挿適用時
+- **総改善**: -128.22秒（12.0%）
+- **ベースライン**: 1,072.43秒 → **Phase 1-B後**: 940.50秒
 
 ### 性能改善ロードマップ
 
@@ -143,6 +165,8 @@
 2. **性能改善**:
    - `docs/performance_improvement_proposals.md`: 改善提案書（全Phase）
    - `shared/results/performance_tuning4_allocation_reduction.md`: Phase 0結果
+   - `shared/results/performance_tuning5_type_stability.md`: Phase 1-A結果
+   - `shared/results/performance_tuning6_phase1b.md`: Phase 1-B結果（最新）✨
 
 3. **プロジェクト状況**:
    - `docs/PROJECT_COMPLETION.md`: プロジェクト完成報告
@@ -224,3 +248,5 @@ julia --project=julia scripts/run_10steps_fullsize_test.jl
 
 **更新履歴**:
 - 2025-10-12 15:00: 初版作成（Phase 0完了、ワークフロー文書作成完了）
+- 2025-10-12 22:00: Phase 1-B実装完了
+- 2025-10-13 00:30: Phase 1-Bベンチマーク完了、結果反映

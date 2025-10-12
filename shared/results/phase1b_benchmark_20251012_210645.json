@@ -1,0 +1,101 @@
+{
+  "scenarios": [
+    {
+      "J_final": 4.787098133781024e6,
+      "rms_error": 7.735549539125379,
+      "scenario_name": "baseline",
+      "heat_flux_max": 0.015537779261846572,
+      "heat_flux_mean": 0.01015042436041118,
+      "max_error": 22.19949112212214,
+      "elapsed_time": 1063.424105167389,
+      "description": "ベースライン（Phase 0/1-A相当）",
+      "heat_flux_min": 0.002265637740410832,
+      "sensitivity_extrapolation": "none",
+      "adjoint_initial_strategy": "previous",
+      "dhcp_extrapolation": "none"
+    },
+    {
+      "J_final": 4.798742652575234e6,
+      "rms_error": 7.744952108127622,
+      "scenario_name": "dhcp_linear",
+      "heat_flux_max": 0.546497114885554,
+      "heat_flux_mean": 0.402341056709859,
+      "max_error": 22.61828247206381,
+      "elapsed_time": 951.7785952091217,
+      "description": "DHCP線形外挿（他は従来法）",
+      "heat_flux_min": 0.11761833173189165,
+      "sensitivity_extrapolation": "none",
+      "adjoint_initial_strategy": "previous",
+      "dhcp_extrapolation": "linear"
+    },
+    {
+      "J_final": 4.797708736553879e6,
+      "rms_error": 7.74411771649446,
+      "scenario_name": "dhcp_quadratic",
+      "heat_flux_max": 0.5420212675059048,
+      "heat_flux_mean": 0.39888547260721013,
+      "max_error": 22.615243987221902,
+      "elapsed_time": 940.5031468868256,
+      "description": "DHCP二次外挿（他は従来法）",
+      "heat_flux_min": 0.11645042005520784,
+      "sensitivity_extrapolation": "none",
+      "adjoint_initial_strategy": "previous",
+      "dhcp_extrapolation": "quadratic"
+    },
+    {
+      "J_final": 4.787098133781024e6,
+      "rms_error": 7.735549539125379,
+      "scenario_name": "adjoint_residual",
+      "heat_flux_max": 32378.36745915119,
+      "heat_flux_mean": 13884.701258106823,
+      "max_error": 22.19949112212214,
+      "elapsed_time": 1075.0962319374084,
+      "description": "Adjoint初期値改善（他は従来法）",
+      "heat_flux_min": -3170.362375570711,
+      "sensitivity_extrapolation": "none",
+      "adjoint_initial_strategy": "residual",
+      "dhcp_extrapolation": "none"
+    },
+    {
+      "J_final": 4.787098133781024e6,
+      "rms_error": 7.735549539125379,
+      "scenario_name": "sensitivity_linear",
+      "heat_flux_max": 0.06582785621384826,
+      "heat_flux_mean": 0.04300361486968894,
+      "max_error": 22.19949112212214,
+      "elapsed_time": 1140.8585369586945,
+      "description": "Sensitivity線形外挿（他は従来法）",
+      "heat_flux_min": 0.009598673844894592,
+      "sensitivity_extrapolation": "linear",
+      "adjoint_initial_strategy": "previous",
+      "dhcp_extrapolation": "none"
+    },
+    {
+      "J_final": 4.787098133781024e6,
+      "rms_error": 7.735549539125379,
+      "scenario_name": "sensitivity_quadratic",
+      "heat_flux_max": 0.1565478901628298,
+      "heat_flux_mean": 0.10226863769275317,
+      "max_error": 22.19949112212214,
+      "elapsed_time": 1108.6683039665222,
+      "description": "Sensitivity二次外挿（他は従来法）",
+      "heat_flux_min": 0.02282699491075439,
+      "sensitivity_extrapolation": "quadratic",
+      "adjoint_initial_strategy": "previous",
+      "dhcp_extrapolation": "none"
+    }
+  ],
+  "benchmark_info": {
+    "julia_version": "1.12.0",
+    "time_steps": 10,
+    "grid_size": [
+      80,
+      100,
+      20
+    ],
+    "branch": "tuning6",
+    "commit": "3bd5a63",
+    "dt": 0.001,
+    "date": "2025-10-12T21:06:45.656"
+  }
+}
