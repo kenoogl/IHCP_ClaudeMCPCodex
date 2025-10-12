@@ -27,7 +27,7 @@ export PBiCGSTAB!
 シングルスレッド時は組み込みのcopyto!を使用（SIMD最適化）
 マルチスレッド時は並列ループで処理
 """
-function mycopy!(a::Array{Float64,3}, b::Array{Float64,3}, par::String)
+function mycopy!(a::AbstractArray{T,3}, b::AbstractArray{T,3}, par::String) where {T <: AbstractFloat}
   if par == "sequential" || Threads.nthreads() == 1
     # シングルスレッド: 高速な組み込み関数を使用
     copyto!(a, b)
@@ -50,7 +50,7 @@ end
 シングルスレッド時は組み込みのfill!を使用（SIMD最適化）
 マルチスレッド時は並列ループで処理
 """
-function myfill!(a::Array{Float64,3}, val::Float64, par::String)
+function myfill!(a::AbstractArray{T,3}, val::T, par::String) where {T <: AbstractFloat}
   if par == "sequential" || Threads.nthreads() == 1
     # シングルスレッド: 高速な組み込み関数を使用
     fill!(a, val)
@@ -63,6 +63,15 @@ function myfill!(a::Array{Float64,3}, val::Float64, par::String)
     end
   end
 end
+
+@inline function smoother_selector(s::Symbol)
+  if s === :none || s === :gs
+    return Val(s)
+  end
+  throw(ArgumentError("Unsupported smoother: $s"))
+end
+
+const PRECONDITIONER_SWEEPS = 5
 
 
 """
@@ -87,45 +96,48 @@ end
 @ret            収束/未収束、反復回数、初期残差
 """
 function PBiCGSTAB!(wk::WorkBuffers,
-                    Δh::Tuple{Float64, Float64, Float64},
-                    Δt::Float64, 
-                    Z::Vector{Float64},
-                    ΔZ::Vector{Float64},
-                    z_range::Vector{Int64},
-                    HT::Vector{Float64},
-                    ρ::Float64;
-                    tol::Float64,
-                    maxItr::Int64,
-                    smoother::String,
-                    par::String,
-                    verbose::Bool=false)
+                    Δh::NTuple{3,T},
+                    Δt::T,
+                    Z::AbstractVector{T},
+                    ΔZ::AbstractVector{T},
+                    z_range::AbstractVector{<:Integer},
+                    HT::AbstractVector{T},
+                    ρ::T;
+                    tol::T = T(1e-6),
+                    maxItr::Int = 20_000,
+                    smoother::Symbol = :none,
+                    par::String = "sequential",
+                    verbose::Bool=false) where {T <: AbstractFloat}
     SZ = size(wk.θ)
-    myfill!(wk.pcg_q, 0.0, par)
+    myfill!(wk.pcg_q, zero(T), par)
     res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
     if verbose
         println("Inital residual = ", res0)
     end
 
     # 初期残差がゼロの場合は収束済み（数値安定性対策）
-    if res0 ≈ 0.0
+    if res0 ≈ zero(T)
         return true, 0, res0
     end
 
     mycopy!(wk.pcg_r0, wk.pcg_r, par) # wk.pcg_r0 .= wk.pcg_r  #copy!(pcg_r0, pcg_r)
 
-    rho_old::Float64 = 1.0
-    alpha::Float64 = 0.0
-    omega::Float64  = 1.0
-    r_omega::Float64 = -omega
-    beta::Float64 = 0.0
+    rho_old::T = one(T)
+    alpha::T = zero(T)
+    omega::T  = one(T)
+    r_omega::T = -omega
+    beta::T = zero(T)
     isconverged::Bool = false
     itr::Int = 0
+    smoother_val = smoother_selector(smoother)
+    inv_cell_count = inv(T((SZ[1]-2)*(SZ[2]-2)*(Int(last(z_range)) - Int(first(z_range)) + 1)))
+    float_min_T = T(FloatMin)
 
     for k in 1:maxItr
         itr = k
         rho = Fdot2(wk.pcg_r, wk.pcg_r0, z_range, par) # 非計算部分はゼロのこと
 
-        if abs(rho) < FloatMin
+        if abs(rho) < float_min_T
             # rhoがゼロに近い場合は数値的に不安定（未収束として扱う）
             isconverged = false
             break
@@ -138,22 +150,22 @@ function PBiCGSTAB!(wk::WorkBuffers,
             BiCG1!(wk.pcg_p, wk.pcg_r, wk.pcg_q, beta, omega, z_range, par)
         end
 
-        myfill!(wk.pcg_p_, 0.0, par)  #fill!(pcg_p_, 0.0)
-        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par)
+        myfill!(wk.pcg_p_, zero(T), par)  #fill!(pcg_p_, 0.0)
+        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par)
 
         CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
         alpha = rho / Fdot2(wk.pcg_q, wk.pcg_r0, z_range, par)
         r_alpha = -alpha
         Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, z_range, par)
 
-        myfill!(wk.pcg_s_, 0.0, par)  #fill!(pcg_s_, 0.0)
-        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par);
+        myfill!(wk.pcg_s_, zero(T), par)  #fill!(pcg_s_, 0.0)
+        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par);
 
         CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
 
         # 分母ゼロ対策（数値安定性）
         denom = Fdot1(wk.pcg_t_, z_range, par)
-        if abs(denom) < FloatMin
+        if abs(denom) < float_min_T
             # 分母がゼロに近い場合は数値的に不安定（未収束として扱う）
             isconverged = false
             break
@@ -164,10 +176,10 @@ function PBiCGSTAB!(wk::WorkBuffers,
         BICG2!(wk.θ, wk.pcg_p_, wk.pcg_s_, alpha , omega, z_range, par)
 
         Triad!(wk.pcg_r, wk.pcg_t_, wk.pcg_s, r_omega, z_range, par)
-        res = sqrt(Fdot1(wk.pcg_r, z_range, par))/((SZ[1]-2)*(SZ[2]-2)*(z_range[2]-z_range[1]+1))
+        res = sqrt(Fdot1(wk.pcg_r, z_range, par)) * inv_cell_count
         res /= res0
 
-        if res<tol
+        if res < tol
             isconverged = true
             break
         end
@@ -198,59 +210,60 @@ end
 @ret                 セルあたりの残差RMS
 """
 function CalcRK!(
-                r::Array{Float64,3},
-                θ::Array{Float64,3},
-                b::Array{Float64,3},
-                λ::Array{Float64,3},
-                cp::Array{Float64,3},
-                m::Array{Float64,3},
-                ρ::Float64,
-                Δh::Tuple{Float64, Float64, Float64},
-                Δt::Float64,
-                Z::Vector{Float64},
-                ΔZ::Vector{Float64},
-                z_range::Vector{Int64},
-                HT::Vector{Float64},
-                par::String)
+                r::AbstractArray{T,3},
+                θ::AbstractArray{T,3},
+                b::AbstractArray{T,3},
+                λ::AbstractArray{T,3},
+                cp::AbstractArray{T,3},
+                m::AbstractArray{T,3},
+                ρ::T,
+                Δh::NTuple{3,T},
+                Δt::T,
+                Z::AbstractVector{T},
+                ΔZ::AbstractVector{T},
+                z_range::AbstractVector{<:Integer},
+                HT::AbstractVector{T},
+                par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
-    dx0::Float64 = Δh[1]
-    dy0::Float64 = Δh[2]
-    dx2 = 1.0 / (dx0*dx0)
-    dy2 = 1.0 / (dy0*dy0)
-    dx1 = 1.0 / dx0
-    dy1 = 1.0 / dy0
-    z_st = z_range[1]
-    z_ed = z_range[2]
-    ddt = 1.0 / Δt
+    dx0 = Δh[1]
+    dy0 = Δh[2]
+    dx2 = inv(dx0 * dx0)
+    dy2 = inv(dy0 * dy0)
+    dx1 = inv(dx0)
+    dy1 = inv(dy0)
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
+    ddt = inv(Δt)
+    cell_count_inv = inv(T((SZ[1]-2)*(SZ[2]-2)*(z_ed - z_st + 1)))
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         λ0 = λ[i,j,k]
-        r_ρc = 1.0 / (ρ * cp[i,j,k])
+        r_ρc = inv(ρ * cp[i,j,k])
         m0 = m[i,j,k]
-        mw = 1.0-m[i-1,j  ,k  ]
-        me = 1.0-m[i+1,j  ,k  ]
-        ms = 1.0-m[i  ,j-1,k  ]
-        mn = 1.0-m[i  ,j+1,k  ]
+        mw = one(T) - m[i-1,j  ,k  ]
+        me = one(T) - m[i+1,j  ,k  ]
+        ms = one(T) - m[i  ,j-1,k  ]
+        mn = one(T) - m[i  ,j+1,k  ]
         mb = m[i  ,j  ,k-1]
         mt = m[i  ,j  ,k+1]
         axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc 
         axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc 
         aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc 
         ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc 
-        zb = (Z[k]-Z[k-1])*mb + (1.0-mb)*ΔZ[k] # 境界の半セル処理
-        zt = (Z[k+1]-Z[k])*m0 + (1.0-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (1.0-mb)/ΔZ[k]*HT[5]*r_ρc 
-        azp = (λ0        / (ΔZ[k]*zt))*mt + (1.0-mt)/ΔZ[k]*HT[6]*r_ρc 
-        dd = (1.0-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
+        zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
+        zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
+        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (one(T)-mb)/ΔZ[k]*HT[5]*r_ρc 
+        azp = (λ0        / (ΔZ[k]*zt))*mt + (one(T)-mt)/ΔZ[k]*HT[6]*r_ρc 
+        dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
-        rs = (b[i,j,k] - (ss - dd * θ[i,j,k]))* m0
+        rs = (b[i,j,k] - (ss - dd * θ[i,j,k])) * m0
         r[i,j,k] = rs
-        @reduce(res = 0.0 + rs*rs)
+        @reduce(res = zero(T) + rs*rs)
     end
-    return sqrt(res)/((SZ[1]-2)*(SZ[2]-2)*(z_ed-z_st+1))
+    return sqrt(res) * cell_count_inv
 end
 
 
@@ -270,50 +283,50 @@ end
 @param [in]  HT   熱伝達境界の値
 
 """
-function CalcAX!(ax::Array{Float64,3},
-                  θ::Array{Float64,3},
-                  Δh::Tuple{Float64, Float64, Float64},
-                  Δt::Float64,
-                  λ::Array{Float64,3},
-                  cp::Array{Float64,3},
-                  m::Array{Float64,3},
-                  ρ::Float64,
-                  Z::Vector{Float64},
-                  ΔZ::Vector{Float64},
-                  z_range::Vector{Int64},
-                  HT::Vector{Float64},
-                  par::String)
+function CalcAX!(ax::AbstractArray{T,3},
+                  θ::AbstractArray{T,3},
+                  Δh::NTuple{3,T},
+                  Δt::T,
+                  λ::AbstractArray{T,3},
+                  cp::AbstractArray{T,3},
+                  m::AbstractArray{T,3},
+                  ρ::T,
+                  Z::AbstractVector{T},
+                  ΔZ::AbstractVector{T},
+                  z_range::AbstractVector{<:Integer},
+                  HT::AbstractVector{T},
+                  par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
     dx0 = Δh[1]
     dy0 = Δh[2]
-    dx2 = 1.0 / (dx0*dx0)
-    dy2 = 1.0 / (dy0*dy0)
-    dx1 = 1.0 / dx0
-    dy1 = 1.0 / dy0
-    z_st = z_range[1]
-    z_ed = z_range[2]
-    ddt = 1.0 / Δt
+    dx2 = inv(dx0*dx0)
+    dy2 = inv(dy0*dy0)
+    dx1 = inv(dx0)
+    dy1 = inv(dy0)
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
+    ddt = inv(Δt)
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         λ0 = λ[i,j,k]
-        r_ρc = 1.0 / (ρ * cp[i,j,k])
+        r_ρc = inv(ρ * cp[i,j,k])
         m0 = m[i,j,k]
-        mw = 1.0-m[i-1,j  ,k  ]
-        me = 1.0-m[i+1,j  ,k  ]
-        ms = 1.0-m[i  ,j-1,k  ]
-        mn = 1.0-m[i  ,j+1,k  ]
+        mw = one(T)-m[i-1,j  ,k  ]
+        me = one(T)-m[i+1,j  ,k  ]
+        ms = one(T)-m[i  ,j-1,k  ]
+        mn = one(T)-m[i  ,j+1,k  ]
         mb = m[i  ,j  ,k-1]
         mt = m[i  ,j  ,k+1]
         axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
         axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
         aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
         ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
-        zb = (Z[k]-Z[k-1])*mb + (1.0-mb)*ΔZ[k] # 境界の半セル処理
-        zt = (Z[k+1]-Z[k])*m0 + (1.0-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (1.0-mb)/ΔZ[k]*HT[5]*r_ρc
-        azp = (λ0        / (ΔZ[k]*zt))*mt + (1.0-mt)/ΔZ[k]*HT[6]*r_ρc
-        dd = (1.0-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
+        zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
+        zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
+        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (one(T)-mb)/ΔZ[k]*HT[5]*r_ρc
+        azp = (λ0        / (ΔZ[k]*zt))*mt + (one(T)-mt)/ΔZ[k]*HT[6]*r_ρc
+        dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
@@ -338,30 +351,37 @@ end
 @param [in]     z_range Zループ開始/終了インデクス
 @param [in]     HT   熱伝達境界の値
 """
-function Preconditioner!(xx::Array{Float64,3},
-                         bb::Array{Float64,3},
-                          λ::Array{Float64,3},
-                          cp::Array{Float64,3},
-                       mask::Array{Float64,3},
-                        ρ::Float64,
-                         Δh::Tuple{Float64, Float64, Float64},
-                         Δt::Float64,
-                   smoother::String,
-                   Z, ΔZ,
-                   z_range::Vector{Int64},
-                   HT::Vector{Float64},
-                   par::String)
+function Preconditioner!(xx::AbstractArray{T,3},
+                         bb::AbstractArray{T,3},
+                         λ::AbstractArray{T,3},
+                         cp::AbstractArray{T,3},
+                         mask::AbstractArray{T,3},
+                         ρ::T,
+                         Δh::NTuple{3,T},
+                         Δt::T,
+                         smoother::Val,
+                         Z::AbstractVector{T},
+                         ΔZ::AbstractVector{T},
+                         z_range::AbstractVector{<:Integer},
+                         HT::AbstractVector{T},
+                         par::String) where {T <: AbstractFloat}
+    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par)
+end
 
-    LCmax::Int = 5
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, z_range, HT, par)
+    mycopy!(xx, bb, par)
+    return nothing
+end
 
-    if smoother=="gs"
-        for _ in 1:LCmax
-            #sor!(xx, λ, cp, bb, mask, ρ, Δh, 1.0, Z, ΔZ, z_range, HT, par)
-            rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, 1.0, Z, ΔZ, z_range, HT, par)
-        end
-    else
-        xx .= bb  #copy!(xx, bb)
+function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, z_range, HT, par)
+    for _ in 1:PRECONDITIONER_SWEEPS
+        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), Z, ΔZ, z_range, HT, par)
     end
+    return nothing
+end
+
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, z_range, HT, par) where {s}
+    throw(ArgumentError("Unsupported smoother: $(s)"))
 end
 
 
@@ -371,13 +391,13 @@ end
 @param [in]     z_range Zループ開始/終了インデクス
 @ret            内積
 """
-function Fdot1(x::Array{Float64,3}, z_range::Vector{Int64}, par::String)
+function Fdot1(x::AbstractArray{T,3}, z_range::AbstractVector{<:Integer}, par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(x)
-    z_st = z_range[1]
-    z_ed = z_range[2]
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        @reduce(sum = 0.0 + x[i,j,k] * x[i,j,k])
+        @reduce(sum = zero(T) + x[i,j,k] * x[i,j,k])
     end
     return sum
 end
@@ -390,13 +410,13 @@ end
 @param [in]     z_range Zループ開始/終了インデクス
 @ret            内積
 """
-function Fdot2(x::Array{Float64,3}, y::Array{Float64,3}, z_range::Vector{Int64}, par::String)
+function Fdot2(x::AbstractArray{T,3}, y::AbstractArray{T,3}, z_range::AbstractVector{<:Integer}, par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(x)
-    z_st = z_range[1]
-    z_ed = z_range[2]
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        @reduce(sum = 0.0 + x[i,j,k] * y[i,j,k])
+        @reduce(sum = zero(T) + x[i,j,k] * y[i,j,k])
     end
     return sum
 end
@@ -411,17 +431,17 @@ end
 @param [in]     omg  係数
 @param [in]     z_range Zループ開始/終了インデクス
 """
-function BiCG1!(p::Array{Float64,3},
-                r::Array{Float64,3},
-                q::Array{Float64,3},
-                beta::Float64,
-                omg::Float64,
-                z_range::Vector{Int64},
-                par::String)
+function BiCG1!(p::AbstractArray{T,3},
+                r::AbstractArray{T,3},
+                q::AbstractArray{T,3},
+                beta::T,
+                omg::T,
+                z_range::AbstractVector{<:Integer},
+                par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(p)
-    z_st = z_range[1]
-    z_ed = z_range[2]
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         p[i,j,k] = r[i,j,k] + beta * (p[i,j,k] - omg * q[i,j,k])
     end
@@ -436,16 +456,16 @@ end
 @param [in]     a    係数
 @param [in]     z_range Zループ開始/終了インデクス
 """
-function Triad!(z::Array{Float64,3},
-                x::Array{Float64,3},
-                y::Array{Float64,3},
-                a::Float64,
-                z_range::Vector{Int64},
-                par::String)
+function Triad!(z::AbstractArray{T,3},
+                x::AbstractArray{T,3},
+                y::AbstractArray{T,3},
+                a::T,
+                z_range::AbstractVector{<:Integer},
+                par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(z)
-    z_st = z_range[1]
-    z_ed = z_range[2]
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         z[i,j,k] = a * x[i,j,k] + y[i,j,k]
     end
@@ -461,17 +481,17 @@ end
 @param [in]     b    係数
 @param [in]     z_range Zループ開始/終了インデクス
 """
-function BICG2!(z::Array{Float64,3},
-                x::Array{Float64,3},
-                y::Array{Float64,3},
-                a::Float64,
-                b::Float64,
-                z_range::Vector{Int64},
-                par::String)
+function BICG2!(z::AbstractArray{T,3},
+                x::AbstractArray{T,3},
+                y::AbstractArray{T,3},
+                a::T,
+                b::T,
+                z_range::AbstractVector{<:Integer},
+                par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(z)
-    z_st = z_range[1]
-    z_ed = z_range[2]
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         z[i,j,k] += a * x[i,j,k] + b * y[i,j,k]
     end
@@ -494,140 +514,63 @@ end
 @param [in]     HT   熱伝達境界の値
 @ret                 1セルあたりの残差RMS
 """
-function resSOR(θ::Array{Float64,3},
-                λ::Array{Float64,3},
-                cp::Array{Float64,3},
-                b::Array{Float64,3},
-                m::Array{Float64,3},
-                ρ::Float64,
-                Δh::Tuple{Float64, Float64, Float64},
-                Δt::Float64, 
-                ω::Float64,
-                Z::Vector{Float64},
-                ΔZ::Vector{Float64},
-                z_range::Vector{Int64},
-                HT::Vector{Float64},
-                par::String)
+function resSOR(θ::AbstractArray{T,3},
+                λ::AbstractArray{T,3},
+                cp::AbstractArray{T,3},
+                b::AbstractArray{T,3},
+                m::AbstractArray{T,3},
+                ρ::T,
+                Δh::NTuple{3,T},
+                Δt::T,
+                ω::T,
+                Z::AbstractVector{T},
+                ΔZ::AbstractVector{T},
+                z_range::AbstractVector{<:Integer},
+                HT::AbstractVector{T},
+                par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
     dx0 = Δh[1]
     dy0 = Δh[2]
-    dx2 = 1.0 / (dx0*dx0)
-    dy2 = 1.0 / (dy0*dy0)
-    dx1 = 1.0 / dx0
-    dy1 = 1.0 / dy0
-    z_st = z_range[1]
-    z_ed = z_range[2]
-    ddt = 1.0 / Δt
+    dx2 = inv(dx0*dx0)
+    dy2 = inv(dy0*dy0)
+    dx1 = inv(dx0)
+    dy1 = inv(dy0)
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
+    ddt = inv(Δt)
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         pp = θ[i,j,k]
         λ0 = λ[i,j,k]
-        r_ρc = 1.0 / (ρ * cp[i,j,k])
+        r_ρc = inv(ρ * cp[i,j,k])
         m0 = m[i,j,k]
-        mw = 1.0-m[i-1,j  ,k  ]
-        me = 1.0-m[i+1,j  ,k  ]
-        ms = 1.0-m[i  ,j-1,k  ]
-        mn = 1.0-m[i  ,j+1,k  ]
+        mw = one(T) - m[i-1,j  ,k  ]
+        me = one(T) - m[i+1,j  ,k  ]
+        ms = one(T) - m[i  ,j-1,k  ]
+        mn = one(T) - m[i  ,j+1,k  ]
         mb = m[i  ,j  ,k-1]
         mt = m[i  ,j  ,k+1]
         axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
         axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
         aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
         ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
-        zb = (Z[k]-Z[k-1])*mb + (1.0-mb)*ΔZ[k] # 境界の半セル処理
-        zt = (Z[k+1]-Z[k])*m0 + (1.0-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (1.0-mb)/ΔZ[k]*HT[5]*r_ρc
-        azp = (λ0        / (ΔZ[k]*zt))*mt + (1.0-mt)/ΔZ[k]*HT[6]*r_ρc
-
-        dd = (1.0-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
+        zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
+        zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
+        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (one(T)-mb)/ΔZ[k]*HT[5]*r_ρc
+        azp = (λ0        / (ΔZ[k]*zt))*mt + (one(T)-mt)/ΔZ[k]*HT[6]*r_ρc
+        dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
         dp = (((ss-b[i,j,k])/dd - pp)) * m0
+        θ[i,j,k] = pp + ω * dp
         r = (dd + ω*(axm+aym+azm))*dp / ω
-        @reduce(res = 0.0 + r*r)
+        @reduce(res = zero(T) + r*r)
     end
 
-    return sqrt(res)/((SZ[1]-2)*(SZ[2]-2)*(z_ed-z_st+1))
+    return res
 end
-
-"""
-@brief SOR法
-@param [in,out] θ    解ベクトル
-@param [in]     λ    熱伝導率
-@param [in]     cp   比熱
-@param [in]     b    右辺ベクトル
-@param [in]     m    マスク配列
-@param [in]     ρ    密度
-@param [in]     Δh   セル幅
-@param [in]     ω    加速係数
-@param [in]     Z    Z座標
-@param [in]     ΔZ   格子幅
-@param [in]     z_range Zループ開始/終了インデクス
-@param [in]     HT   熱伝達境界の値
-@ret                 セルあたりの残差RMS
-"""
-function sor!(θ::Array{Float64,3},
-              λ::Array{Float64,3},
-              cp::Array{Float64,3},
-              b::Array{Float64,3},
-              m::Array{Float64,3},
-              ρ::Float64,
-              Δh::Tuple{Float64, Float64, Float64},
-              Δt::Float64, 
-              ω::Float64,
-              Z::Vector{Float64},
-              ΔZ::Vector{Float64},
-              z_range::Vector{Int64},
-              HT::Vector{Float64},
-              par::String)
-    SZ = size(θ)
-    dx0 = Δh[1]
-    dy0 = Δh[2]
-    dx2 = 1.0 / (dx0*dx0)
-    dy2 = 1.0 / (dy0*dy0)
-    dx1 = 1.0 / dx0
-    dy1 = 1.0 / dy0
-    z_st = z_range[1]
-    z_ed = z_range[2]
-    ddt = 1.0 / Δt
-
-    res::Float64 = 0.0
-    for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        pp = θ[i,j,k]
-        bb = b[i,j,k]
-        λ0 = λ[i,j,k]
-        r_ρc = 1.0 / (ρ * cp[i,j,k])
-        m0 = m[i,j,k]
-        mw = 1.0-m[i-1,j  ,k  ]
-        me = 1.0-m[i+1,j  ,k  ]
-        ms = 1.0-m[i  ,j-1,k  ]
-        mn = 1.0-m[i  ,j+1,k  ]
-        mb = m[i  ,j  ,k-1]
-        mt = m[i  ,j  ,k+1]
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
-        zb = (Z[k]-Z[k-1])*mb + (1.0-mb)*ΔZ[k] # 境界の半セル処理
-        zt = (Z[k+1]-Z[k])*m0 + (1.0-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (1.0-mb)/ΔZ[k]*HT[5]*r_ρc
-        azp = (λ0        / (ΔZ[k]*zt))*mt + (1.0-mt)/ΔZ[k]*HT[6]*r_ρc
-        dd = (1.0-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
-        ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
-             + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
-             + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
-        dp = (((ss-b[i,j,k])/dd - pp)) * m0
-        pn = pp + ω * dp
-        θ[i,j,k] = pn
-        r = (dd + ω*(axm+aym+azm))*dp / ω
-        res += r*r
-    end
-
-    return sqrt(res)/((SZ[1]-2)*(SZ[2]-2)*(z_ed-z_st+1))
-end
-
 
 """
 @brief RB-SOR法のカーネル
@@ -646,66 +589,67 @@ end
 @param [in]     color R or B
 @ret                 残差2乗和
 """
-function rbsor_core!(θ::Array{Float64,3},
-                     λ::Array{Float64,3},
-                     cp::Array{Float64,3},
-                     b::Array{Float64,3},
-                     m::Array{Float64,3},
-                     ρ::Float64,
-                     Δh::Tuple{Float64, Float64, Float64},
-                     Δt::Float64, 
-                     ω::Float64,
-                     Z::Vector{Float64},
-                     ΔZ::Vector{Float64},
-                     z_range::Vector{Int64},
-                     HT::Vector{Float64},
+function rbsor_core!(θ::AbstractArray{T,3},
+                     λ::AbstractArray{T,3},
+                     cp::AbstractArray{T,3},
+                     b::AbstractArray{T,3},
+                     m::AbstractArray{T,3},
+                     ρ::T,
+                     Δh::NTuple{3,T},
+                     Δt::T,
+                     ω::T,
+                     Z::AbstractVector{T},
+                     ΔZ::AbstractVector{T},
+                     z_range::AbstractVector{<:Integer},
+                     HT::AbstractVector{T},
                      color::Int,
-                     par::String)
+                     par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
     dx0 = Δh[1]
     dy0 = Δh[2]
-    dx2 = 1.0 / (dx0*dx0)
-    dy2 = 1.0 / (dy0*dy0)
-    dx1 = 1.0 / dx0
-    dy1 = 1.0 / dy0
-    z_st = z_range[1]
-    z_ed = z_range[2]
-    ddt = 1.0 / Δt
+    dx2 = inv(dx0*dx0)
+    dy2 = inv(dy0*dy0)
+    dx1 = inv(dx0)
+    dy1 = inv(dy0)
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
+    ddt = inv(Δt)
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1
         @simd for i in 2+mod(k+j+color,2):2:SZ[1]-1
             pp = θ[i,j,k]
             λ0 = λ[i,j,k]
-            r_ρc = 1.0 / (ρ * cp[i,j,k])
+            r_ρc = inv(ρ * cp[i,j,k])
             m0 = m[i,j,k]
-            me = 1.0-m[i+1,j  ,k  ]
-            mw = 1.0-m[i-1,j  ,k  ]
-            mn = 1.0-m[i  ,j+1,k  ]
-            ms = 1.0-m[i  ,j-1,k  ]
+            me = one(T) - m[i+1,j  ,k  ]
+            mw = one(T) - m[i-1,j  ,k  ]
+            mn = one(T) - m[i  ,j+1,k  ]
+            ms = one(T) - m[i  ,j-1,k  ]
             mt = m[i  ,j  ,k+1]
             mb = m[i  ,j  ,k-1]
             axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
             axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
             aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
             ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
-            zb = (Z[k]-Z[k-1])*mb + (1.0-mb)*ΔZ[k] # 境界の半セル処理
-            zt = (Z[k+1]-Z[k])*m0 + (1.0-m0)*ΔZ[k]
-            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (1.0-mb)/ΔZ[k]*HT[5]*r_ρc
-            azp = (λ0        / (ΔZ[k]*zt))*mt + (1.0-mt)/ΔZ[k]*HT[6]*r_ρc
-            dd = (1.0-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
+            zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k]
+            zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
+            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (one(T)-mb)/ΔZ[k]*HT[5]*r_ρc
+            azp = (λ0        / (ΔZ[k]*zt))*mt + (one(T)-mt)/ΔZ[k]*HT[6]*r_ρc
+            dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
             ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
             dp = (((ss-b[i,j,k])/dd - pp)) * m0
             θ[i,j,k] = pp + ω * dp
             r = (dd + ω*(axm+aym+azm))*dp / ω
-            @reduce(res = 0.0 + r*r)
+            @reduce(res = zero(T) + r*r)
         end
     end
 
     return res
 end
+
 
 """
 @brief RB-SOR法
@@ -723,29 +667,31 @@ end
 @param [in]     HT   熱伝達境界の値
 @ret                 セルあたりの残差RMS
 """
-function rbsor!(θ::Array{Float64,3},
-                λ::Array{Float64,3},
-                cp::Array{Float64,3},
-                b::Array{Float64,3},
-                mask::Array{Float64,3},
-                ρ::Float64,
-                Δh::Tuple{Float64, Float64, Float64},
-                Δt::Float64, 
-                ω::Float64,
-                Z::Vector{Float64},
-                ΔZ::Vector{Float64},
-                z_range::Vector{Int64},
-                HT::Vector{Float64},
-                par::String)
+function rbsor!(θ::AbstractArray{T,3},
+                λ::AbstractArray{T,3},
+                cp::AbstractArray{T,3},
+                b::AbstractArray{T,3},
+                mask::AbstractArray{T,3},
+                ρ::T,
+                Δh::NTuple{3,T},
+                Δt::T,
+                ω::T,
+                Z::AbstractVector{T},
+                ΔZ::AbstractVector{T},
+                z_range::AbstractVector{<:Integer},
+                HT::AbstractVector{T},
+                par::String) where {T <: AbstractFloat}
     SZ = size(b)
-    res::Float64 = 0.0
+    res = zero(T)
 
     # 2色のマルチカラー(Red&Black)のセットアップ
     for c in 0:1
         res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, c, par)
     end
-    return sqrt(res)/((SZ[1]-2)*(SZ[2]-2)*(SZ[3]-2))
+    norm_factor = T((SZ[1]-2)*(SZ[2]-2)*(SZ[3]-2))
+    return sqrt(res) / norm_factor
 end
+
 
 
 """
@@ -767,16 +713,27 @@ end
 @param [in]     ItrMax 最大反復回数（デフォルト: 1000）
 
 """
-function solveSOR!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ,
-                    z_range::Vector{Int64},
-                    F, tol,
-                    HT::Vector{Float64},
+function solveSOR!(θ::AbstractArray{T,3},
+                    λ::AbstractArray{T,3},
+                    cp::AbstractArray{T,3},
+                    b::AbstractArray{T,3},
+                    mask::AbstractArray{T,3},
+                    ρ::T,
+                    Δh::NTuple{3,T},
+                    Δt::T,
+                    ω::T,
+                    Z::AbstractVector{T},
+                    ΔZ::AbstractVector{T},
+                    z_range::AbstractVector{<:Integer},
+                    F,
+                    tol::T,
+                    HT::AbstractVector{T},
                     par::String;
-                    ItrMax::Int=1000)
+                    ItrMax::Int=1000) where {T <: AbstractFloat}
 
     res0 = resSOR(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, par)
-    if res0==0.0
-        res0 = 1.0
+    if res0 == zero(T)
+        res0 = one(T)
     end
     println("Inital residual = ", res0)
 
@@ -784,8 +741,8 @@ function solveSOR!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ,
     for n in 1:ItrMax
         #res = sor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, par) / res0
         res = rbsor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, par) / res0
-        @printf(F, "%10d %24.14E\n", n, res) # 時間計測の場合にはコメントアウト
-        @printf(stdout, "%10d %24.14E\n", n, res) # 時間計測の場合にはコメントアウト
+        @printf(F, "%10d %24.14E\n", n, Float64(res)) # 時間計測の場合にはコメントアウト
+        @printf(stdout, "%10d %24.14E\n", n, Float64(res)) # 時間計測の場合にはコメントアウト
         if res < tol
             println("Converged at ", n)
             return

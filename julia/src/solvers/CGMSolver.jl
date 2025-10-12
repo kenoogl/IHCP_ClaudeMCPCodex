@@ -68,7 +68,7 @@ function tensor_dot(a::AbstractArray{T1}, b::AbstractArray{T2}) where {T1 <: Rea
   @inbounds @simd for idx in eachindex(a, b)
     acc += a[idx] * b[idx]
   end
-  return Float64(acc)
+  return acc
 end
 
 
@@ -104,23 +104,23 @@ Returns:
   cg_iters: 各時間ステップの反復回数
 """
 function compute_gradient!(
-  T_cal::Array{Float64,4},
-  Y_obs::Array{Float64,3},
+  T_cal::AbstractArray{T,4},
+  Y_obs::AbstractArray{T,3},
   work::WorkBuffers,
-  rho::Float64,
+  rho::T,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64},
-  dx::Float64, dy::Float64,
+  dx::T, dy::T,
   Z::Vector{Float64}, ΔZ::Vector{Float64},
-  dt::Float64;
-  rtol::Float64=1e-8,
+  dt::T;
+  rtol::T=T(1e-8),
   maxiter::Int=20000,
   verbose::Bool=false,
   par::String="sequential",
-  gradient_buffer::Union{Nothing,Array{Float64,3}}=nothing,
-  adjoint_buffer::Union{Nothing,Array{Float64,4}}=nothing,
+  gradient_buffer::Union{Nothing,Array{T,3}}=nothing,
+  adjoint_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing
-)
+) where {T <: AbstractFloat}
   ni, nj, nk, nt = size(T_cal)
 
   # 随伴場求解（Phase 3）
@@ -133,7 +133,7 @@ function compute_gradient!(
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
-  gradient = isnothing(gradient_buffer) ? zeros(Float64, ni, nj, nt - 1) : gradient_buffer
+  gradient = isnothing(gradient_buffer) ? zeros(T, ni, nj, nt - 1) : gradient_buffer
   expected_shape = (ni, nj, nt - 1)
   if size(gradient) != expected_shape
     throw(ArgumentError("gradient_buffer size mismatch: expected $(expected_shape), got $(size(gradient))"))
@@ -167,10 +167,11 @@ Args:
 Returns:
   beta: ステップサイズ
 """
-function compute_step_size(res_T::AbstractArray{<:Real,3}, Sp::AbstractArray{<:Real,3}, eps::Float64=1e-12)
+function compute_step_size(res_T::AbstractArray{T1,3}, Sp::AbstractArray{T2,3}, eps::Real=1e-12) where {T1 <: Real, T2 <: Real}
   numerator = tensor_dot(res_T, Sp)
   denominator = tensor_dot(Sp, Sp)
-  beta = numerator / (denominator + eps)
+  eps_T = convert(typeof(numerator), eps)
+  beta = numerator / (denominator + eps_T)
   return beta
 end
 
@@ -231,31 +232,31 @@ Returns:
   J_hist: 目的関数履歴 (vector)
 """
 function solve_cgm!(
-  T_init::Array{Float64,3},
-  Y_obs::Array{Float64,3},
-  q_init::Array{Float64,3},
+  T_init::AbstractArray{T,3},
+  Y_obs::AbstractArray{T,3},
+  q_init::AbstractArray{T,3},
   work::WorkBuffers,
-  dx::Float64, dy::Float64,
+  dx::T, dy::T,
   Z::Vector{Float64}, ΔZ::Vector{Float64},
-  dt::Float64,
-  rho::Float64,
+  dt::T,
+  rho::T,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64};
   params::NamedTuple=(;),
   par::String="sequential"
-)
+) where {T <: AbstractFloat}
   # パラメータ展開（デフォルト値付き）
   max_iter = get(params, :max_iter, 20000)
-  rtol_dhcp = get(params, :rtol_dhcp, 1e-6)
-  rtol_adjoint = get(params, :rtol_adjoint, 1e-8)
+  rtol_dhcp = T(get(params, :rtol_dhcp, 1e-6))
+  rtol_adjoint = T(get(params, :rtol_adjoint, 1e-8))
   maxiter_cg = get(params, :maxiter_cg, 20000)
-  sigma = get(params, :sigma, 1.8)
+  sigma = T(get(params, :sigma, 1.8))
   min_iter = get(params, :min_iter, 10)
   P = get(params, :P, 10)
-  eta = get(params, :eta, 1e-4)
+  eta = T(get(params, :eta, 1e-4))
   dire_reset_every = get(params, :dire_reset_every, 5)
-  eps = get(params, :eps, 1e-12)
-  beta_max = get(params, :beta_max, 1e8)
+  eps = T(get(params, :eps, 1e-12))
+  beta_max = T(get(params, :beta_max, 1e8))
   verbose = get(params, :verbose, true)
 
   # 問題サイズ（メモリレイアウト最適化: Phase 2.2）
@@ -264,27 +265,27 @@ function solve_cgm!(
 
   # 初期化
   q = copy(q_init)
-  J_hist = Float64[]
+  J_hist = T[]
 
   M = ni * nj
-  epsilon = M * (sigma^2) * (nt - 1)  # Discrepancy基準値
+  epsilon = T(M) * (sigma^2) * T(nt - 1)  # Discrepancy基準値
 
-  grad = zeros(Float64, ni, nj, nt - 1)
-  grad_last = zeros(Float64, ni, nj, nt - 1)
-  p_n = zeros(Float64, ni, nj, nt - 1)
-  p_n_last = zeros(Float64, ni, nj, nt - 1)
-  tmp_dir = zeros(Float64, ni, nj, nt - 1)
-  res_T = zeros(Float64, ni, nj, nt - 1)
+  grad = zeros(T, ni, nj, nt - 1)
+  grad_last = zeros(T, ni, nj, nt - 1)
+  p_n = zeros(T, ni, nj, nt - 1)
+  p_n_last = zeros(T, ni, nj, nt - 1)
+  tmp_dir = zeros(T, ni, nj, nt - 1)
+  res_T = zeros(T, ni, nj, nt - 1)
 
-  dhcp_T_buffer = zeros(Float64, ni, nj, nk, nt)
+  dhcp_T_buffer = zeros(T, ni, nj, nk, nt)
   dhcp_iter_buffer = zeros(Int, nt)
 
-  adjoint_buffer = zeros(Float64, ni, nj, nk, nt)
+  adjoint_buffer = zeros(T, ni, nj, nk, nt)
   adjoint_iter_buffer = zeros(Int, nt - 1)
 
-  sensitivity_buffer = zeros(Float64, ni, nj, nk, nt)
+  sensitivity_buffer = zeros(T, ni, nj, nk, nt)
   sensitivity_iter_buffer = zeros(Int, nt)
-  dT_init = zeros(Float64, ni, nj, nk)
+  dT_init = zeros(T, ni, nj, nk)
 
 
   bottom_idx = 1   # Julia 1-indexed（裏面 S2）
@@ -327,7 +328,7 @@ function solve_cgm!(
     push!(J_hist, J)
 
     if verbose
-      @printf("J = %.5e\n", J)
+      @printf("J = %.5e\n", Float64(J))
     end
 
     # Step 3: 随伴問題求解（勾配計算）
@@ -352,29 +353,29 @@ function solve_cgm!(
     if it == 0 || tensor_dot(grad, p_n_last) <= 0 || it % dire_reset_every == 0
       # 最急降下方向にリセット
       @. p_n = grad
-      gamma = 0.0
+      gamma = zero(T)
     else
       # ポラック・リビエール係数
       @. tmp_dir = grad - grad_last
       denom = tensor_dot(grad_last, grad_last) + eps
-      gamma = max(0.0, tensor_dot(grad, tmp_dir) / denom)
+      gamma = max(zero(T), tensor_dot(grad, tmp_dir) / denom)
 
       # 探索方向候補
       @. tmp_dir = grad + gamma * p_n_last
 
       # 下降方向チェック
-      if tensor_dot(grad, tmp_dir) > 0
+      if tensor_dot(grad, tmp_dir) > zero(T)
         @. p_n = tmp_dir
       else
         # 下降方向でない場合はリセット
         @. p_n = grad
-        gamma = 0.0
+        gamma = zero(T)
       end
     end
 
     # Step 5: 感度問題求解（dT計算）
     reset_work_buffers!(work)  # WorkBuffersをクリーンな状態にリセット
-    fill!(dT_init, 0.0)
+    fill!(dT_init, zero(T))
     sensitivity_start = time()
     dT, sens_iters = solve_sensitivity!(
       dT_init, p_n, work,
@@ -401,13 +402,13 @@ function solve_cgm!(
     # ステップサイズ制限（初回のみ）
     if it == 0 && abs(beta) > beta_max
       if verbose
-        @printf("[警告] beta制限: %.2e => %.2e\n", beta, sign(beta) * beta_max)
+        @printf("[警告] beta制限: %.2e => %.2e\n", Float64(beta), Float64(sign(beta) * beta_max))
       end
       beta = clamp(beta, -beta_max, beta_max)
     end
 
     if verbose
-      @printf("beta = %.4e, gamma = %.4e\n", beta, gamma)
+      @printf("beta = %.4e, gamma = %.4e\n", Float64(beta), Float64(gamma))
     end
 
     # Step 7: 熱流束更新

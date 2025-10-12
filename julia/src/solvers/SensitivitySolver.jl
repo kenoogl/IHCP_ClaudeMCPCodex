@@ -68,25 +68,26 @@ end
 
 """
 function calRHS!(wk::WorkBuffers,
-    HF::Vector{Float64},
-    dx::Float64,
-    dy::Float64,
-    Δt::Float64,
-    ΔZ::Vector{Float64},
-    z_range::Vector{Int64},
-    qsrf::AbstractArray{Float64,2},
+    HF::AbstractVector{T},
+    dx::T,
+    dy::T,
+    Δt::T,
+    ΔZ::AbstractVector{T},
+    z_range::AbstractVector{<:Integer},
+    qsrf::AbstractArray{T,2},
     distribution::Bool,
-    ρ::Float64,
+    ρ::T,
     par::String
-    )
+    ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
     SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
     backend = get_backend(par)
+    inv_ΔZ_ed = inv(ΔZ[z_ed])
 
     # Sensitivity固有: Z上面の熱流束分布（DHCPと同じ処理）
     if distribution == true
-        let k = z_ed, a = 1.0 / ΔZ[z_ed]
+        let k = z_ed, a = inv_ΔZ_ed
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
                 wk.b[i,j,k] -= qsrf[i-1,j-1] * a
             end
@@ -94,8 +95,9 @@ function calRHS!(wk::WorkBuffers,
     end
 
     # Sensitivity固有: 最終RHS計算（内部熱源項なし）
+    ddt_T = T(ddt)
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        wk.b[i,j,k] = -( ddt * wk.θ[i,j,k]
+        wk.b[i,j,k] = -( ddt_T * wk.θ[i,j,k]
                         + wk.b[i,j,k] / (ρ * wk.cp[i,j,k])  )
     end
 
@@ -126,36 +128,36 @@ iter_counts: 各時間ステップの反復回数 (nt) [回]
 """
 
 function solve_sensitivity!(
-  T_initial::Array{Float64,3},
-  q_surf::Array{Float64,3},
+  T_initial::AbstractArray{T,3},
+  q_surf::AbstractArray{T,3},
   wk::WorkBuffers,
   nt::Int,
-  ρ::Float64,
+  ρ::T,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64},
-  dx::Float64,
-  dy::Float64,
+  dx::T,
+  dy::T,
   Z::Vector{Float64},
   ΔZ::Vector{Float64},
-  dt::Float64;
-  rtol=1e-6,
-  maxiter=20000,
-  verbose=false,
+  dt::T;
+  rtol::T=T(1e-6),
+  maxiter::Int=20000,
+  verbose::Bool=false,
   par::String="sequential",
-  T_buffer::Union{Nothing,Array{Float64,4}}=nothing,
+  T_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing
-)
+) where {T <: AbstractFloat}
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
-  Δh = (dx, dy, 1.0) # 1.0はダミー
+  Δh = (dx, dy, one(T)) # 1.0はダミー
   backend = get_backend(par)
 
-  T_all = isnothing(T_buffer) ? zeros(Float64, ni, nj, nk, nt) : T_buffer
+  T_all = isnothing(T_buffer) ? zeros(T, ni, nj, nk, nt) : T_buffer
   expected_shape = (ni, nj, nk, nt)
   if size(T_all) != expected_shape
     throw(ArgumentError("T_buffer size mismatch: expected $(expected_shape), got $(size(T_all))"))
   end
-  fill!(T_all, 0.0)
+  fill!(T_all, zero(T))
   @views T_all[:, :, :, 1] .= T_initial
 
   # 反復回数を記録
@@ -179,7 +181,7 @@ function solve_sensitivity!(
    # PBICGSTAB 初期値設定
   @floop backend for k in 1:nk, j in 1:nj, i in 1:ni
     wk.θ[i+1, j+1, k+1] = T_initial[i, j, k]
-    wk.mask[i+1, j+1, k+1] = 1.0
+    wk.mask[i+1, j+1, k+1] = one(T)
   end
 
   # 温度場から初期値の熱物性値計算
@@ -209,7 +211,7 @@ function solve_sensitivity!(
 
 
     isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-        tol=rtol, maxItr=maxiter, smoother="gs", par=par)
+        tol=rtol, maxItr=maxiter, smoother=:gs, par=par)
 
     iter_counts[t] = itr
     step_time = time() - step_start

@@ -87,26 +87,27 @@ end
 """
 function calRHS!(
     wk::WorkBuffers,
-    Tsrf::AbstractArray{Float64,2},
-    Yobs::AbstractArray{Float64,2},
-    HF::Vector{Float64},
-    dx::Float64,
-    dy::Float64,
-    Δt::Float64,
-    ΔZ::Vector{Float64},
-    z_range::Vector{Int64},
+    Tsrf::AbstractArray{T,2},
+    Yobs::AbstractArray{T,2},
+    HF::AbstractVector{T},
+    dx::T,
+    dy::T,
+    Δt::T,
+    ΔZ::AbstractVector{T},
+    z_range::AbstractVector{<:Integer},
     distribution::Bool,
-    ρ::Float64,
+    ρ::T,
     par::String
-    )
+    ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
     SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
     backend = get_backend(par)
+    inv_ΔZ_st = inv(ΔZ[z_st])
 
     # Adjoint固有: Z下面の残差注入
     if distribution == true
-        let k = z_st, a = 2.0 / ΔZ[z_st]
+        let k = z_st, a = T(2) * inv_ΔZ_st
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
                 wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i-1,j-1]) * a
             end
@@ -114,8 +115,9 @@ function calRHS!(
     end
 
     # Adjoint固有: 最終RHS計算（内部熱源項なし）
+    ddt_T = T(ddt)
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        wk.b[i,j,k] = -( ddt * wk.θ[i,j,k]
+        wk.b[i,j,k] = -( ddt_T * wk.θ[i,j,k]
                         + wk.b[i,j,k] / (ρ * wk.cp[i,j,k])  )
     end
 
@@ -166,36 +168,36 @@ Returns:
   cg_iters: CG反復回数履歴 (nt-1,)
 """
 function solve_adjoint_mf!(
-  T_cal::Array{Float64,4},
-  Y_obs::Array{Float64,3},
+  T_cal::AbstractArray{T,4},
+  Y_obs::AbstractArray{T,3},
   wk::WorkBuffers,
   nt::Int,
-  ρ::Float64,
+  ρ::T,
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64},
-  dx::Float64,
-  dy::Float64,
+  dx::T,
+  dy::T,
   Z::Vector{Float64},
   ΔZ::Vector{Float64},
-  dt::Float64;
-  rtol::Float64=1e-8,
+  dt::T;
+  rtol::T=T(1e-8),
   maxiter::Int=1000,
   verbose::Bool=false,
   par::String="sequential",
-  lambda_buffer::Union{Nothing,Array{Float64,4}}=nothing,
+  lambda_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing
-)
+) where {T <: AbstractFloat}
   ni, nj, nk = size(T_cal[:, :, :, 1])
   N = ni * nj * nk
-  Δh = (dx, dy, 1.0) # 1.0はダミー
+  Δh = (dx, dy, one(T)) # 1.0はダミー
 
   # 随伴場の初期化
-  λa_all = isnothing(lambda_buffer) ? zeros(Float64, ni, nj, nk, nt) : lambda_buffer
+  λa_all = isnothing(lambda_buffer) ? zeros(T, ni, nj, nk, nt) : lambda_buffer
   expected_shape = (ni, nj, nk, nt)
   if size(λa_all) != expected_shape
     throw(ArgumentError("lambda_buffer size mismatch: expected $(expected_shape), got $(size(λa_all))"))
   end
-  fill!(λa_all, 0.0) # 終端条件含む初期化
+  fill!(λa_all, zero(T)) # 終端条件含む初期化
 
   cg_iters = isnothing(iter_buffer) ? zeros(Int, nt-1) : iter_buffer
   expected_len = nt - 1
@@ -215,7 +217,7 @@ function solve_adjoint_mf!(
   # PBICGSTAB 初期値設定
   for k in 1:nk, j in 1:nj, i in 1:ni
     wk.θ[i+1, j+1, k+1] = λa_all[i, j, k, nt]
-    wk.mask[i+1, j+1, k+1] = 1.0
+    wk.mask[i+1, j+1, k+1] = one(T)
   end
 
   # 温度場から初期値の熱物性値計算
@@ -245,7 +247,7 @@ function solve_adjoint_mf!(
       true, ρ, par)
 
     isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother="gs", par=par)
+          tol=rtol, maxItr=maxiter, smoother=:gs, par=par)
     cg_iters[t] = itr
     step_time = time() - step_start
 
