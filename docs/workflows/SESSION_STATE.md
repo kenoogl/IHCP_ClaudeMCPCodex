@@ -1,8 +1,8 @@
 # セッション状態
 
-**最終更新**: 2025年10月13日 00:30
+**最終更新**: 2025年10月12日 23:00
 **現在のブランチ**: tuning6
-**最新コミット**: 3bd5a63 (docs: Phase 1-Bセッション状態更新)
+**最新コミット**: 未コミット（Phase 1-B組み合わせ改善完了）
 
 ---
 
@@ -35,29 +35,49 @@
    - **性能**: 1,067.13秒（ベースライン比0.49%改善、Phase 0比0.15%改善）
    - レポート: shared/results/performance_tuning5_type_stability.md
 
-4. **Phase 1-B: 初期推定値改善**（✅ 完了、プッシュ済み、ベンチマーク完了）
+4. **Phase 1-B: 初期推定値改善**（✅ 完了、ベンチマーク完了、未コミット）
    - ブランチ: tuning6
-   - コミット: e1df319, 3bd5a63
-   - 外挿法3種類: :none, :linear, :quadratic
-   - Adjoint初期値戦略2種類: :previous, :residual
-   - スライディングウィンドウ境界初期値継承
+   - 実装内容:
+     - 外挿法3種類: :none, :linear, :quadratic
+     - Adjoint初期値戦略2種類: :previous, :residual
+     - **Adjoint残差スケール係数**: 追加パラメータ `adjoint_residual_scale`
    - テスト: 505件全通過 ✅
-   - **ベンチマーク結果**: 6シナリオ実行完了（2時間26分）
-   - **有効な改善**: DHCP二次外挿（11.6%改善）✅
+   - **ベンチマーク結果**: 7シナリオ実行完了（約3時間）
+   - **有効な改善**:
+     - DHCP二次外挿: -11.6%改善 ✅
+     - **Adjoint残差0.5倍: -5.3%追加改善** ✅✅
+     - **組み合わせ効果: -16.3%改善**（最良）🏆
    - **無効な改善**: Adjoint残差戦略、Sensitivity外挿（悪化）❌
-   - **推奨設定**: `dhcp_extrapolation = :quadratic`
-   - レポート: shared/results/performance_tuning6_phase1b.md
+   - **推奨設定**:
+     - `dhcp_extrapolation = :quadratic`
+     - `adjoint_residual_scale = 0.5`
+   - レポート:
+     - shared/results/performance_tuning6_phase1b.md（6シナリオ）
+     - shared/results/phase1b_combined_improvement_report.md（組み合わせ）✨
 
 ### 進行中の作業
 
-- **なし**（Phase 1-B完了、次はPhase 1-C検討またはブランチマージ）
+- **Phase 1-Bのコミット・プッシュ待ち**
+  - Adjoint残差スケール係数実装
+  - 組み合わせ改善ベンチマーク完了
+  - レポート作成完了
 
 ### 次のタスク（優先順）
 
-1. **Phase 1-Bの設定適用とマージ**
-   - デフォルト設定変更（dhcp_extrapolation = :quadratic）
-   - ドキュメント更新
-   - tuning6ブランチをmainにマージ
+1. **Phase 1-Bのコミット・プッシュ**（最優先）
+   - Adjoint残差スケール係数実装をコミット
+   - 組み合わせ改善ベンチマーク結果をコミット
+   - 推奨設定:
+     - `dhcp_extrapolation = :quadratic`
+     - `adjoint_residual_scale = 0.5`（デフォルト値は要検討）
+
+2. **デフォルト設定の更新**（検討）
+   - CGMSolver.jlのデフォルト値を変更するかユーザー選択にするか
+   - 現在: `adjoint_residual_scale = 1.0`（デフォルト）
+   - 推奨: `adjoint_residual_scale = 0.5`（-5.3%改善）
+
+3. **tuning6ブランチをmainにマージ**
+   - Phase 1-B完全完了後
 
 2. **Phase 1-C: 前処理改善**（検討中）
    - Phase 1-Bの結果を踏まえ、実装するか判断
@@ -95,8 +115,10 @@
 
 ### Phase 1-B結果（ベンチマーク完了）
 
-**実行日時**: 2025-10-12 21:06
-**総実行時間**: 約2時間26分（6シナリオ）
+**実行日時**: 2025-10-12 21:06～22:49
+**総実行時間**: 約3時間（7シナリオ）
+
+#### 第1弾: 6シナリオ（基本評価）
 
 | シナリオ | 実行時間 | 改善率 | 判定 |
 |---------|---------|--------|------|
@@ -107,18 +129,42 @@
 | Sensitivity線形 | 1,140.86秒 | +7.3% | ❌ |
 | Sensitivity二次 | 1,108.67秒 | +4.3% | ❌ |
 
-**採用**: DHCP二次外挿（dhcp_extrapolation = :quadratic）
-**不採用**: Adjoint残差戦略、Sensitivity外挿
+#### 第2弾: 組み合わせ改善（追加実験）✨
 
-**詳細**: shared/results/performance_tuning6_phase1b.md
+| シナリオ | 実行時間 | 改善率 | 判定 |
+|---------|---------|--------|------|
+| **DHCP二次 + Adjoint残差0.5倍** | **890.47秒** | **-16.26%** | 🏆 **最良** |
+
+**内訳**:
+- DHCP solver: 251.5秒（変化なし）
+- Adjoint solver: 381.2秒（変化なし）
+- **Sensitivity solver**: **257.4秒**（307.6秒 → **-16.3%改善** ✅）
+
+**採用**:
+- DHCP二次外挿（`dhcp_extrapolation = :quadratic`）
+- **Adjoint残差0.5倍（`adjoint_residual_scale = 0.5`）** ✅
+
+**不採用**: Adjoint残差戦略（:residual）、Sensitivity外挿
+
+**詳細**:
+- shared/results/performance_tuning6_phase1b.md（6シナリオ）
+- shared/results/phase1b_combined_improvement_report.md（組み合わせ）
 
 ### 累積改善（Phase 0 + Phase 1-A + Phase 1-B）
 
+#### 個別効果
+
 - **Phase 0**: -3.69秒（0.34%）
 - **Phase 1-A**: -1.61秒（0.15%）
-- **Phase 1-B**: -122.92秒（11.6%）※DHCP二次外挿適用時
-- **総改善**: -128.22秒（12.0%）
-- **ベースライン**: 1,072.43秒 → **Phase 1-B後**: 940.50秒
+- **Phase 1-B（DHCP二次のみ）**: -122.92秒（11.6%）
+- **Phase 1-B（Adjoint残差0.5倍）**: -50.03秒（5.3%、追加効果）
+
+#### 累積効果（組み合わせ）
+
+- **総改善**: **-181.96秒（16.96%）**
+- **ベースライン**: 1,072.43秒
+- **Phase 1-B最適化後**: **890.47秒** 🏆
+- **時間短縮**: 約3分短縮（17.9分 → 14.8分）
 
 ### 性能改善ロードマップ
 
@@ -135,9 +181,13 @@
 
 ### リポジトリ状態
 
-- **ブランチ**: tuning6（最新、プッシュ済み）
-- **未コミット変更**: なし
-- **テスト状態**: 505件全通過（最終確認: 2025-10-12 22:00）
+- **ブランチ**: tuning6（最新）
+- **未コミット変更**: あり
+  - AdjointSolver.jl: `residual_scale`パラメータ追加
+  - CGMSolver.jl: `adjoint_residual_scale`パラメータ追加
+  - benchmark_combined_improvement.jl: 新規追加
+  - phase1b_combined_improvement_report.md: 新規追加
+- **テスト状態**: 確認推奨（コミット前に実行）
 
 ### Juliaパッケージ
 
@@ -166,7 +216,8 @@
    - `docs/performance_improvement_proposals.md`: 改善提案書（全Phase）
    - `shared/results/performance_tuning4_allocation_reduction.md`: Phase 0結果
    - `shared/results/performance_tuning5_type_stability.md`: Phase 1-A結果
-   - `shared/results/performance_tuning6_phase1b.md`: Phase 1-B結果（最新）✨
+   - `shared/results/performance_tuning6_phase1b.md`: Phase 1-B結果（6シナリオ）
+   - `shared/results/phase1b_combined_improvement_report.md`: Phase 1-B組み合わせ改善（最新）✨✨
 
 3. **プロジェクト状況**:
    - `docs/PROJECT_COMPLETION.md`: プロジェクト完成報告
@@ -248,5 +299,5 @@ julia --project=julia scripts/run_10steps_fullsize_test.jl
 
 **更新履歴**:
 - 2025-10-12 15:00: 初版作成（Phase 0完了、ワークフロー文書作成完了）
-- 2025-10-12 22:00: Phase 1-B実装完了
-- 2025-10-13 00:30: Phase 1-Bベンチマーク完了、結果反映
+- 2025-10-12 22:00: Phase 1-B実装完了（6シナリオベンチマーク完了）
+- 2025-10-12 23:00: Phase 1-B組み合わせ改善完了（Adjoint残差0.5倍、-16.3%改善達成）✨

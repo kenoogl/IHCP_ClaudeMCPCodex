@@ -120,7 +120,8 @@ function compute_gradient!(
   gradient_buffer::Union{Nothing,Array{T,3}}=nothing,
   adjoint_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
-  initial_strategy::Symbol=:residual
+  initial_strategy::Symbol=:residual,
+  residual_scale::T=T(1)
 ) where {T <: AbstractFloat}
   ni, nj, nk, nt = size(T_cal)
 
@@ -131,7 +132,8 @@ function compute_gradient!(
     rtol=rtol, maxiter=maxiter, verbose=verbose, par=par,
     lambda_buffer=adjoint_buffer,
     iter_buffer=iter_buffer,
-    initial_strategy=initial_strategy
+    initial_strategy=initial_strategy,
+    residual_scale=residual_scale
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
@@ -265,6 +267,7 @@ function solve_cgm!(
   sensitivity_use_previous_solution = get(params, :sensitivity_use_previous_solution, true)
   sensitivity_extrapolation = get(params, :sensitivity_extrapolation, :none)
   adjoint_initial_strategy = get(params, :adjoint_initial_strategy, :residual)
+  adjoint_residual_scale = T(get(params, :adjoint_residual_scale, 1.0))
 
   # 問題サイズ（メモリレイアウト最適化: Phase 2.2）
   ni, nj, nt = size(Y_obs)
@@ -350,7 +353,8 @@ function solve_cgm!(
       gradient_buffer=grad,
       adjoint_buffer=adjoint_buffer,
       iter_buffer=adjoint_iter_buffer,
-      initial_strategy=adjoint_initial_strategy
+      initial_strategy=adjoint_initial_strategy,
+      residual_scale=adjoint_residual_scale
     )
     gradient_time = time() - gradient_start
 

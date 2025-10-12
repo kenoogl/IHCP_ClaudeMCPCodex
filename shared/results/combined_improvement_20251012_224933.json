@@ -1,0 +1,30 @@
+{
+  "scenario": {
+    "J_final": 4.797708736553879e6,
+    "rms_error": 7.74411771649446,
+    "scenario_name": "dhcp_quadratic_adjoint_half",
+    "heat_flux_max": 0.13550570117877547,
+    "heat_flux_mean": 0.09972165096838824,
+    "max_error": 22.615243987221902,
+    "elapsed_time": 890.465292930603,
+    "description": "DHCP二次外挿 + Adjoint残差0.5倍",
+    "adjoint_residual_scale": 0.5,
+    "heat_flux_min": 0.02911268757913077,
+    "sensitivity_extrapolation": "none",
+    "adjoint_initial_strategy": "previous",
+    "dhcp_extrapolation": "quadratic"
+  },
+  "benchmark_info": {
+    "julia_version": "1.12.0",
+    "time_steps": 10,
+    "grid_size": [
+      80,
+      100,
+      20
+    ],
+    "branch": "tuning6",
+    "commit": "63dbb47",
+    "dt": 0.001,
+    "date": "2025-10-12T22:49:33.323"
+  }
+}

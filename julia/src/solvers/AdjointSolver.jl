@@ -134,7 +134,8 @@ function calRHS!(
     z_range::AbstractVector{<:Integer},
     distribution::Bool,
     ρ::T,
-    par::String
+    par::String;
+    residual_scale::T=T(1)
     ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
@@ -142,9 +143,9 @@ function calRHS!(
     backend = get_backend(par)
     inv_ΔZ_st = inv(ΔZ[z_st])
 
-    # Adjoint固有: Z下面の残差注入
+    # Adjoint固有: Z下面の残差注入（residual_scaleで係数を調整可能、デフォルト=1.0で係数2）
     if distribution == true
-        let k = z_st, a = T(2) * inv_ΔZ_st
+        let k = z_st, a = T(2) * residual_scale * inv_ΔZ_st
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
                 wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i-1,j-1]) * a
             end
@@ -223,7 +224,8 @@ function solve_adjoint_mf!(
   par::String="sequential",
   lambda_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
-  initial_strategy::Symbol=:residual
+  initial_strategy::Symbol=:residual,
+  residual_scale::T=T(1)
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_cal[:, :, :, 1])
   N = ni * nj * nk
@@ -288,7 +290,7 @@ function solve_adjoint_mf!(
     # work.b (RHS)の計算
     # 底面（物理座標 k=1）の温度と観測値を使用
     calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), HF, dx, dy, dt, ΔZ, z_range,
-      true, ρ, par)
+      true, ρ, par, residual_scale=residual_scale)
 
     isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
           tol=rtol, maxItr=maxiter, smoother=:gs, par=par)
