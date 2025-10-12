@@ -1,8 +1,8 @@
 # セッション状態
 
-**最終更新**: 2025年10月12日 23:00
+**最終更新**: 2025年10月13日 00:00
 **現在のブランチ**: tuning6
-**最新コミット**: 未コミット（Phase 1-B組み合わせ改善完了）
+**最新コミット**: 736e0ae（Phase 1-B追加実験完了）
 
 ---
 
@@ -35,51 +35,47 @@
    - **性能**: 1,067.13秒（ベースライン比0.49%改善、Phase 0比0.15%改善）
    - レポート: shared/results/performance_tuning5_type_stability.md
 
-4. **Phase 1-B: 初期推定値改善**（✅ 完了、ベンチマーク完了、未コミット）
+4. **Phase 1-B: 初期推定値改善**（✅ 完了、全ベンチマーク完了、コミット済み）
    - ブランチ: tuning6
+   - コミット: e1df319, 3bd5a63, 63dbb47, 99ed77c, 736e0ae
    - 実装内容:
      - 外挿法3種類: :none, :linear, :quadratic
      - Adjoint初期値戦略2種類: :previous, :residual
      - **Adjoint残差スケール係数**: 追加パラメータ `adjoint_residual_scale`
    - テスト: 505件全通過 ✅
-   - **ベンチマーク結果**: 7シナリオ実行完了（約3時間）
+   - **ベンチマーク結果**: 9シナリオ実行完了（約4時間）
    - **有効な改善**:
      - DHCP二次外挿: -11.6%改善 ✅
-     - **Adjoint残差0.5倍: -5.3%追加改善** ✅✅
-     - **組み合わせ効果: -16.3%改善**（最良）🏆
-   - **無効な改善**: Adjoint残差戦略、Sensitivity外挿（悪化）❌
-   - **推奨設定**:
+     - **Adjoint残差0.5倍: -16.3%改善**（最良）🏆
+     - Adjoint残差0.2倍: -13.1%改善 🔶
+     - Adjoint残差0.1倍: -11.6%改善（DHCP二次のみと同等）
+   - **無効な改善**: Adjoint残差戦略（:residual）、Sensitivity外挿（悪化）❌
+   - **最終推奨設定**:
      - `dhcp_extrapolation = :quadratic`
-     - `adjoint_residual_scale = 0.5`
+     - `adjoint_residual_scale = 0.5` ← **最適値確定** ✅
    - レポート:
      - shared/results/performance_tuning6_phase1b.md（6シナリオ）
      - shared/results/phase1b_combined_improvement_report.md（組み合わせ）✨
+     - shared/results/adjoint_scale_01_*.json（0.1倍実験）
+     - shared/results/adjoint_scale_02_*.json（0.2倍実験）
 
 ### 進行中の作業
 
-- **Phase 1-Bのコミット・プッシュ待ち**
-  - Adjoint残差スケール係数実装
-  - 組み合わせ改善ベンチマーク完了
-  - レポート作成完了
+- **Phase 1-B総合レポート作成中**
+  - 9シナリオの完全比較
+  - 最適パラメータのまとめ
 
 ### 次のタスク（優先順）
 
-1. **Phase 1-Bのコミット・プッシュ**（最優先）
-   - Adjoint残差スケール係数実装をコミット
-   - 組み合わせ改善ベンチマーク結果をコミット
-   - 推奨設定:
-     - `dhcp_extrapolation = :quadratic`
-     - `adjoint_residual_scale = 0.5`（デフォルト値は要検討）
+1. **Phase 1-B総合レポート作成とプッシュ**（最優先）
+   - 9シナリオの完全比較レポート作成
+   - SESSION_STATE.md更新
+   - tuning6ブランチをプッシュ
 
-2. **デフォルト設定の更新**（検討）
-   - CGMSolver.jlのデフォルト値を変更するかユーザー選択にするか
-   - 現在: `adjoint_residual_scale = 1.0`（デフォルト）
-   - 推奨: `adjoint_residual_scale = 0.5`（-5.3%改善）
-
-3. **tuning6ブランチをmainにマージ**
+2. **tuning6ブランチをmainにマージ**
    - Phase 1-B完全完了後
 
-2. **Phase 1-C: 前処理改善**（検討中）
+3. **Phase 1-C: 前処理改善**（検討中）
    - Phase 1-Bの結果を踏まえ、実装するか判断
    - 期待効果: CG反復30-50%削減
    - 実装難易度: 高
@@ -140,11 +136,24 @@
 - Adjoint solver: 381.2秒（変化なし）
 - **Sensitivity solver**: **257.4秒**（307.6秒 → **-16.3%改善** ✅）
 
+#### 第3弾: パラメータ探索（追加実験2）
+
+**実行日時**: 2025-10-13 00:00
+**総実行時間**: 約30分（2シナリオ）
+
+| スケール | 実行時間 | 改善率 | 判定 |
+|---------|---------|--------|------|
+| **0.1倍** | 940.18秒 | -11.59% | ⚠️ 改善なし |
+| **0.2倍** | 923.64秒 | -13.14% | 🔶 中程度 |
+| **0.5倍** | **890.47秒** | **-16.3%** | 🏆 **最良** |
+
+**結論**: Adjoint残差スケール0.5倍が最適パラメータ ✅
+
 **採用**:
 - DHCP二次外挿（`dhcp_extrapolation = :quadratic`）
 - **Adjoint残差0.5倍（`adjoint_residual_scale = 0.5`）** ✅
 
-**不採用**: Adjoint残差戦略（:residual）、Sensitivity外挿
+**不採用**: Adjoint残差戦略（:residual）、Sensitivity外挿、0.1倍/0.2倍スケール
 
 **詳細**:
 - shared/results/performance_tuning6_phase1b.md（6シナリオ）
