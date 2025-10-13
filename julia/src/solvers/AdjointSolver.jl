@@ -225,7 +225,8 @@ function solve_adjoint_mf!(
   lambda_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   initial_strategy::Symbol=:residual,
-  residual_scale::T=T(1)
+  residual_scale::T=T(1),
+  smoother::Symbol=:gs
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_cal[:, :, :, 1])
   N = ni * nj * nk
@@ -293,7 +294,7 @@ function solve_adjoint_mf!(
       true, ρ, par, residual_scale=residual_scale)
 
     isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother=:gs, par=par)
+          tol=rtol, maxItr=maxiter, smoother=smoother, par=par)
     cg_iters[t] = itr
     step_time = time() - step_start
 

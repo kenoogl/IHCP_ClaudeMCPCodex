@@ -121,7 +121,8 @@ function compute_gradient!(
   adjoint_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   initial_strategy::Symbol=:residual,
-  residual_scale::T=T(1)
+  residual_scale::T=T(1),
+  smoother::Symbol=:gs
 ) where {T <: AbstractFloat}
   ni, nj, nk, nt = size(T_cal)
 
@@ -133,7 +134,8 @@ function compute_gradient!(
     lambda_buffer=adjoint_buffer,
     iter_buffer=iter_buffer,
     initial_strategy=initial_strategy,
-    residual_scale=residual_scale
+    residual_scale=residual_scale,
+    smoother=smoother
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
@@ -264,10 +266,13 @@ function solve_cgm!(
   verbose = get(params, :verbose, true)
   dhcp_use_previous_solution = get(params, :dhcp_use_previous_solution, true)
   dhcp_extrapolation = get(params, :dhcp_extrapolation, :none)
+  dhcp_smoother = get(params, :dhcp_smoother, :gs)
   sensitivity_use_previous_solution = get(params, :sensitivity_use_previous_solution, true)
   sensitivity_extrapolation = get(params, :sensitivity_extrapolation, :none)
+  sensitivity_smoother = get(params, :sensitivity_smoother, :gs)
   adjoint_initial_strategy = get(params, :adjoint_initial_strategy, :residual)
   adjoint_residual_scale = T(get(params, :adjoint_residual_scale, 1.0))
+  adjoint_smoother = get(params, :adjoint_smoother, :gs)
 
   # 問題サイズ（メモリレイアウト最適化: Phase 2.2）
   ni, nj, nt = size(Y_obs)
@@ -325,7 +330,8 @@ function solve_cgm!(
       T_buffer=dhcp_T_buffer,
       iter_buffer=dhcp_iter_buffer,
       use_previous_solution=dhcp_use_previous_solution,
-      extrapolation=dhcp_extrapolation
+      extrapolation=dhcp_extrapolation,
+      smoother=dhcp_smoother
     )
     dhcp_time = time() - dhcp_start
 
@@ -354,7 +360,8 @@ function solve_cgm!(
       adjoint_buffer=adjoint_buffer,
       iter_buffer=adjoint_iter_buffer,
       initial_strategy=adjoint_initial_strategy,
-      residual_scale=adjoint_residual_scale
+      residual_scale=adjoint_residual_scale,
+      smoother=adjoint_smoother
     )
     gradient_time = time() - gradient_start
 
@@ -402,7 +409,8 @@ function solve_cgm!(
       T_buffer=sensitivity_buffer,
       iter_buffer=sensitivity_iter_buffer,
       use_previous_solution=sensitivity_use_previous_solution,
-      extrapolation=sensitivity_extrapolation
+      extrapolation=sensitivity_extrapolation,
+      smoother=sensitivity_smoother
     )
     sensitivity_time = time() - sensitivity_start
 

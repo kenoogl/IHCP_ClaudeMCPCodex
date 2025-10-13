@@ -183,7 +183,8 @@ function solve_dhcp!(
   T_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   use_previous_solution::Bool=true,
-  extrapolation::Symbol=:none
+  extrapolation::Symbol=:none,
+  smoother::Symbol=:gs
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
@@ -255,7 +256,7 @@ function solve_dhcp!(
 
 
     isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-        tol=rtol, maxItr=maxiter, smoother=:gs, par=par)
+        tol=rtol, maxItr=maxiter, smoother=smoother, par=par)
 
     iter_counts[t] = itr
     step_time = time() - step_start
