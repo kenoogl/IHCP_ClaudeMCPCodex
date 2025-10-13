@@ -1,10 +1,10 @@
 # セッション状態
 
-**最終更新**: 2025年10月13日 21:15
-**現在のブランチ**: main
-**最新コミット**: eae45a4（ベンチマークスクリプトにPhase 1-B最適パラメータを反映）
-**Phase 1ステータス**: 🏁 **完了**（累積16.96%改善達成）
-**次のPhase**: Phase 2（並列化）準備完了
+**最終更新**: 2025年10月13日 22:30
+**現在のブランチ**: tuning7
+**最新コミット**: d9e1b02（適応的収束判定実装、Phase 1-E）
+**Phase 1ステータス**: 🔄 **Phase 1-E実装完了、ベンチマーク待ち**
+**次のタスク**: Phase 1-Eベンチマーク実行（10ステップ、効果測定）
 
 ---
 
@@ -104,9 +104,30 @@
      - リスクが高い（発散の可能性）
    - **レポート**: docs/polynomial_preconditioner_feasibility.md
 
+7. **Phase 1-E: 適応的収束判定**（✅ 実装完了、⏳ ベンチマーク待ち）
+   - **ブランチ**: tuning7
+   - **コミット**: d9e1b02
+   - **実装内容**:
+     - **AdaptiveToleranceモジュール作成**（julia/src/solvers/AdaptiveTolerance.jl）
+     - **解の相対変化ベース**: δ = ||θⁿ - θⁿ⁻¹||₂ / (||θⁿ||₂ + ε)
+     - 3つのソルバーに統合: DHCP, Adjoint, Sensitivity
+     - 理論的根拠: Eisenstat-Walker inexact Newton (1996)
+   - **設計**:
+     - パラメータ: tol_min, tol_max, κ_θ, warmup_steps
+     - デフォルト: adaptive_tol=false（後方互換性維持）
+     - 推奨設定: DHCP/Sensitivity(tol_min=1e-7), Adjoint(tol_min=1e-9)
+     - 初期3ステップは固定tol使用（移動平均安定化）
+   - **テスト**: 505件全通過 ✅
+   - **小規模動作確認**（10×10×5格子、6ステップ）:
+     - 反復回数削減: 2.27%（88回 → 86回）
+     - tolの適応的変化確認: t=2,3は1e-6、t=4-6は1e-5 ✅
+     - 精度: 最大相対誤差0.22%（許容範囲）
+   - **参考文献**: docs/adaptive_tolerance.md（codex調査結果）
+   - **次のステップ**: 10ステップフルサイズベンチマーク（効果測定）
+
 ### 進行中の作業
 
-- なし（Phase 1完了）
+- **Phase 1-E**: ベンチマーク実行待ち（10ステップフルサイズ、adaptive_tol有無比較）
 
 ### 次のタスク（優先順）
 
@@ -291,11 +312,13 @@
 
 ### リポジトリ状態
 
-- **ブランチ**: main（最新）
+- **ブランチ**: tuning7（Phase 1-E実装ブランチ）
 - **未コミット変更**: あり
   - SESSION_STATE.md: セッション状態更新（更新中）
-- **テスト状態**: 505件全通過 ✅（最終確認: 2025-10-13 19:45）
-- **最新コミット**: eae45a4（プッシュ済み）
+  - julia/scripts/test_adaptive_tol.jl: 動作確認テストスクリプト（未コミット）
+- **テスト状態**: 505件全通過 ✅（最終確認: 2025-10-13 22:15）
+- **最新コミット**: d9e1b02（tuning7ブランチ、未プッシュ）
+- **mainブランチ**: eae45a4（Phase 1-B最適パラメータ反映）
 
 ### Juliaパッケージ
 
@@ -344,6 +367,7 @@ julia/src/
     ├── SensitivitySolver.jl # 感度解法（マトリクスフリー）
     ├── CGMSolver.jl         # 共役勾配法
     ├── CommonSolver.jl      # PBICGSTAB!実装
+    ├── AdaptiveTolerance.jl # 適応的収束判定（Phase 1-E）
     └── SlidingWindowSolver.jl
 ```
 
@@ -415,3 +439,4 @@ julia --project=julia scripts/run_10steps_fullsize_test.jl
 - 2025-10-13 20:30: Phase 1-Cベンチマーク完了（Jacobi前処理不採用、GS最良確認）
 - 2025-10-13 21:00: Phase 1-D評価完了（Polynomial前処理実装中止）・🏁 **Phase 1完了**
 - 2025-10-13 21:15: ベンチマークスクリプトにPhase 1-B最適パラメータ反映・Phase 2準備完了 🚀
+- 2025-10-13 22:30: Phase 1-E実装完了（適応的収束判定、解の相対変化ベース）・ベンチマーク待ち ⏳
