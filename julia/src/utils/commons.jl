@@ -58,6 +58,7 @@ struct WorkBuffers
     pcg_s_ ::Array{Float64,3}
     pcg_t_ ::Array{Float64,3}
     hsrc   ::Array{Float64,3}
+    tmp    ::Array{Float64,3}  # Jacobi前処理用ワーク配列
 end
 
 """
@@ -78,7 +79,8 @@ function WorkBuffers(mx::Int64, my::Int64, mz::Int64)
     zeros(Float64, mx, my, mz), # pcg_s
     zeros(Float64, mx, my, mz), # pcg_s_
     zeros(Float64, mx, my, mz), # pcg_t_
-    zeros(Float64, mx, my, mz)  # hsrc
+    zeros(Float64, mx, my, mz), # hsrc
+    zeros(Float64, mx, my, mz)  # tmp
   )
 end
 
@@ -100,6 +102,7 @@ function reset_work_buffers!(wk::WorkBuffers)
   wk.θ    .= 0.0
   wk.b    .= 0.0
   wk.hsrc .= 0.0
+  wk.tmp  .= 0.0
 
   # maskは1.0に保持（境界条件で上書きされる）
   wk.mask .= 1.0

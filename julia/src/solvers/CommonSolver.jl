@@ -64,6 +64,23 @@ function myfill!(a::AbstractArray{T,3}, val::T, par::String) where {T <: Abstrac
   end
 end
 
+"""
+@brief Smoother選択器（Symbol → Val型変換）
+
+Symbol型から型パラメータVal{S}に変換することで、コンパイル時に分岐を解決。
+これによりループ内でも高速な前処理ディスパッチが可能になる。
+
+処理フロー:
+  PBiCGSTAB! → smoother_selector() → Preconditioner! → _Preconditioner!(Val{S})
+
+対応smoother:
+  - :none   → 前処理なし（恒等変換）
+  - :gs     → Gauss-Seidel法（RB-SOR、5回反復）
+  - :jacobi → Jacobi法（加重Jacobi、ω=0.8、5回反復）
+
+@param [in] s  Smoother種別（:none, :gs, :jacobi）
+@ret           Val型（コンパイル時ディスパッチ用）
+"""
 @inline function smoother_selector(s::Symbol)
   if s === :none || s === :gs || s === :jacobi
     return Val(s)
@@ -71,7 +88,10 @@ end
   throw(ArgumentError("Unsupported smoother: $s"))
 end
 
+# 前処理反復回数（Gauss-Seidel、Jacobiで使用）
 const PRECONDITIONER_SWEEPS = 5
+
+# Jacobi法の緩和係数（加重Jacobi法: x_new = (1-ω)x_old + ω*D^{-1}(b-Rx)）
 const JACOBI_RELAXATION = 0.8
 
 
@@ -130,7 +150,10 @@ function PBiCGSTAB!(wk::WorkBuffers,
     beta::T = zero(T)
     isconverged::Bool = false
     itr::Int = 0
+
+    # Smoother選択: Symbol → Val型変換（コンパイル時分岐解決）
     smoother_val = smoother_selector(smoother)
+
     inv_cell_count = inv(T((SZ[1]-2)*(SZ[2]-2)*(Int(last(z_range)) - Int(first(z_range)) + 1)))
     float_min_T = T(FloatMin)
 
@@ -152,7 +175,8 @@ function PBiCGSTAB!(wk::WorkBuffers,
         end
 
         myfill!(wk.pcg_p_, zero(T), par)  #fill!(pcg_p_, 0.0)
-        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par; scratch=wk.pcg_q)
+        # 前処理: pcg_p_ ≈ M^{-1} pcg_p （smoother_valで分岐、wk.tmpはJacobi用）
+        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par, wk.tmp)
 
         CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
         alpha = rho / Fdot2(wk.pcg_q, wk.pcg_r0, z_range, par)
@@ -160,7 +184,8 @@ function PBiCGSTAB!(wk::WorkBuffers,
         Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, z_range, par)
 
         myfill!(wk.pcg_s_, zero(T), par)  #fill!(pcg_s_, 0.0)
-        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par; scratch=wk.pcg_q);
+        # 前処理: pcg_s_ ≈ M^{-1} pcg_s （2回目の前処理適用）
+        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par, wk.tmp);
 
         CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
 
@@ -337,20 +362,42 @@ end
 
 
 """
-@brief 前処理
-@param [in,out] xx   解ベクトル
-@param [in]     bb   RHSベクトル
-@param [in]     λ    熱伝導率
-@param [in]     cp   比熱
-@param [in]     mask マスク配列
-@param [in]     ρ    密度
-@param [in]     Δh   セル幅
-@param [in]     Δt   時間積分幅
-@param [in]     smoother  [:none, :gs, :jacobi]
-@param [in]     Z    CV境界座標
-@param [in]     ΔZ   CV幅
-@param [in]     z_range Zループ開始/終了インデクス
-@param [in]     HT   熱伝達境界の値
+@brief 前処理（公開API）
+
+BiCGSTAB法の収束を加速するための前処理を適用する。
+
+【設計パターン】
+この関数は公開APIとして以下の役割を持つ：
+  1. 型チェックとドキュメント提供
+  2. 内部実装 _Preconditioner! へのディスパッチ
+
+【処理フロー】
+  Preconditioner!(smoother::Val{S})
+    → _Preconditioner!(smoother::Val{S})  ← Juliaの多重ディスパッチ
+       ├─ Val{:none}   → mycopy!（恒等変換）
+       ├─ Val{:gs}     → rbsor!（RB-SOR法、5回反復）
+       └─ Val{:jacobi} → jacobi_preconditioner!（加重Jacobi法、5回反復）
+
+【Val型の利点】
+  - コンパイル時に分岐解決（if文なし）
+  - ループ内でもゼロオーバーヘッド
+  - 型安定性による高速化
+
+@param [in,out] xx       解ベクトル（前処理後の値で上書き）
+@param [in]     bb       RHSベクトル
+@param [in]     λ        熱伝導率
+@param [in]     cp       比熱
+@param [in]     mask     マスク配列
+@param [in]     ρ        密度
+@param [in]     Δh       セル幅
+@param [in]     Δt       時間積分幅
+@param [in]     smoother Val{:none}, Val{:gs}, Val{:jacobi}
+@param [in]     Z        CV境界座標
+@param [in]     ΔZ       CV幅
+@param [in]     z_range  Zループ開始/終了インデクス
+@param [in]     HT       熱伝達境界の値
+@param [in]     par      バックエンド（"sequential", "thread"）
+@param [in]     scratch  ワーク配列（Jacobi前処理で使用、WorkBuffers.tmp）
 """
 function Preconditioner!(xx::AbstractArray{T,3},
                          bb::AbstractArray{T,3},
@@ -365,16 +412,47 @@ function Preconditioner!(xx::AbstractArray{T,3},
                          ΔZ::AbstractVector{T},
                          z_range::AbstractVector{<:Integer},
                          HT::AbstractVector{T},
-                         par::String;
-                         scratch::Union{Nothing,AbstractArray{T,3}}=nothing) where {T <: AbstractFloat}
+                         par::String,
+                         scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
+    # 内部実装にディスパッチ（Val型による分岐はコンパイル時に解決）
     _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par, scratch)
 end
 
+"""
+@brief 前処理実装: :none（恒等変換）
+
+前処理なし。右辺ベクトルをそのまま解ベクトルにコピーする。
+xx = bb
+
+【用途】
+  - 前処理のオーバーヘッドを避けたい場合
+  - 行列の条件数が良好な場合（収束が速い）
+  - ベースライン性能測定
+
+【計算量】 O(N)（単純なコピー）
+"""
 @inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, z_range, HT, par, _)
     mycopy!(xx, bb, par)
     return nothing
 end
 
+"""
+@brief 前処理実装: :gs（Gauss-Seidel法）
+
+Red-Black SOR法を5回反復して前処理を行う。
+xx ≈ M^{-1} bb （M: 前処理行列、ここではGS反復5回による近似逆行列）
+
+【アルゴリズム】
+  - Red-Black順序付きSOR法（並列化対応）
+  - 緩和係数 ω = 1.0（純粋なGauss-Seidel）
+  - 反復回数: PRECONDITIONER_SWEEPS = 5
+
+【用途】
+  - 従来から使用されている標準的な前処理
+  - 滑らかな誤差成分を効果的に除去
+
+【計算量】 O(5N)（5回反復 × N点更新）
+"""
 function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, z_range, HT, par, _)
     for _ in 1:PRECONDITIONER_SWEEPS
         rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), Z, ΔZ, z_range, HT, par)
@@ -382,6 +460,29 @@ function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ
     return nothing
 end
 
+"""
+@brief 前処理実装: :jacobi（Jacobi法）
+
+加重Jacobi法を5回反復して前処理を行う。
+xx ≈ M^{-1} bb （M: 対角行列Dによる前処理）
+
+【アルゴリズム】
+  - 加重Jacobi法: x_{k+1} = (1-ω)x_k + ω D^{-1}(bb - R x_k)
+  - 緩和係数: ω = JACOBI_RELAXATION = 0.8
+  - 反復回数: PRECONDITIONER_SWEEPS = 5
+  - ワーク配列: scratch（WorkBuffers.tmp）を使用
+
+【特徴】
+  - Gauss-Seidelより並列性が高い（理論上）
+  - 対角要素のみ計算（マトリクスフリー）
+  - メモリアクセスパターンが単純
+
+【用途】
+  - Phase 1-Cで導入（GS法との性能比較）
+  - 並列計算での性能改善を期待
+
+【計算量】 O(5N)（5回反復 × N点更新）
+"""
 function _Preconditioner!(xx::AbstractArray{T,3},
                           bb::AbstractArray{T,3},
                           λ::AbstractArray{T,3},
@@ -396,16 +497,65 @@ function _Preconditioner!(xx::AbstractArray{T,3},
                           z_range::AbstractVector{<:Integer},
                           HT::AbstractVector{T},
                           par::String,
-                          scratch::Union{Nothing,AbstractArray{T,3}}) where {T <: AbstractFloat}
-    scratch === nothing && throw(ArgumentError("Jacobi preconditioner requires scratch workspace"))
+                          scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
     jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par, scratch)
     return nothing
 end
 
+"""
+@brief 前処理実装: エラーハンドラ
+
+サポートされていないsmoother種別に対するエラー処理。
+この関数は通常実行されない（smoother_selector()で事前チェック済み）。
+
+型システムの完全性のために定義。
+"""
 @inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, z_range, HT, par, scratch) where {s}
     throw(ArgumentError("Unsupported smoother: $(s)"))
 end
 
+"""
+@brief Jacobi前処理の実装（マトリクスフリー）
+
+加重Jacobi法による前処理を5回反復で実行する。
+xx ≈ (I - ωD^{-1}(A-D))^5 bb
+
+【アルゴリズム詳細】
+1. 反復: PRECONDITIONER_SWEEPS = 5回
+2. 各反復で加重Jacobi更新:
+   - 現在の解xxをscratchにコピー
+   - 各格子点で対角要素ddを計算（マトリクスフリー）
+   - 残差: rhs - Ax を計算
+   - 更新: xx[i,j,k] = xx[i,j,k] + ω * (rhs - Ax) / dd
+3. 境界セルはbbの値をそのままコピー（mask==0の場合）
+
+【パラメータ】
+- 緩和係数: ω = JACOBI_RELAXATION = 0.8
+- ワーク配列: scratch（WorkBuffers.tmp、サイズはxxと同じ）
+
+【数値安定性】
+- 対角要素ゼロ回避: dd = max(dd, FloatMin)
+- mask処理: 境界セル（m0==0）はbbの値を維持
+
+【計算コスト】
+- 5回反復 × N点 × 7点ステンシル
+- GS法と同等のFLOPS、但し並列性が高い
+
+@param [in,out] xx       解ベクトル（前処理後の値で上書き）
+@param [in]     bb       RHSベクトル
+@param [in]     λ        熱伝導率
+@param [in]     cp       比熱
+@param [in]     mask     マスク配列（1.0=計算点、0.0=境界点）
+@param [in]     ρ        密度
+@param [in]     Δh       セル幅 (dx, dy)
+@param [in]     Δt       時間積分幅
+@param [in]     Z        CV境界座標
+@param [in]     ΔZ       CV幅
+@param [in]     z_range  Zループ開始/終了インデクス
+@param [in]     HT       熱伝達境界の値（6面分）
+@param [in]     par      バックエンド（"sequential", "thread"）
+@param [in]     scratch  ワーク配列（WorkBuffers.tmp）
+"""
 function jacobi_preconditioner!(xx::AbstractArray{T,3},
                                 bb::AbstractArray{T,3},
                                 λ::AbstractArray{T,3},
@@ -436,6 +586,7 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
     oneT = one(T)
     zeroT = zero(T)
 
+    # 加重Jacobi法を5回反復
     for _ in 1:PRECONDITIONER_SWEEPS
         mycopy!(scratch, xx, par)
         @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
