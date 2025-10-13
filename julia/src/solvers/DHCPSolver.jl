@@ -36,6 +36,9 @@ using ..RHSCore: calRHS_core!
 import ..CommonSolver
 using ..CommonSolver: PBiCGSTAB!
 
+import ..AdaptiveTolerance
+using ..AdaptiveTolerance: AdaptiveToleranceParams, compute_adaptive_tol
+
 export solve_dhcp!
 
 """
@@ -184,7 +187,9 @@ function solve_dhcp!(
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   use_previous_solution::Bool=true,
   extrapolation::Symbol=:none,
-  smoother::Symbol=:gs
+  smoother::Symbol=:gs,
+  adaptive_tol::Bool=false,
+  adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
@@ -254,9 +259,23 @@ function solve_dhcp!(
       @view(q_surface[:, :, t-1]),
       true, ρ, par)
 
+    # 適応的収束基準の計算
+    current_tol = rtol
+    if adaptive_tol && !isnothing(adaptive_tol_params)
+      current_tol = compute_adaptive_tol(
+        @view(T_all[:, :, :, t-1]),  # 前ステップ
+        t >= 3 ? @view(T_all[:, :, :, t-2]) : @view(T_all[:, :, :, t-1]),  # 2ステップ前（初期はt-1を再利用）
+        t,
+        rtol,
+        adaptive_tol_params
+      )
+      if verbose
+        println("  [t=$(t)] Adaptive tol: $(current_tol) (default: $(rtol))")
+      end
+    end
 
     isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-        tol=rtol, maxItr=maxiter, smoother=smoother, par=par)
+        tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
 
     iter_counts[t] = itr
     step_time = time() - step_start

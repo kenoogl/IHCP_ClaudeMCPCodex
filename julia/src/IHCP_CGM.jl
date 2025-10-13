@@ -38,6 +38,7 @@ include("DataLoaders.jl")
 # Phase 2-5モジュールのインクルード
 include("solvers/RHSCore.jl")
 include("solvers/CommonSolver.jl")
+include("solvers/AdaptiveTolerance.jl")
 include("solvers/DHCPSolver.jl")
 include("solvers/SensitivitySolver.jl")
 include("solvers/AdjointSolver.jl")
@@ -55,6 +56,7 @@ using .ThermalProperties
 using .DataLoaders
 using .RHSCore
 using .CommonSolver
+using .AdaptiveTolerance
 using .DHCPSolver
 using .SensitivitySolver
 using .AdjointSolver
@@ -81,6 +83,7 @@ export check_temperature_field, check_flux_field, check_adjoint_field
 export extract_sorted_mat_files, load_region_temperature
 export convert_to_guard_cell_grid
 export WorkBuffers, λf
+export AdaptiveToleranceParams, compute_adaptive_tol, compute_relative_change
 
 # バージョン情報
 const VERSION = v"0.6.0"

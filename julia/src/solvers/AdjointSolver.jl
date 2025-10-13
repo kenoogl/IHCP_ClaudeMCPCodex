@@ -48,6 +48,9 @@ using ..RHSCore: calRHS_core!
 import ..CommonSolver
 using ..CommonSolver: PBiCGSTAB!
 
+import ..AdaptiveTolerance
+using ..AdaptiveTolerance: AdaptiveToleranceParams, compute_adaptive_tol
+
 export solve_adjoint_mf!
 
 const VALID_ADJOINT_STRATEGIES = (:previous, :residual)
@@ -226,7 +229,9 @@ function solve_adjoint_mf!(
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   initial_strategy::Symbol=:residual,
   residual_scale::T=T(1),
-  smoother::Symbol=:gs
+  smoother::Symbol=:gs,
+  adaptive_tol::Bool=false,
+  adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_cal[:, :, :, 1])
   N = ni * nj * nk
@@ -293,8 +298,25 @@ function solve_adjoint_mf!(
     calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), HF, dx, dy, dt, ΔZ, z_range,
       true, ρ, par, residual_scale=residual_scale)
 
+    # 適応的収束基準の計算（後退時間積分）
+    current_tol = rtol
+    if adaptive_tol && !isnothing(adaptive_tol_params)
+      # 後退時間積分: 時間的に後のステップ（既に計算済み）を使用
+      # t: 現在計算中、t+1: 時間的に後（前ステップ）、t+2: さらに後（2ステップ前）
+      current_tol = compute_adaptive_tol(
+        t < nt ? @view(λa_all[:, :, :, t+1]) : @view(λa_all[:, :, :, nt]),  # 前ステップ（時間的に後）
+        t < nt-1 ? @view(λa_all[:, :, :, t+2]) : @view(λa_all[:, :, :, nt]),  # 2ステップ前（初期はnt再利用）
+        nt - t,  # 物理的な時間ステップ番号（前向きカウント）
+        rtol,
+        adaptive_tol_params
+      )
+      if verbose
+        println("  [t=$(t)] Adaptive tol: $(current_tol) (default: $(rtol))")
+      end
+    end
+
     isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother=smoother, par=par)
+          tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
     cg_iters[t] = itr
     step_time = time() - step_start
 
