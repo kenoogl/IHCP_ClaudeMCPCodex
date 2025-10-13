@@ -1,8 +1,8 @@
 # セッション状態
 
-**最終更新**: 2025年10月13日 10:00
+**最終更新**: 2025年10月13日 15:00
 **現在のブランチ**: main
-**最新コミット**: 0b8fdf9（Phase 1-Bクイックスタートガイド追加）
+**最新コミット**: d114e21（smoother API追加とパラメータ伝播）
 
 ---
 
@@ -60,32 +60,48 @@
      - NEXT_SESSION_QUICK_START.md（クイックガイド）
    - **mainマージ**: 2025-10-13（39ファイル変更、+7,189行、-548行）
 
+5. **Phase 1-C: Jacobi前処理の実装**（🔄 進行中、実装完了、テスト・ベンチマーク待ち）
+   - ブランチ: main（直接実装）
+   - コミット: 16d3da0（Jacobi smoother実装）、d114e21（smoother API追加）
+   - 実装内容:
+     - **Jacobi前処理**: マトリクスフリー、対角要素のみ計算
+     - 加重Jacobi法（ω=0.8）、5回反復（PRECONDITIONER_SWEEPS）
+     - **smoother API**: CGM/DHCP/Adjoint/Sensitivityに伝播
+     - 利用可能なsmoother: `:none`, `:gs`, `:jacobi`
+   - テスト: Jacobi実装で505件全通過 ✅（smoother API未テスト）
+   - **次のステップ**:
+     - ⏳ smoother API動作確認テスト
+     - ⏳ ベンチマーク実行（GS vs Jacobi）
+     - ⏳ 結果評価とレポート作成
+
 ### 進行中の作業
 
-- **Phase 1-C: 前処理改善の準備中** 🚀
-  - 詳細設計の検討
-  - 実装計画の策定
-  - タスクブリーフィング作成
+- **Phase 1-C: Jacobi前処理のテスト＆ベンチマーク** 🚀
+  - smoother API動作確認（テスト505件）
+  - GS vs Jacobi性能比較
+  - 期待効果: 5-10%改善（控えめな見積もり）
 
 ### 次のタスク（優先順）
 
-1. **Phase 1-C: 前処理改善の詳細設計**（最優先）
-   - 前処理手法の選定（ILU、Jacobi、AMG等）
-   - 期待効果: CG反復30-50%削減
-   - 実装難易度: 高
-   - 参照: docs/performance_improvement_proposals.md（提案1）
+1. **Phase 1-C: テスト実行**（最優先、5分）
+   ```bash
+   julia --project=julia julia/test/runtests.jl
+   ```
+   - smoother API動作確認
+   - 505件全通過を確認
 
-2. **Phase 1-C用ブランチ作成**
-   - tuning7ブランチ作成
-   - mainから分岐
+2. **Phase 1-C: ベンチマーク実行**（30分 x 2）
+   - GSsmootherベンチマーク（現在のデフォルト）
+   - Jacobi smootherベンチマーク（新規実装）
+   - 結果比較とレポート作成
 
-3. **Phase 1-Cタスクブリーフィング作成**
-   - codex連携ワークフローに従った詳細ブリーフィング
-   - 実装要件の明確化
+3. **Phase 1-C: 結果評価**
+   - 改善効果の測定
+   - 次のステップの判断（ILU実装 or 別Phase）
 
-4. **代替案検討**（Phase 1-C実装が困難な場合）
-   - Phase 2: 並列化（提案3）
-   - Phase 3: アルゴリズム改善（提案5-8）
+4. **代替案検討**（Jacobi効果が薄い場合）
+   - ILU(0)前処理の実装（提案1-A）
+   - Phase 2: 並列化（提案8）
 
 ---
 
