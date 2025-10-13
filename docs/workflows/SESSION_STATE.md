@@ -1,8 +1,8 @@
 # セッション状態
 
-**最終更新**: 2025年10月13日 15:00
+**最終更新**: 2025年10月13日 19:45
 **現在のブランチ**: main
-**最新コミット**: d114e21（smoother API追加とパラメータ伝播）
+**最新コミット**: 0fefaf9（Jacobi前処理のワーク配列管理改善と詳細コメント追加）
 
 ---
 
@@ -60,42 +60,46 @@
      - NEXT_SESSION_QUICK_START.md（クイックガイド）
    - **mainマージ**: 2025-10-13（39ファイル変更、+7,189行、-548行）
 
-5. **Phase 1-C: Jacobi前処理の実装**（🔄 進行中、実装完了、テスト・ベンチマーク待ち）
+5. **Phase 1-C: Jacobi前処理の実装**（🔄 実装完了、ベンチマーク待ち）
    - ブランチ: main（直接実装）
-   - コミット: 16d3da0（Jacobi smoother実装）、d114e21（smoother API追加）
+   - コミット:
+     - 16d3da0: Jacobi smoother実装
+     - d114e21: smoother API追加とパラメータ伝播
+     - 0fefaf9: ワーク配列管理改善と詳細コメント追加 ✅
    - 実装内容:
      - **Jacobi前処理**: マトリクスフリー、対角要素のみ計算
      - 加重Jacobi法（ω=0.8）、5回反復（PRECONDITIONER_SWEEPS）
      - **smoother API**: CGM/DHCP/Adjoint/Sensitivityに伝播
      - 利用可能なsmoother: `:none`, `:gs`, `:jacobi`
-   - テスト: Jacobi実装で505件全通過 ✅（smoother API未テスト）
+     - **WorkBuffers.tmp**: Jacobi専用ワーク配列追加
+     - **型安定化**: Preconditioner!のUnion型削除、位置引数化
+     - **詳細コメント**: 処理フロー、アルゴリズム、設計意図を追記
+   - テスト: 505件全通過 ✅
    - **次のステップ**:
-     - ⏳ smoother API動作確認テスト
      - ⏳ ベンチマーク実行（GS vs Jacobi）
      - ⏳ 結果評価とレポート作成
 
 ### 進行中の作業
 
-- **Phase 1-C: Jacobi前処理のテスト＆ベンチマーク** 🚀
-  - smoother API動作確認（テスト505件）
+- **Phase 1-C: Jacobi前処理のベンチマーク** 🚀
   - GS vs Jacobi性能比較
   - 期待効果: 5-10%改善（控えめな見積もり）
 
 ### 次のタスク（優先順）
 
-1. **Phase 1-C: テスト実行**（最優先、5分）
+1. **Phase 1-C: GSsmootherベンチマーク**（最優先、30分）
    ```bash
-   julia --project=julia julia/test/runtests.jl
+   julia --project=julia scripts/run_10steps_fullsize_test.jl
    ```
-   - smoother API動作確認
-   - 505件全通過を確認
+   - 現在のデフォルト設定（smoother = :gs）
+   - ベースライン測定
 
-2. **Phase 1-C: ベンチマーク実行**（30分 x 2）
-   - GSsmootherベンチマーク（現在のデフォルト）
-   - Jacobi smootherベンチマーク（新規実装）
-   - 結果比較とレポート作成
+2. **Phase 1-C: Jacobi smootherベンチマーク**（30分）
+   - スクリプト修正: `smoother = :jacobi`に変更
+   - 新規実装の性能測定
 
-3. **Phase 1-C: 結果評価**
+3. **Phase 1-C: 結果評価とレポート作成**（30分）
+   - GS vs Jacobi性能比較
    - 改善効果の測定
    - 次のステップの判断（ILU実装 or 別Phase）
 
@@ -210,9 +214,9 @@
 
 - **ブランチ**: main（最新）
 - **未コミット変更**: あり
-  - SESSION_STATE.md: Phase 1-B完了を反映（更新中）
-- **テスト状態**: 505件全通過 ✅（最終確認: 2025-10-13）
-- **mainブランチ状態**: tuning6の全変更をマージ済み
+  - SESSION_STATE.md: Phase 1-C実装完了を反映（更新中）
+- **テスト状態**: 505件全通過 ✅（最終確認: 2025-10-13 19:45）
+- **最新コミット**: 0fefaf9（プッシュ済み）
 
 ### Juliaパッケージ
 
@@ -328,3 +332,4 @@ julia --project=julia scripts/run_10steps_fullsize_test.jl
 - 2025-10-12 23:00: Phase 1-B組み合わせ改善完了（Adjoint残差0.5倍、-16.3%改善達成）✨
 - 2025-10-13 00:00: Phase 1-B追加実験完了（0.1倍/0.2倍スケール検証）
 - 2025-10-13 10:00: Phase 1-Bをmainにマージ完了、Phase 1-C準備開始 🚀
+- 2025-10-13 19:45: Phase 1-C実装完了（ワーク配列管理改善、型安定化、詳細コメント追加）✅
