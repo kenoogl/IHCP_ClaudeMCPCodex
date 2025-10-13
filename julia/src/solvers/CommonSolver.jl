@@ -65,13 +65,14 @@ function myfill!(a::AbstractArray{T,3}, val::T, par::String) where {T <: Abstrac
 end
 
 @inline function smoother_selector(s::Symbol)
-  if s === :none || s === :gs
+  if s === :none || s === :gs || s === :jacobi
     return Val(s)
   end
   throw(ArgumentError("Unsupported smoother: $s"))
 end
 
 const PRECONDITIONER_SWEEPS = 5
+const JACOBI_RELAXATION = 0.8
 
 
 """
@@ -88,10 +89,10 @@ const PRECONDITIONER_SWEEPS = 5
 # キーワード引数
 @param [in]     tol    反復閾値
 @param [in]     maxItr 最大反復数
-@param [in]     smoother ["gs", ""]
+@param [in]     smoother [:none, :gs, :jacobi]
 @param [in]     par    バックエンド（"sequential", "thread"）
 
-収束判定： 有効セル数(Nf)あたりの相対残差ノルム (||r_k|| / ||r_0||)/Nf < tol
+収束判定： 相対残差ノルム (||r_k|| / ||r_0||) < tol
 一方、IterativeSolvers.jlのcg!関数は相対残差ノルム
 @ret            収束/未収束、反復回数、初期残差
 """
@@ -151,7 +152,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
         end
 
         myfill!(wk.pcg_p_, zero(T), par)  #fill!(pcg_p_, 0.0)
-        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par)
+        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par; scratch=wk.pcg_q)
 
         CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
         alpha = rho / Fdot2(wk.pcg_q, wk.pcg_r0, z_range, par)
@@ -159,7 +160,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
         Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, z_range, par)
 
         myfill!(wk.pcg_s_, zero(T), par)  #fill!(pcg_s_, 0.0)
-        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par);
+        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par; scratch=wk.pcg_q);
 
         CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
 
@@ -345,7 +346,7 @@ end
 @param [in]     ρ    密度
 @param [in]     Δh   セル幅
 @param [in]     Δt   時間積分幅
-@param [in]     smoother  ["gs", ""]
+@param [in]     smoother  [:none, :gs, :jacobi]
 @param [in]     Z    CV境界座標
 @param [in]     ΔZ   CV幅
 @param [in]     z_range Zループ開始/終了インデクス
@@ -364,24 +365,115 @@ function Preconditioner!(xx::AbstractArray{T,3},
                          ΔZ::AbstractVector{T},
                          z_range::AbstractVector{<:Integer},
                          HT::AbstractVector{T},
-                         par::String) where {T <: AbstractFloat}
-    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par)
+                         par::String;
+                         scratch::Union{Nothing,AbstractArray{T,3}}=nothing) where {T <: AbstractFloat}
+    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par, scratch)
 end
 
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, z_range, HT, par)
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, z_range, HT, par, _)
     mycopy!(xx, bb, par)
     return nothing
 end
 
-function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, z_range, HT, par)
+function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, z_range, HT, par, _)
     for _ in 1:PRECONDITIONER_SWEEPS
         rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), Z, ΔZ, z_range, HT, par)
     end
     return nothing
 end
 
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, z_range, HT, par) where {s}
+function _Preconditioner!(xx::AbstractArray{T,3},
+                          bb::AbstractArray{T,3},
+                          λ::AbstractArray{T,3},
+                          cp::AbstractArray{T,3},
+                          mask::AbstractArray{T,3},
+                          ρ::T,
+                          Δh::NTuple{3,T},
+                          Δt::T,
+                          ::Val{:jacobi},
+                          Z::AbstractVector{T},
+                          ΔZ::AbstractVector{T},
+                          z_range::AbstractVector{<:Integer},
+                          HT::AbstractVector{T},
+                          par::String,
+                          scratch::Union{Nothing,AbstractArray{T,3}}) where {T <: AbstractFloat}
+    scratch === nothing && throw(ArgumentError("Jacobi preconditioner requires scratch workspace"))
+    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par, scratch)
+    return nothing
+end
+
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, z_range, HT, par, scratch) where {s}
     throw(ArgumentError("Unsupported smoother: $(s)"))
+end
+
+function jacobi_preconditioner!(xx::AbstractArray{T,3},
+                                bb::AbstractArray{T,3},
+                                λ::AbstractArray{T,3},
+                                cp::AbstractArray{T,3},
+                                mask::AbstractArray{T,3},
+                                ρ::T,
+                                Δh::NTuple{3,T},
+                                Δt::T,
+                                Z::AbstractVector{T},
+                                ΔZ::AbstractVector{T},
+                                z_range::AbstractVector{<:Integer},
+                                HT::AbstractVector{T},
+                                par::String,
+                                scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
+    backend = get_backend(par)
+    SZ = size(xx)
+    dx0 = Δh[1]
+    dy0 = Δh[2]
+    dx2 = inv(dx0 * dx0)
+    dy2 = inv(dy0 * dy0)
+    dx1 = inv(dx0)
+    dy1 = inv(dy0)
+    z_st = Int(first(z_range))
+    z_ed = Int(last(z_range))
+    ddt = inv(Δt)
+    float_min_T = T(FloatMin)
+    ω = T(JACOBI_RELAXATION)
+    oneT = one(T)
+    zeroT = zero(T)
+
+    for _ in 1:PRECONDITIONER_SWEEPS
+        mycopy!(scratch, xx, par)
+        @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+            λ0 = λ[i,j,k]
+            m0 = mask[i,j,k]
+            # Dirichlet/ghost cells are copied through
+            if m0 == zeroT
+                scratch[i,j,k] = bb[i,j,k]
+                continue
+            end
+            r_ρc = inv(ρ * cp[i,j,k])
+            mw = oneT - mask[i-1,j  ,k  ]
+            me = oneT - mask[i+1,j  ,k  ]
+            ms = oneT - mask[i  ,j-1,k  ]
+            mn = oneT - mask[i  ,j+1,k  ]
+            mb = mask[i  ,j  ,k-1]
+            mt = mask[i  ,j  ,k+1]
+            axm = λf(λ[i-1,j,k], λ0, mask[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
+            axp = λf(λ[i+1,j,k], λ0, mask[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
+            aym = λf(λ[i,j-1,k], λ0, mask[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
+            ayp = λf(λ[i,j+1,k], λ0, mask[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
+            zb = (Z[k]-Z[k-1])*mb + (oneT-mb)*ΔZ[k]
+            zt = (Z[k+1]-Z[k])*m0 + (oneT-m0)*ΔZ[k]
+            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (oneT-mb)/ΔZ[k]*HT[5]*r_ρc
+            azp = (λ0        / (ΔZ[k]*zt))*mt + (oneT-mt)/ΔZ[k]*HT[6]*r_ρc
+            dd = axp + axm + ayp + aym + azp + azm + ddt
+            ss = ( axp * xx[i+1,j  ,k  ] + axm * xx[i-1,j  ,k  ]
+                 + ayp * xx[i  ,j+1,k  ] + aym * xx[i  ,j-1,k  ]
+                 + azp * xx[i  ,j  ,k+1] + azm * xx[i  ,j  ,k-1] )
+            Ax = ss - dd * xx[i,j,k]
+            rhs = bb[i,j,k]
+            diag = max(dd, float_min_T)
+            scratch[i,j,k] = xx[i,j,k] + ω * (rhs - Ax) / diag
+        end
+        mycopy!(xx, scratch, par)
+    end
+
+    return nothing
 end
 
 
