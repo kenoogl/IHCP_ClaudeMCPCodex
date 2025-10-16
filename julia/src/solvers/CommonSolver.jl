@@ -301,7 +301,7 @@ end
 @param [in]     ρ    密度
 @param [in]     Δh   セル幅
 @param [in]     Δt   時間積分幅
-@param [in]     Z    CV境界座標
+@param [in]     ZC   CVセンター座標
 @param [in]     ΔZ   CV幅
 
 @ret                 セルあたりの残差RMS
@@ -316,42 +316,42 @@ function CalcRK!(
                 ρ::T,
                 Δh::NTuple{3,T},
                 Δt::T,
-                Z::AbstractVector{T},
+                ZC::AbstractVector{T},
                 ΔZ::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
     dx0 = Δh[1]
     dy0 = Δh[2]
-    dx2 = inv(dx0 * dx0)
-    dy2 = inv(dy0 * dy0)
-    z_st = 2
-    z_ed = SZ[3] - 1
     ddt = inv(Δt)
-    #cell_count_inv = inv(T((SZ[1]-2)*(SZ[2]-2)*(z_ed - z_st + 1)))
+    ddx = inv(dx0)
+    ddy = inv(dy0)
 
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+        dz_k = ΔZ[k]
         λ0 = λ[i,j,k]
         m0 = m[i,j,k]
-        mb = m[i  ,j  ,k-1]
-        mt = m[i  ,j  ,k+1]
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2
-        zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
-        zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
-        azp = (λ0        / (ΔZ[k]*zt))*mt
-        dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
+
+        # 体積積分形式：面積×コンダクタンス
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+        # 時間項（体積積分形式） - 定常解析の場合は0
+        a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
+
+        dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
-        rs = (b[i,j,k] - (ss - dd * θ[i,j,k])) * m0
+        rs = (b[i,j,k] - (ss - dd * θ[i,j,k]))* m0
         r[i,j,k] = rs
         @reduce(res = zero(T) + rs*rs)
     end
-    return sqrt(res) #* cell_count_inv
+    return sqrt(res)
 end
 
 
@@ -365,7 +365,7 @@ end
 @param [in]  cp   比熱
 @param [in]  m    マスク配列
 @param [in]  ρ    密度
-@param [in]  Z    CV境界座標
+@param [in]     ZC   CVセンター座標
 @param [in]  ΔZ   CV幅
 
 """
@@ -377,33 +377,34 @@ function CalcAX!(ax::AbstractArray{T,3},
                   cp::AbstractArray{T,3},
                   m::AbstractArray{T,3},
                   ρ::T,
-                  Z::AbstractVector{T},
+                  ZC::AbstractVector{T},
                   ΔZ::AbstractVector{T},
                   par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
     dx0 = Δh[1]
     dy0 = Δh[2]
-    dx2 = inv(dx0*dx0)
-    dy2 = inv(dy0*dy0)
-    z_st = 2
-    z_ed = SZ[3] - 1
     ddt = inv(Δt)
+    ddx = inv(dx0)
+    ddy = inv(dy0)
 
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+        dz_k = ΔZ[k]
         λ0 = λ[i,j,k]
         m0 = m[i,j,k]
-        mb = m[i  ,j  ,k-1]
-        mt = m[i  ,j  ,k+1]
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2
-        zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
-        zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
-        azp = (λ0        / (ΔZ[k]*zt))*mt
-        dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
+
+        # 体積積分形式：面積×コンダクタンス
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+        # 時間項（体積積分形式） - 定常解析の場合は0
+        a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
+
+        dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
@@ -443,7 +444,7 @@ BiCGSTAB法の収束を加速するための前処理を適用する。
 @param [in]     Δh       セル幅
 @param [in]     Δt       時間積分幅
 @param [in]     smoother Val{:none}, Val{:gs}, Val{:jacobi}
-@param [in]     Z        CV境界座標
+@param [in]     ZC   CVセンター座標
 @param [in]     ΔZ       CV幅
 @param [in]     par      バックエンド（"sequential", "thread"）
 @param [in]     scratch  ワーク配列（Jacobi前処理で使用、WorkBuffers.tmp）
@@ -457,12 +458,12 @@ function Preconditioner!(xx::AbstractArray{T,3},
                          Δh::NTuple{3,T},
                          Δt::T,
                          smoother::Val,
-                         Z::AbstractVector{T},
+                         ZC::AbstractVector{T},
                          ΔZ::AbstractVector{T},
                          par::String,
                          scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
     # 内部実装にディスパッチ（Val型による分岐はコンパイル時に解決）
-    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, par, scratch)
+    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, ZC, ΔZ, par, scratch)
 end
 
 """
@@ -478,7 +479,7 @@ xx = bb
 
 【計算量】 O(N)（単純なコピー）
 """
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, par, _)
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, ZC, ΔZ, par, _)
     mycopy!(xx, bb, par)
     return nothing
 end
@@ -500,9 +501,9 @@ xx ≈ M^{-1} bb （M: 前処理行列、ここではGS反復5回による近似
 
 【計算量】 O(5N)（5回反復 × N点更新）
 """
-function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, par, _)
+function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, ZC, ΔZ, par, _)
     for _ in 1:PRECONDITIONER_SWEEPS
-        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), Z, ΔZ, par)
+        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), ZC, ΔZ, par)
     end
     return nothing
 end
@@ -539,11 +540,11 @@ function _Preconditioner!(xx::AbstractArray{T,3},
                           Δh::NTuple{3,T},
                           Δt::T,
                           ::Val{:jacobi},
-                          Z::AbstractVector{T},
+                          ZC::AbstractVector{T},
                           ΔZ::AbstractVector{T},
                           par::String,
                           scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
-    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, Z, ΔZ, par, scratch)
+    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ZC, ΔZ, par, scratch)
     return nothing
 end
 
@@ -555,7 +556,7 @@ end
 
 型システムの完全性のために定義。
 """
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, par, scratch) where {s}
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, ZC, ΔZ, par, scratch) where {s}
     throw(ArgumentError("Unsupported smoother: $(s)"))
 end
 
@@ -590,11 +591,11 @@ xx ≈ (I - ωD^{-1}(A-D))^5 bb
 @param [in]     bb       RHSベクトル
 @param [in]     λ        熱伝導率
 @param [in]     cp       比熱
-@param [in]     mask     マスク配列（1.0=計算点、0.0=境界点）
+@param [in]     m     マスク配列（1.0=計算点、0.0=境界点）
 @param [in]     ρ        密度
 @param [in]     Δh       セル幅 (dx, dy)
 @param [in]     Δt       時間積分幅
-@param [in]     Z        CV境界座標
+@param [in]     ZC   CVセンター座標
 @param [in]     ΔZ       CV幅
 @param [in]     par      バックエンド（"sequential", "thread"）
 @param [in]     scratch  ワーク配列（WorkBuffers.tmp）
@@ -603,11 +604,11 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
                                 bb::AbstractArray{T,3},
                                 λ::AbstractArray{T,3},
                                 cp::AbstractArray{T,3},
-                                mask::AbstractArray{T,3},
+                                m::AbstractArray{T,3},
                                 ρ::T,
                                 Δh::NTuple{3,T},
                                 Δt::T,
-                                Z::AbstractVector{T},
+                                ZC::AbstractVector{T},
                                 ΔZ::AbstractVector{T},
                                 par::String,
                                 scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
@@ -615,50 +616,53 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
     SZ = size(xx)
     dx0 = Δh[1]
     dy0 = Δh[2]
-    dx2 = inv(dx0 * dx0)
-    dy2 = inv(dy0 * dy0)
-    z_st = 2
-    z_ed = SZ[3] - 1
     ddt = inv(Δt)
+    ddx = inv(dx0)
+    ddy = inv(dy0)
     float_min_T = T(FloatMin)
     ω = T(JACOBI_RELAXATION)
-    oneT = one(T)
-    zeroT = zero(T)
 
     # 加重Jacobi法を5回反復
     for _ in 1:PRECONDITIONER_SWEEPS
-        mycopy!(scratch, xx, par)
-        @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-            λ0 = λ[i,j,k]
-            m0 = mask[i,j,k]
-            # Dirichlet/ghost cells are copied through
-            if m0 == zeroT
-                scratch[i,j,k] = bb[i,j,k]
-                continue
-            end
-            mb = mask[i  ,j  ,k-1]
-            mt = mask[i  ,j  ,k+1]
-            axm = λf(λ[i-1,j,k], λ0, mask[i-1,j,k], m0) * dx2
-            axp = λf(λ[i+1,j,k], λ0, mask[i+1,j,k], m0) * dx2
-            aym = λf(λ[i,j-1,k], λ0, mask[i,j-1,k], m0) * dy2
-            ayp = λf(λ[i,j+1,k], λ0, mask[i,j+1,k], m0) * dy2
-            zb = (Z[k]-Z[k-1])*mb + (oneT-mb)*ΔZ[k]
-            zt = (Z[k+1]-Z[k])*m0 + (oneT-m0)*ΔZ[k]
-            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
-            azp = (λ0        / (ΔZ[k]*zt))*mt
-            dd = axp + axm + ayp + aym + azp + azm + ddt
-            ss = ( axp * xx[i+1,j  ,k  ] + axm * xx[i-1,j  ,k  ]
-                 + ayp * xx[i  ,j+1,k  ] + aym * xx[i  ,j-1,k  ]
-                 + azp * xx[i  ,j  ,k+1] + azm * xx[i  ,j  ,k-1] )
-            Ax = ss - dd * xx[i,j,k]
-            rhs = bb[i,j,k]
-            diag = max(dd, float_min_T)
-            scratch[i,j,k] = xx[i,j,k] + ω * (rhs - Ax) / diag
+      mycopy!(scratch, xx, par)
+
+      @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+        dz_k = ΔZ[k]
+        λ0 = λ[i,j,k]
+        m0 = m[i,j,k]
+        
+        # Dirichlet/ghost cells are copied through
+        if m0 == zeroT
+          scratch[i,j,k] = bb[i,j,k]
+          continue
         end
-        mycopy!(xx, scratch, par)
+
+        # 体積積分形式：面積×コンダクタンス
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+        # 時間項（体積積分形式） - 定常解析の場合は0
+        a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
+
+        dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
+        ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
+             + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
+             + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
+            
+        Ax = ss - dd * xx[i,j,k]
+        rhs = bb[i,j,k]
+        diag = max(dd, float_min_T)
+        scratch[i,j,k] = xx[i,j,k] + ω * (rhs - Ax) / diag
+      end
+        
+      mycopy!(xx, scratch, par)
     end
 
-    return nothing
+  return nothing
 end
 
 
@@ -777,9 +781,9 @@ end
 @param [in]     ρ    密度
 @param [in]     Δh   セル幅
 @param [in]     ω    加速係数
-@param [in]     Z    Z座標
+@param [in]     ZC   CVセンター座標
 @param [in]     ΔZ   格子幅
-@ret                 1セルあたりの残差RMS
+@ret                 残差RMS
 """
 function resSOR(θ::AbstractArray{T,3},
                 λ::AbstractArray{T,3},
@@ -790,37 +794,39 @@ function resSOR(θ::AbstractArray{T,3},
                 Δh::NTuple{3,T},
                 Δt::T,
                 ω::T,
-                Z::AbstractVector{T},
+                ZC::AbstractVector{T},
                 ΔZ::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
     dx0 = Δh[1]
     dy0 = Δh[2]
-    dx2 = inv(dx0*dx0)
-    dy2 = inv(dy0*dy0)
-    z_st = 2
-    z_ed = SZ[3] - 1
     ddt = inv(Δt)
+    ddx = inv(dx0)
+    ddy = inv(dy0)
 
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+        dz_k = ΔZ[k]
         pp = θ[i,j,k]
         λ0 = λ[i,j,k]
         m0 = m[i,j,k]
-        mb = m[i  ,j  ,k-1]
-        mt = m[i  ,j  ,k+1]
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2
-        zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
-        zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
-        azp = (λ0        / (ΔZ[k]*zt))*mt
-        dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
+
+        # 体積積分形式：面積×コンダクタンス
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+        # 時間項（体積積分形式） - 定常解析の場合は0
+        a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
+
+        dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
+
         dp = (((ss-b[i,j,k])/dd - pp)) * m0
         θ[i,j,k] = pp + ω * dp
         r = (dd + ω*(axm+aym+azm))*dp / ω
@@ -840,7 +846,7 @@ end
 @param [in]     ρ    密度
 @param [in]     Δh   セル幅
 @param [in]     ω    加速係数
-@param [in]     Z    Z座標
+@param [in]     ZC   CVセンター座標
 @param [in]     ΔZ   格子幅
 @param [in]     color R or B
 @ret                 残差2乗和
@@ -854,7 +860,7 @@ function rbsor_core!(θ::AbstractArray{T,3},
                      Δh::NTuple{3,T},
                      Δt::T,
                      ω::T,
-                     Z::AbstractVector{T},
+                     ZC::AbstractVector{T},
                      ΔZ::AbstractVector{T},
                      color::Int,
                      par::String) where {T <: AbstractFloat}
@@ -862,31 +868,33 @@ function rbsor_core!(θ::AbstractArray{T,3},
     SZ = size(θ)
     dx0 = Δh[1]
     dy0 = Δh[2]
-    dx2 = inv(dx0*dx0)
-    dy2 = inv(dy0*dy0)
-    z_st = 2
-    z_ed = SZ[3] - 1
     ddt = inv(Δt)
+    ddx = inv(dx0)
+    ddy = inv(dy0)
 
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
         @simd for i in 2+mod(k+j+color,2):2:SZ[1]-1
+            dz_k = ΔZ[k]
             pp = θ[i,j,k]
             λ0 = λ[i,j,k]
             m0 = m[i,j,k]
-            mt = m[i  ,j  ,k+1]
-            mb = m[i  ,j  ,k-1]
-            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2
-            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2
-            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2
-            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2
-            zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k]
-            zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
-            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
-            azp = (λ0        / (ΔZ[k]*zt))*mt
-            dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
+
+            # 体積積分形式：面積×コンダクタンス
+            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+            azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+            azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+            # 時間項（体積積分形式） - 定常解析の場合は0
+            a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
+
+            dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
             ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
-             + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
-             + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
+                 + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
+                 + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
+
             dp = (((ss-b[i,j,k])/dd - pp)) * m0
             θ[i,j,k] = pp + ω * dp
             r = (dd + ω*(axm+aym+azm))*dp / ω
@@ -908,9 +916,9 @@ end
 @param [in]     ρ    密度
 @param [in]     Δh   セル幅
 @param [in]     ω    加速係数
-@param [in]     Z    Z座標
+@param [in]     ZC   CVセンター座標
 @param [in]     ΔZ   格子幅
-@ret                 セルあたりの残差RMS
+@ret                 残差RMS
 """
 function rbsor!(θ::AbstractArray{T,3},
                 λ::AbstractArray{T,3},
@@ -921,7 +929,7 @@ function rbsor!(θ::AbstractArray{T,3},
                 Δh::NTuple{3,T},
                 Δt::T,
                 ω::T,
-                Z::AbstractVector{T},
+                ZC::AbstractVector{T},
                 ΔZ::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     SZ = size(b)
@@ -929,7 +937,7 @@ function rbsor!(θ::AbstractArray{T,3},
 
     # 2色のマルチカラー(Red&Black)のセットアップ
     for c in 0:1
-        res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, c, par)
+        res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, ZC, ΔZ, c, par)
     end
     #norm_factor = T((SZ[1]-2)*(SZ[2]-2)*(SZ[3]-2))
     return sqrt(res) #/ norm_factor
@@ -963,14 +971,14 @@ function solveSOR!(θ::AbstractArray{T,3},
                     Δh::NTuple{3,T},
                     Δt::T,
                     ω::T,
-                    Z::AbstractVector{T},
+                    ZC::AbstractVector{T},
                     ΔZ::AbstractVector{T},
                     F,
                     tol::T,
                     par::String;
                     ItrMax::Int=1000) where {T <: AbstractFloat}
 
-    res0 = resSOR(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, par)
+    res0 = resSOR(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, ZC, ΔZ, par)
     if res0 == zero(T)
         res0 = one(T)
     end
@@ -978,8 +986,8 @@ function solveSOR!(θ::AbstractArray{T,3},
 
     n = 0
     for n in 1:ItrMax
-        #res = sor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, par) / res0
-        res = rbsor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, par) / res0
+        #res = sor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, ZC, ΔZ) / res0
+        res = rbsor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, ZC, ΔZ, par) / res0
         @printf(F, "%10d %24.14E\n", n, Float64(res)) # 時間計測の場合にはコメントアウト
         @printf(stdout, "%10d %24.14E\n", n, Float64(res)) # 時間計測の場合にはコメントアウト
         if res < tol
