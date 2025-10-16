@@ -1,138 +1,252 @@
 # セッション継続情報
 
-**日時**: 2025年10月16日 21:08
-**ブランチ**: tuning7
-**最新コミット**: 142b94c (fix: 体積積分形式の境界条件を修正)
+**日時**: 2025年10月16日 22:25
+**ブランチ**: tuning7-volume-integral-complete
+**最新コミット**: f024ee2 (docs: 体積積分形式完全実装計画書を作成)
+
+---
 
 ## 🎯 現在のミッション
 
-**PBICGSTAB vs PCG 性能比較測定**
+**体積積分形式の完全実装により、287c8c7以降の性能劣化を解消する**
+
+---
 
 ## ✅ 完了した作業
 
-### 1. 問題発見と原因特定
-- **問題**: テスト1（PBICGSTAB）がt=2でNaN発散（20000反復、22分でエラー）
-- **原因**: 287c8c7の体積積分形式統一時、RHS境界条件の係数が誤っていた
-  - 誤り: 逆格子幅（`1/dz`）を掛けていた
-  - 正解: 面積（`dx * dy`）を掛ける必要があった
+### 1. 問題調査と原因特定（Codex報告）
 
-### 2. 修正実施（142b94c）
+**根本原因**:
+- 287c8c7で左辺（係数行列）を体積積分形式に変更
+- 右辺（RHS）は旧形式のまま → **12桁のスケール不整合**
+- 係数: O(10⁹) → O(10⁻⁴) に変化（10⁻¹³倍）
+- BiCGSTABが収束しなくなった
 
-修正したファイル：
-- **DHCPSolver.jl**: Z上面熱流束を面積掛け算に修正
-- **AdjointSolver.jl**: Z下面残差注入を面積掛け算に修正
-- **SensitivitySolver.jl**: Z上面熱流束を面積掛け算に修正
-- **RHSCore.jl**: 6面全ての境界条件を面積掛け算に修正
-- **run_10steps_fullsize_test.jl**: リアルタイム出力のため`flush(stdout)`追加
-
-### 3. コミット・プッシュ完了
-- コミット: 142b94c
-- プッシュ: origin/tuning7
-
-## 🔄 次のステップ
-
-### テスト1: PBICGSTAB + GS（デフォルト設定）
-```bash
-cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
-julia --project=julia julia/scripts/run_10steps_fullsize_test.jl
+**Codexの主要な発見**:
+```
+係数スケール（dx=1.2e-4, dy=1.67e-4, dz=2.5e-5）:
+- 拡散項: 1.04×10⁹ → 5.22×10⁻⁴ (10⁻¹³倍)
+- 時間項: 1.0×10¹ → 2.00×10⁻⁵ (10⁻⁶倍)
+- 熱流束: 4.0×10⁴ → 2.00×10⁻⁸ (10⁻¹³倍)
 ```
 
-**期待される結果**:
-- ✅ NaN/Inf発生なく10ステップ完了
-- ✅ CGM反復1回成功
-- ✅ 実行時間: 約1000-1200秒（ベースライン22fde2d: 1072秒）
+**係数行列の対称性**: ✅ 保たれている（検証済み）
 
-### テスト2: PCG + GS設定
+### 2. 実装計画書の作成
 
-`run_10steps_fullsize_test.jl`の183-200行目を編集：
+**ファイル**: `docs/VOLUME_INTEGRAL_IMPLEMENTATION_PLAN.md`
+
+**計画の全体像**:
+1. RHSCore.jl修正：対流項から θ を除去（h·A·T∞ のみRHSに）
+2. CommonSolver.jl修正：対流項 h·A を左辺の対角成分に追加
+3. スケーリング調整：係数行列を正規化（10⁻¹³ → 1 程度に）
+4. 3ソルバー統合：DHCP/Adjoint/Sensitivity
+
+**実装スケジュール**: 3日間（11時間見積もり）
+
+### 3. 作業環境の準備
+
+```bash
+# 実行済みコマンド
+git checkout tuning7
+git checkout -b tuning7-volume-integral-complete
+git add docs/VOLUME_INTEGRAL_IMPLEMENTATION_PLAN.md
+git commit -m "docs: 体積積分形式完全実装計画書を作成"
+```
+
+**現在のHEAD**: f024ee2
+
+---
+
+## 🔄 次のセッションでの作業
+
+### Phase 2: RHSCore.jlの対流項修正
+
+**目的**: `h·area·θ` を RHS から除去（`h·area·T∞` のみ残す）
+
+**ファイル**: `julia/src/solvers/RHSCore.jl`
+**関数**: `RHS_convection!` (181-235行)
+
+**修正内容**:
 
 ```julia
-cgm_params = (
-    max_iter = 1,
-    sigma = 1.8,
-    rtol_dhcp = 1.0e-6,
-    rtol_adjoint = 1.0e-8,
-    maxiter_cg = 20000,
-    dire_reset_every = 5,
-    eps = 1.0e-12,
-    min_iter = 10,
-    P = 10,
-    eta = 1.0e-4,
-    beta_max = 1.0e8,
-    verbose = true,
-    dhcp_extrapolation = :quadratic,
-    adjoint_residual_scale = 0.5,
-    # PCG設定を追加
-    dhcp_solver = :pcg,
-    adjoint_solver = :pcg,
-    sensitivity_solver = :pcg
-)
+# 修正前（196行など、6面全て同様）
+b[i,j,k] -= h * area * (ta - θ[i,j,k])  # ← θを含む
+
+# 修正後
+b[i,j,k] -= h * area * ta  # ← θを除去、T∞のみ
 ```
 
-### テスト3: 性能比較レポート作成
+**影響範囲**: 6面全ての対流境界条件（X±, Y±, Z±）
 
-両テスト完了後、以下を比較：
-1. 総実行時間
-2. DHCP/Adjoint/Sensitivity各時間
-3. 収束反復回数
-4. 数値精度（温度場、熱流束）
+**手順**:
+1. `RHS_convection!` 関数を編集（6箇所の修正）
+2. Julia起動して構文チェック
+3. コミット
 
-## 📊 比較基準（22fde2dベースライン）
+---
 
-**Julia版（PBICGSTAB）**:
-- 総実行時間: **1072.43秒**（約17.9分）
-- DHCP: 321.4秒（平均560反復/ステップ）
-- Adjoint: 447.2秒（平均715反復/ステップ）
-- Sensitivity: 300.7秒（平均530反復/ステップ）
+## 📋 以降の実装フェーズ
 
-**Python版との精度比較**:
-- 温度場誤差: 平均1.06%、最大3.98%
-- 熱流束誤差: 平均0.0102 W/m²
+### Phase 3: CommonSolver.jlの修正
 
-## 🔧 重要な技術情報
+**3-1. CalcAX!の修正**
+- 対流項 `h·area` を対角成分に追加
+- 6面の境界条件をチェック
 
-### ソルバー選択機能（d1562ce）
-CGMSolverに追加されたパラメータ：
-- `dhcp_solver`: `:pbicgstab`（デフォルト）/ `:pcg`
-- `adjoint_solver`: `:pbicgstab`（デフォルト）/ `:pcg`
-- `sensitivity_solver`: `:pbicgstab`（デフォルト）/ `:pcg`
+**3-2. CalcRK!の修正**
+- CalcAX!と同様のロジック
 
-### データファイル
-- **測定データ**: `shared/data/T_measure_700um_1ms.npy`（1.1GB、必須）
-- **結果ファイル**: `shared/results/julia_10steps_fullsize.npz`
+**3-3. jacobi_preconditioner!の修正**
+- 対角項に対流項を追加
 
-## 📝 実行コマンドメモ
+**3-4. rbsor_core!の修正**
+- 対角項に対流項を追加
+
+### Phase 4: スケーリング調整
+
+**PBiCGSTAB!内での実装**:
+```julia
+# スケーリング係数の計算
+volume_ref = dx * dy * mean(dz)
+cp_avg = mean(wk.cp[内点])
+scale = inv(ρ * cp_avg * volume_ref)
+
+# RHSをスケーリング
+wk.b .*= scale
+
+# CalcAX!, CalcRK!にscale引数を追加
+```
+
+### Phase 5: ソルバー統合
+
+**DHCPSolver.jl, AdjointSolver.jl, SensitivitySolver.jl**:
+- HC配列（熱伝達係数）の生成
+- CommonSolver関数への引数追加
+
+### Phase 6: テスト
+
+1. 小規模テスト（5×5×5格子）
+2. 10ステップテスト（80×100×20格子）
+3. 性能検証
+
+---
+
+## 🔍 重要な技術情報
+
+### コミット履歴
+
+```
+f024ee2 - docs: 体積積分形式完全実装計画書を作成
+0c3638b - docs: セッション継続情報を記録
+142b94c - fix: 体積積分形式の境界条件を修正（287c8c7のバグ修正）
+0dc54f7 - fix: Jacobi前処理のバグ修正
+d1562ce - feat: CGMSolverに線形ソルバー選択機能を追加
+287c8c7 - feat: 行列対称性検証とCommonSolver体積積分形式統一 ← 問題の起点
+d9e1b02 - feat: 適応的収束判定実装（Phase 1-E） ← 正常動作版
+```
+
+### 対称性の確認
+
+対流項を左辺に追加しても**対称性は保たれる**:
+- 対流項は対角成分のみ（`h·A·θᵢ`）
+- 隣接セルとの結合項（非対角）は変化しない
+- A[i,j] = A[j,i] が維持される
+
+### スケーリングの必要性
+
+体積積分形式で係数が10⁻¹³倍になったため:
+- 前処理（Jacobi/GS）が機能不全
+- BiCGSTABの収束が極端に遅化
+- スケーリング調整で単位体積あたり形式に戻す必要がある
+
+---
+
+## 📂 重要なファイル
+
+### 実装対象
+- `julia/src/solvers/RHSCore.jl` - Phase 2
+- `julia/src/solvers/CommonSolver.jl` - Phase 3, 4
+- `julia/src/solvers/DHCPSolver.jl` - Phase 5
+- `julia/src/solvers/AdjointSolver.jl` - Phase 5
+- `julia/src/solvers/SensitivitySolver.jl` - Phase 5
+
+### テストスクリプト
+- `julia/scripts/run_10steps_fullsize_test.jl`
+
+### 参考ドキュメント
+- `docs/VOLUME_INTEGRAL_IMPLEMENTATION_PLAN.md` - 詳細実装計画
+- Codex調査レポート（前セッションで取得済み）
+
+---
+
+## 🎯 成功基準
+
+### 定量的指標
+
+| 指標 | 現状（142b94c）| 目標 |
+|------|----------------|------|
+| DHCP時間（1ステップ） | > 90秒 | < 30秒 |
+| DHCP反復回数（平均） | > 10000 | < 500 |
+| 総実行時間 | タイムアウト | < 900秒 |
+
+### 定性的指標
+
+- ✅ 左辺と右辺の単位が整合
+- ✅ 対流境界条件が陰的実装
+- ✅ 係数行列が適切にスケーリング
+- ✅ d9e1b02と同等の性能を達成
+
+---
+
+## ⚠️ 重要な注意事項
+
+1. **現在のブランチを確認**
+   ```bash
+   git branch  # tuning7-volume-integral-complete であること
+   ```
+
+2. **stashの確認**
+   ```bash
+   git stash list  # 必要に応じて適用
+   ```
+
+3. **バックグラウンドプロセス**
+   - 複数のJuliaプロセスが残っている可能性
+   ```bash
+   ps aux | grep julia | grep -v grep
+   killall julia  # 必要に応じて
+   ```
+
+4. **データファイル**
+   - `shared/data/T_measure_700um_1ms.npy`（1.1GB）が必要
+
+---
+
+## 📝 次のセッション開始時のコマンド
 
 ```bash
-# テスト実行（バックグラウンド、リアルタイム出力）
-julia --project=julia julia/scripts/run_10steps_fullsize_test.jl
+# 1. ブランチ確認
+cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
+git status
+git log --oneline -5
 
-# プロセス監視
-ps aux | grep "[j]ulia.*run_10steps"
+# 2. 実装計画書を確認
+cat docs/VOLUME_INTEGRAL_IMPLEMENTATION_PLAN.md | head -100
 
-# 結果確認
-ls -lh shared/results/julia_10steps_fullsize.npz
+# 3. Phase 2開始（RHSCore.jl修正）
+# RHS_convection!関数から θ を除去（6面全て）
 ```
 
-## 🚨 注意事項
+---
 
-1. **simple_benchmark.jlは使用不可**
-   - ランダムデータで数値不安定（t=2でNaN/Inf発生）
+## 🔗 関連リソース
 
-2. **実行時間**
-   - フルサイズ10ステップ: 約17-20分
-   - バックグラウンド実行推奨
+- **Codex MCP**: 詳細な調査に使用可能
+- **実装計画書**: `docs/VOLUME_INTEGRAL_IMPLEMENTATION_PLAN.md`
+- **前回の調査**: 左辺と右辺のスケール不整合（12桁）を特定済み
 
-3. **出力バッファリング**
-   - `flush(stdout)`により解決済み
-   - リアルタイム出力が有効
+---
 
-## 📚 参考ドキュメント
-
-- `BENCHMARK_STATUS.md`: ベンチマーク実行状況
-- `shared/results/performance_22fde2d.md`: ベースライン性能
-- `.claude/CLAUDE.md`: プロジェクト全体の設定
-
-## 🎯 最終目標
-
-**PBICGSTAB vs PCGの性能比較を完了し、より高速なソルバーを特定する**
+**セッション終了時刻**: 2025年10月16日 22:25
+**次のセッション開始時**: Phase 2（RHSCore.jl修正）から開始
