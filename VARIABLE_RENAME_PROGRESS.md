@@ -17,9 +17,9 @@
 
 ---
 
-## ✅ 完了した作業（第1弾: 3ab7b12）
+## ✅ 完了した作業
 
-### ソースコード（3/9ファイル完了）
+### 第1弾（3ab7b12）: ソースコード4ファイル
 
 1. **DHCPSolver.jl** (20箇所変更) ✅
    - `calRHS!`: `ΔZ` → `dz` (引数、使用箇所)
@@ -38,31 +38,40 @@
 
 4. **commons.jl** (微修正) ✅
 
+### 第2弾（841e4be）: ソースコード6ファイル
+
+1. **CGMSolver.jl** (9箇所変更) ✅
+   - `compute_gradient!`: `Z`, `ΔZ` → `z_centers`, `dz` (引数、`solve_adjoint_mf!`呼び出し)
+   - `solve_cgm!`: `Z`, `ΔZ` → `z_centers`, `dz` (引数、DHCP/Adjoint/Sensitivity呼び出し)
+   - docstring内の変数名
+
+2. **SlidingWindowSolver.jl** (4箇所変更) ✅
+   - `solve_sliding_window_cgm`: `Z`, `ΔZ` → `z_centers`, `dz` (引数、`solve_cgm!`呼び出し)
+   - docstring内の変数名
+
+3. **RHSCore.jl** (18箇所変更) ✅
+   - `calRHS_core!`: `ΔZ` → `dz` (引数、6面境界条件適用)
+   - `apply_face_bc!`, `RHS_heat_flux!`, `RHS_convection!`: `ΔZ` → `dz` (引数、使用箇所)
+   - docstring内の変数名
+
+4. **boundary_conditions.jl** (変更なし) ✅
+   - Z、ΔZの使用箇所なし
+
+5. **GridTransform.jl** (約30箇所変更) ✅
+   - 関数シグネチャ: `convert_to_guard_cell_grid(nk, dz_cell, ...) -> (z_centers, dz)`
+   - 引数名: `dz` → `dz_cell` （セル中心幅、戻り値のdzと区別）
+   - ローカル変数: `Z` → `z_centers`, `ΔZ` → `dz`
+   - 全コメント、使用箇所を更新
+
+6. **main.jl** (2箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - `solve_sliding_window_cgm`引数: `Z, ΔZ` → `z_centers, dz_grid`
+
+**追加修正**: commons.jl モジュール名コメント修正
+
 ---
 
-## 🔜 残りの作業（25ファイル）
-
-### ソースコード（6ファイル残り）
-
-1. **CGMSolver.jl**
-   - `solve_cgm!`: `Z`, `ΔZ` → `z_centers`, `dz`
-   - DHCP, Adjoint, Sensitivity呼び出し
-
-2. **SlidingWindowSolver.jl**
-   - `solve_sliding_window_cgm`: `Z`, `ΔZ` → `z_centers`, `dz`
-   - CGM呼び出し
-
-3. **RHSCore.jl**
-   - `calRHS_core!`: `ΔZ` → `dz`
-
-4. **boundary_conditions.jl**
-   - `Z` → `z_centers` (使用箇所のみ)
-
-5. **GridTransform.jl**
-   - `Z`, `ΔZ` → `z_centers`, `dz`
-
-6. **main.jl**
-   - `Z`, `ΔZ` → `z_centers`, `dz`
+## 🔜 残りの作業（19ファイル）
 
 ### テストコード（3ファイル）
 
@@ -171,11 +180,13 @@ grep -rn '\b(Z|ΔZ)\b' julia/src/solvers/CGMSolver.jl
 
 ## 📊 進捗統計
 
-- **完了**: 4/29ファイル (13.8%)
-- **残り**: 25/29ファイル (86.2%)
-- **コミット済み**: 第1弾（3ab7b12）
-- **次回コミット**: 第2弾（ソースコード6ファイル）
+- **完了**: 10/29ファイル (34.5%)
+  - 第1弾（3ab7b12）: 4ファイル
+  - 第2弾（841e4be）: 6ファイル
+- **残り**: 19/29ファイル (65.5%)
+- **コミット済み**: 第1弾、第2弾
+- **次回コミット**: 第3弾（テストコード3ファイル）
 
 ---
 
-**更新日時**: 2025-10-16 12:15
+**更新日時**: 2025-10-16 14:30
