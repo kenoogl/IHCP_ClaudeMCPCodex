@@ -172,12 +172,22 @@ function run_full_calculation(config::Dict, output_file::String)
         # 底面と表面のセルは境界に重なる（半分のCV）
         # 中間のセルは通常の中心
         z_centers = zeros(nk+2)  # guide cell
-        z_centers[1] = z_faces[1]
-        z_centers[2] = z_faces[1]      # 底面セル中心=底面境界
-        z_centers[end-1] = z_faces[end]  # 表面セル中心=表面境界
-        z_centers[end]   = z_faces[end]
-        for k in 2:(nk+1)
-            z_centers[k] = (z_faces[k] + z_faces[k-1]) * 0.5
+
+        # ガイドセル
+        z_centers[1] = z_faces[1]      # 底面ガイドセル
+        z_centers[nk+2] = z_faces[nk+1]  # 表面ガイドセル
+
+        # 底面物理セル（境界に重なる）
+        z_centers[2] = z_faces[1]
+
+        # 表面物理セル（境界に重なる）
+        z_centers[nk+1] = z_faces[nk+1]
+
+        # 中間物理セルのみ（k=3からnkまで）
+        if nk > 2
+            for k in 3:nk
+                z_centers[k] = (z_faces[k-1] + z_faces[k]) * 0.5
+            end
         end
 
         @info @sprintf("IHCP Original")

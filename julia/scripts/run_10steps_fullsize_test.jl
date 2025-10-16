@@ -34,31 +34,54 @@ function ensure_single_thread()
   end
 end
 
+"""
+  build_z_grid(nk, Lz, stretch_factor) -> (z_centers, ΔZ, z_faces, dz)
+
+Python版と同じ格子生成 + ガイドセル込み配列を直接生成
+
+main.jlと同じ方式に統一（convert_to_guard_cell_gridは使用しない）
+
+# Returns
+- z_centers: セル中心座標（ガイドセル込み、nk+2個） [m]
+- ΔZ: セル幅（ガイドセル込み、nk+2個） [m]
+- z_faces: セル境界座標（nk+1個） [m]
+- dz: 各層の厚さ（nk個、npz保存用） [m]
+"""
 function build_z_grid(nk::Int, Lz::Float64, stretch_factor::Float64)
+  # Step 1: z_faces生成（Python版と同じ）
   z_faces_normalized = range(1.0, stop = 0.0, length = nk + 1)
   z_faces = Lz .- (Lz / (exp(stretch_factor) - 1.0)) .* (exp.(stretch_factor .* z_faces_normalized) .- 1.0)
 
+  # Step 2: dzの計算
   dz = diff(z_faces)
-  z_centers = similar(dz)
-  z_centers[1] = z_faces[1]
-  z_centers[end] = z_faces[end]
+
+  # Step 3: ΔZ配列（ガイドセル込み、nk+2個）
+  ΔZ = zeros(nk + 2)
+  ΔZ[2:nk+1] = dz[1:nk]
+  ΔZ[1] = ΔZ[2]
+  ΔZ[nk+2] = ΔZ[nk+1]
+
+  # Step 4: z_centers（ガイドセル込み、nk+2個）
+  z_centers = zeros(nk + 2)
+
+  # ガイドセル
+  z_centers[1] = z_faces[1]        # 底面ガイドセル
+  z_centers[nk+2] = z_faces[nk+1]  # 表面ガイドセル
+
+  # 底面物理セル（境界に重なる）
+  z_centers[2] = z_faces[1]
+
+  # 表面物理セル（境界に重なる）
+  z_centers[nk+1] = z_faces[nk+1]
+
+  # 中間物理セルのみ（k=3からnkまで）
   if nk > 2
-    z_centers[2:end-1] = (z_faces[2:end-2] .+ z_faces[3:end-1]) ./ 2
+    for k in 3:nk
+      z_centers[k] = (z_faces[k-1] + z_faces[k]) * 0.5
+    end
   end
 
-  dz_top = zeros(Float64, nk)
-  dz_top[end] = Inf
-  if nk > 1
-    dz_top[1:end-1] = z_centers[2:end] .- z_centers[1:end-1]
-  end
-
-  dz_bottom = zeros(Float64, nk)
-  dz_bottom[1] = Inf
-  if nk > 1
-    dz_bottom[2:end] = z_centers[2:end] .- z_centers[1:end-1]
-  end
-
-  return dz, dz_bottom, dz_top, z_faces
+  return z_centers, ΔZ, z_faces, dz
 end
 
 function load_material_properties()
@@ -129,8 +152,8 @@ function main()
   println(@sprintf("  spacing: dx=%.3e m, dy=%.3e m", dx, dy))
   println(@sprintf("  time steps: nt=%d, dt=%.3e s", nt, dt))
 
-  dz, dz_bottom, dz_top, z_faces = build_z_grid(nk, Lz, stretch_factor)
-  z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
+  # main.jlと同じ直接生成方式
+  z_centers, ΔZ, z_faces, dz = build_z_grid(nk, Lz, stretch_factor)
 
   rho, cp_coeffs, k_coeffs = load_material_properties()
   println(@sprintf("  rho (reference): %.6f kg/m^3", rho))
@@ -184,7 +207,7 @@ function main()
     dx,
     dy,
     z_centers,  # ガイドセルグリッド追加
-    dz_grid,
+    ΔZ,         # セル幅（ガイドセル込み）
     dt,
     rho,
     cp_coeffs,
@@ -221,10 +244,10 @@ function main()
     "dt" => dt,
     "dx" => dx,
     "dy" => dy,
-    "dz" => dz,
-    "dz_bottom" => dz_bottom,
-    "dz_top" => dz_top,
-    "z_faces" => z_faces,
+    "dz" => dz,           # 各層の厚さ（nk個）
+    "z_faces" => z_faces, # セル境界座標（nk+1個）
+    "z_centers" => z_centers, # セル中心座標（ガイドセル込み、nk+2個）
+    "ΔZ" => ΔZ,          # セル幅（ガイドセル込み、nk+2個）
     "rho" => rho,
     "cp_coeffs" => cp_coeffs,
     "k_coeffs" => k_coeffs,
