@@ -88,20 +88,47 @@
    - テスト6（ホットスタート）: 戻り値、`solve_dhcp!`引数
    - すべて `Z, ΔZ` → `z_centers, dz_grid`
 
+### 第4弾（6303b27）: スクリプト8ファイル
+
+1. **check_type_stability.jl** (12箇所変更) ✅
+   - struct定義: `Z::Vector{Float64}`, `ΔZ::Vector{Float64}` → `z_centers::...`, `dz::...`
+   - 初期化: `Z = ...`, `ΔZ = fill(...)` → `z_centers = ...`, `dz = fill(...)`
+   - 関数呼び出し6箇所: `prob.Z, prob.ΔZ` → `prob.z_centers, prob.dz`
+
+2. **run_10steps_fullsize_test.jl** (3箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値 → `z_centers, dz_grid`
+   - `solve_cgm!`引数 → `z_centers, dz_grid`
+
+3. **check_matrix_symmetry.jl** (6箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値 → `z_centers_grid, dz_grid`
+   - 係数計算: `Z[kg]`, `Z[kg-1]`, `Z[kg+1]` → `z_centers_grid[...]`
+   - 係数計算: `ΔZ[kg]` → `dz_grid[kg]` (3箇所)
+
+4. **check_rhs_core_stability.jl** (3箇所変更) ✅
+   - 変数定義: `ΔZ = fill(...)` → `dz = fill(...)`
+   - `calRHS_core!`引数, `apply_face_bc!`引数
+
+5. **check_rhs_internals.jl** (5箇所変更) ✅
+   - Float64変数: `ΔZ = fill(...)` → `dz = fill(...)`
+   - Float32変数: `ΔZ32 = fill(...)` → `dz32 = fill(...)`
+   - `RHS_heat_flux!`, `RHS_convection!`呼び出し
+
+6. **test_cg_vs_bicgstab.jl** (2箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値 → `z_centers_grid, dz_grid`
+   - `PBiCGSTAB!`引数
+
+7. **test_rhs_core_float32.jl** (4箇所変更) ✅
+   - Float32変数: `ΔZ = fill(...)` → `dz = fill(...)`
+   - Float64変数: `ΔZ64 = fill(...)` → `dz64 = fill(...)`
+   - `calRHS_core!`呼び出し（2箇所）
+
+8. **test_rhs_core_simple.jl** (4箇所変更) ✅
+   - 変数定義: `ΔZ = fill(...)` → `dz = fill(...)`
+   - `calRHS_core!`呼び出し（3箇所、テスト1, 2, 3）
+
 ---
 
-## 🔜 残りの作業（16ファイル）
-
-### スクリプト（8ファイル）
-
-- `check_type_stability.jl`
-- `run_10steps_fullsize_test.jl`
-- `verification/check_matrix_symmetry.jl`
-- `verification/check_rhs_core_stability.jl`
-- `verification/check_rhs_internals.jl`
-- `verification/test_cg_vs_bicgstab.jl`
-- `verification/test_rhs_core_float32.jl`
-- `verification/test_rhs_core_simple.jl`
+## 🔜 残りの作業（8ファイル）
 
 ### ベンチマーク（8ファイル）
 
@@ -128,10 +155,7 @@ cat VARIABLE_RENAME_PROGRESS.md
 
 ### ステップ2: 次のファイル群の変更（推奨順序）
 
-1. **スクリプト8ファイル**
-   - コミット: 第4弾
-
-4. **ベンチマーク8ファイル**
+1. **ベンチマーク8ファイル**
    - コミット: 第5弾
 
 ### ステップ3: 各ファイルの変更パターン
@@ -178,29 +202,31 @@ grep -rn '\b(Z|ΔZ)\b' julia/src/solvers/CGMSolver.jl
 ## 🎯 次回セッション開始時のアクション
 
 1. **このファイルを読む**: `cat VARIABLE_RENAME_PROGRESS.md`
-2. **次のファイル群を変更**: スクリプト8ファイル（第4弾）
-   - `julia/scripts/check_type_stability.jl`
-   - `julia/scripts/run_10steps_fullsize_test.jl`
-   - `julia/scripts/verification/check_matrix_symmetry.jl`
-   - `julia/scripts/verification/check_rhs_core_stability.jl`
-   - `julia/scripts/verification/check_rhs_internals.jl`
-   - `julia/scripts/verification/test_cg_vs_bicgstab.jl`
-   - `julia/scripts/verification/test_rhs_core_float32.jl`
-   - `julia/scripts/verification/test_rhs_core_simple.jl`
+2. **次のファイル群を変更**: ベンチマーク8ファイル（第5弾・最終）
+   - `julia/benchmarks/tuning4_allocation_reduction.jl`
+   - `julia/benchmarks/benchmark_phase1b.jl`
+   - `julia/benchmarks/benchmark_adjoint_scale_01.jl`
+   - `julia/benchmarks/benchmark_adjoint_scale_02.jl`
+   - `julia/benchmarks/benchmark_combined_improvement.jl`
+   - `julia/benchmarks/benchmark_phase1e_baseline.jl`
+   - `julia/benchmarks/benchmark_phase1e_adaptive.jl`
+   - `julia/benchmarks/benchmark_phase1e_tuned.jl`
 3. **変更方法**: オプションC（手動で慎重に）を継続
 
 ---
 
 ## 📊 進捗統計
 
-- **完了**: 13/29ファイル (44.8%)
-  - 第1弾（3ab7b12）: 4ファイル
-  - 第2弾（841e4be）: 6ファイル
-  - 第3弾（2c96f9f）: 3ファイル
-- **残り**: 16/29ファイル (55.2%)
-- **コミット済み**: 第1弾、第2弾、第3弾
-- **次回コミット**: 第4弾（スクリプト8ファイル）
+- **完了**: 21/29ファイル (72.4%)
+  - 第1弾（3ab7b12）: ソースコード4ファイル
+  - 第2弾（841e4be）: ソースコード6ファイル
+  - 第3弾（2c96f9f）: テストコード3ファイル
+  - 第4弾（6303b27）: スクリプト8ファイル
+- **残り**: 8/29ファイル (27.6%)
+  - ベンチマーク8ファイルのみ
+- **コミット済み**: 第1弾、第2弾、第3弾、第4弾
+- **次回コミット**: 第5弾（ベンチマーク8ファイル・最終）
 
 ---
 
-**更新日時**: 2025-10-16 15:00
+**更新日時**: 2025-10-16 15:30
