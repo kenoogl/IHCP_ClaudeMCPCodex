@@ -16,7 +16,130 @@ import ..Commons
 using ..Commons: WorkBuffers, FloatMin, λf, get_backend, myfill!, mycopy!
 
 
-export PBiCGSTAB!
+export PBiCGSTAB!, PCG!, solve_linear_system!
+
+
+"""
+@brief PCG反復（前処理付き共役勾配法）
+
+@param [in,out] wk       ワークベクトル
+@param [in]     Δh       セル幅
+@param [in]     Δt       時間積分幅
+@param [in]     ZC       CVセンター座標
+@param [in]     ΔZ       CV幅
+@param [in]     ρ        SUS密度
+
+# キーワード引数
+@param [in]     tol      反復閾値
+@param [in]     maxItr   最大反復数
+@param [in]     smoother [:none, :gs, :jacobi]
+@param [in]     par      バックエンド（"sequential", "thread"）
+@param [in]     verbose  詳細出力フラグ
+
+収束判定： 相対残差ノルム (||r_k|| / ||r_0||) < tol
+        IterativeSolvers.jlのcg!関数 : 相対残差ノルム
+@ret            収束/未収束、反復回数、初期残差
+"""
+function PCG!(wk::WorkBuffers,
+              Δh::NTuple{3,T},
+              Δt::T,
+              ZC::AbstractVector{T},
+              ΔZ::AbstractVector{T},
+              ρ::T;
+              tol::T = T(1e-6),
+              maxItr::Int = 20_000,
+              smoother::Symbol = :none,
+              par::String = "sequential",
+              verbose::Bool=false) where {T <: AbstractFloat}
+    backend = get_backend(par)
+    SZ = size(wk.θ)
+
+    # 初期残差を計算: r = b - Ax
+    myfill!(wk.pcg_q, zero(T), par)
+    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, ZC, ΔZ, par)
+    if verbose
+        println("Inital residual = ", res0)
+    end
+
+    # 初期残差がゼロの場合は収束済み（数値安定性対策）
+    if res0 ≈ zero(T)
+        return true, 0, res0
+    end
+
+    # Smoother選択: Symbol → Val型変換（コンパイル時分岐解決）
+    smoother_val = smoother_selector(smoother)
+
+    # 前処理: z = M^-1 * r (pcg_sをzとして使用)
+    myfill!(wk.pcg_s, zero(T), par)
+    Preconditioner!(wk.pcg_s, wk.pcg_r, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, par, wk.tmp)
+
+    # p = z
+    mycopy!(wk.pcg_p, wk.pcg_s, par)
+
+    # rho_old = (r, z)
+    rho_old::T = Fdot2(wk.pcg_r, wk.pcg_s, par)
+    isconverged::Bool = false
+    itr::Int = 0
+    float_min_T = T(FloatMin)
+
+    for k in 1:maxItr
+        itr = k
+
+        # q = A * p
+        CalcAX!(wk.pcg_q, wk.pcg_p, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, par)
+
+        # 分母ゼロ対策（数値安定性）
+        denom = Fdot2(wk.pcg_p, wk.pcg_q, par)
+        if abs(denom) < float_min_T
+            # 分母がゼロに近い場合は数値的に不安定（未収束として扱う）
+            isconverged = false
+            break
+        end
+
+        # alpha = rho_old / (p, q)
+        alpha::T = rho_old / denom
+
+        # x = x + alpha * p, r = r - alpha * q
+        @floop backend for kk in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+            wk.θ[i,j,kk] += alpha * wk.pcg_p[i,j,kk]
+            wk.pcg_r[i,j,kk] -= alpha * wk.pcg_q[i,j,kk]
+        end
+
+        # 残差チェック
+        res = sqrt(Fdot1(wk.pcg_r, par))
+        res /= res0
+
+        if res < tol
+            isconverged = true
+            break
+        end
+
+        # 前処理: z = M^-1 * r
+        myfill!(wk.pcg_s, zero(T), par)
+        Preconditioner!(wk.pcg_s, wk.pcg_r, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, par, wk.tmp)
+
+        # rho_new = (r, z)
+        rho_new = Fdot2(wk.pcg_r, wk.pcg_s, par)
+
+        # rhoがゼロに近い場合は数値的に不安定（未収束として扱う）
+        if abs(rho_new) < float_min_T
+            isconverged = false
+            break
+        end
+
+        # beta = rho_new / rho_old
+        beta::T = rho_new / rho_old
+
+        # p = z + beta * p
+        @floop backend for kk in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+            wk.pcg_p[i,j,kk] = wk.pcg_s[i,j,kk] + beta * wk.pcg_p[i,j,kk]
+        end
+
+        rho_old = rho_new
+    end # itr
+
+    return isconverged, itr, res0
+end
 
 """
 @brief Smoother選択器（Symbol → Val型変換）
@@ -863,6 +986,67 @@ function solveSOR!(θ::AbstractArray{T,3},
             println("Converged at ", n)
             return
         end
+    end
+end
+
+
+"""
+@brief ソルバー選択ヘルパー関数
+
+線形方程式系 Ax = b を解くソルバーを選択して実行する。
+
+【サポートされているソルバー】
+  - :pbicgstab → PBiCGSTAB!（前処理付き双共役勾配安定化法）
+  - :pcg → PCG!（前処理付き共役勾配法）
+
+【使用例】
+```julia
+isconverged, itr, res0 = solve_linear_system!(
+    wk, Δh, dt, ZC, dz, ρ,
+    solver=:pcg,
+    tol=1e-6, maxItr=20000, smoother=:gs, par="sequential"
+)
+```
+
+@param [in,out] wk       ワークベクトル
+@param [in]     Δh       セル幅
+@param [in]     Δt       時間積分幅
+@param [in]     ZC       CVセンター座標
+@param [in]     ΔZ       CV幅
+@param [in]     ρ        SUS密度
+
+# キーワード引数
+@param [in]     solver   ソルバー種別 [:pbicgstab, :pcg]
+@param [in]     tol      反復閾値
+@param [in]     maxItr   最大反復数
+@param [in]     smoother [:none, :gs, :jacobi]
+@param [in]     par      バックエンド（"sequential", "thread"）
+@param [in]     verbose  詳細出力フラグ
+
+@ret            収束/未収束、反復回数、初期残差
+"""
+function solve_linear_system!(
+    wk::WorkBuffers,
+    Δh::NTuple{3,T},
+    Δt::T,
+    ZC::AbstractVector{T},
+    ΔZ::AbstractVector{T},
+    ρ::T;
+    solver::Symbol = :pbicgstab,
+    tol::T = T(1e-6),
+    maxItr::Int = 20_000,
+    smoother::Symbol = :none,
+    par::String = "sequential",
+    verbose::Bool=false
+) where {T <: AbstractFloat}
+    if solver === :pbicgstab
+        return PBiCGSTAB!(wk, Δh, Δt, ZC, ΔZ, ρ,
+            tol=tol, maxItr=maxItr, smoother=smoother, par=par, verbose=verbose)
+    elseif solver === :pcg
+        return PCG!(wk, Δh, Δt, ZC, ΔZ, ρ,
+            tol=tol, maxItr=maxItr, smoother=smoother, par=par, verbose=verbose)
+    else
+        throw(ArgumentError("Unsupported solver: $(solver). Use :pbicgstab or :pcg."))
     end
 end
 

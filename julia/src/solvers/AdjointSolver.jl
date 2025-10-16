@@ -46,7 +46,7 @@ import ..RHSCore
 using ..RHSCore: calRHS_core!
 
 import ..CommonSolver
-using ..CommonSolver: PBiCGSTAB!
+using ..CommonSolver: PBiCGSTAB!, PCG!, solve_linear_system!
 
 import ..AdaptiveTolerance
 using ..AdaptiveTolerance: AdaptiveToleranceParams, compute_adaptive_tol
@@ -231,6 +231,7 @@ function solve_adjoint_mf!(
   initial_strategy::Symbol=:residual,
   residual_scale::T=T(1),
   smoother::Symbol=:gs,
+  solver::Symbol=:pbicgstab,
   adaptive_tol::Bool=false,
   adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing
 ) where {T <: AbstractFloat}
@@ -314,8 +315,8 @@ function solve_adjoint_mf!(
       end
     end
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, ZC, dz, ρ,
-          tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
+    isconverged, itr, res0 = solve_linear_system!(wk, Δh, dt, ZC, dz, ρ,
+          solver=solver, tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
     cg_iters[t] = itr
     step_time = time() - step_start
 
