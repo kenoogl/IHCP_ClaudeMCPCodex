@@ -50,7 +50,7 @@ end
 
 """
     solve_sliding_window_cgm(
-      Y_obs, T0, dx, dy, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
+      Y_obs, T0, dx, dy, dz, dt, rho, cp_coeffs, k_coeffs,
       window_size, overlap, q_init_value, cgm_iteration
     ) -> (q_global, windows_info)
 

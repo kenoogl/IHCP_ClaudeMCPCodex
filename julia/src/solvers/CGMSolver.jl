@@ -74,7 +74,7 @@ end
 
 
 """
-    compute_gradient!(T_cal, Y_obs, rho, cp_coeffs, k_coeffs, dx, dy, dz, dz_b, dz_t, dt,
+    compute_gradient!(T_cal, Y_obs, rho, cp_coeffs, k_coeffs, dx, dy, dz, dt,
                       rtol, maxiter) -> gradient
 
 勾配計算（随伴場の表面値）
@@ -188,7 +188,7 @@ end
 
 
 """
-    solve_cgm!(T_init, Y_obs, q_init, dx, dy, dz, dz_b, dz_t, dt,
+    solve_cgm!(T_init, Y_obs, q_init, dx, dy, dz, dt,
                rho, cp_coeffs, k_coeffs; params)
       -> (q_final, T_cal_final, J_hist)
 
