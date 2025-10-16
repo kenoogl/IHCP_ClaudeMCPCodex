@@ -163,32 +163,8 @@ function run_full_calculation(config::Dict, output_file::String)
             z_faces[k+1] = z_faces[k] + dz[k]
         end
 
-        ΔZ = zeros(nk+2)
-        ΔZ[2:nk+1] = dz[1:nk]
-        ΔZ[1] = ΔZ[2]
-        ΔZ[nk+2] = ΔZ[nk+1]
-
-        # セル中心座標（z_centers）を計算
-        # 底面と表面のセルは境界に重なる（半分のCV）
-        # 中間のセルは通常の中心
-        z_centers = zeros(nk+2)  # guide cell
-
-        # ガイドセル
-        z_centers[1] = z_faces[1]      # 底面ガイドセル
-        z_centers[nk+2] = z_faces[nk+1]  # 表面ガイドセル
-
-        # 底面物理セル（境界に重なる）
-        z_centers[2] = z_faces[1]
-
-        # 表面物理セル（境界に重なる）
-        z_centers[nk+1] = z_faces[nk+1]
-
-        # 中間物理セルのみ（k=3からnkまで）
-        if nk > 2
-            for k in 3:nk
-                z_centers[k] = (z_faces[k-1] + z_faces[k]) * 0.5
-            end
-        end
+        # ガイドセル込み格子を生成
+        z_centers, ΔZ = generate_guard_cell_grid(nk, dz, z_faces)
 
         @info @sprintf("IHCP Original")
         @info @sprintf("  格子点数: (%d, %d, %d)", prob["ni"], prob["nj"], prob["nk"])

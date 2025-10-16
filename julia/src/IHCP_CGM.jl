@@ -28,6 +28,7 @@ module IHCP_CGM
 # 共通モジュールを最初にインクルード
 include("utils/commons.jl")
 include("utils/boundary_conditions.jl")
+include("utils/grid_helpers.jl")
 
 
 # Phase 1モジュールのインクルード
@@ -81,6 +82,7 @@ export check_temperature_field, check_flux_field, check_adjoint_field
 export extract_sorted_mat_files, load_region_temperature
 export WorkBuffers, λf
 export AdaptiveToleranceParams, compute_adaptive_tol, compute_relative_change
+export generate_guard_cell_grid
 
 # バージョン情報
 const VERSION = v"0.6.0"
