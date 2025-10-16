@@ -23,6 +23,12 @@
 - ✅ 係数行列の適切なスケーリング（条件数改善）
 - ✅ 前処理の最適化（新しいスケールに対応）
 
+### 開発方針
+- codexと連携
+
+#### 役割分担
+- claude : タスク全体の計画と進捗管理、ユーザーとのコミュニケーション、Codexへの指示出しと結果のレビュー, Juliaの実行環境やテスト実行のサポート
+- codex : 詳細な調査作業、コードの実装、ファイル検索や分析
 ---
 
 ## 🔍 Codex調査報告のサマリー
@@ -518,26 +524,30 @@ julia --project=julia julia/scripts/run_10steps_fullsize_test.jl
 
 ## 📅 実装スケジュール
 
-### Day 1（約4時間）
+### Day 1（約4時間） ✅ 完了
 - [x] Phase 1: 準備作業（30分）
-- [ ] Phase 2: RHSCore.jl修正（1時間）
-  - RHS_convection! 関数修正
-  - 呼び出し側修正
-  - 動作確認
-- [ ] Phase 3.1-3.2: CalcAX!修正（1.5時間）
-  - HC配列の追加
-  - 対流項の実装
-  - テスト
+- [x] Phase 2: RHSCore.jl修正（1時間）
+  - RHS_convection! 関数修正 ✅
+  - 呼び出し側修正 ✅
+  - 動作確認 ✅
+  - コミット: 9815b9d
+- [x] Phase 3.1-3.2: CalcAX!修正（1.5時間）
+  - HC配列の追加 ✅
+  - 対流項の実装（マスク直接利用方式） ✅
+  - テスト ✅
 
-### Day 2（約4時間）
-- [ ] Phase 3.3-3.5: 残りの修正（2時間）
-  - CalcRK!修正
-  - jacobi_preconditioner!修正
-  - rbsor_core!修正
-- [ ] Phase 4: スケーリング実装（2時間）
-  - PBiCGSTAB!修正
-  - スケーリング係数計算
-  - テスト
+### Day 2（約4時間） ✅ 完了
+- [x] Phase 3.3-3.5: 残りの修正（2時間）
+  - CalcRK!修正 ✅
+  - jacobi_preconditioner!修正 ✅
+  - rbsor_core!修正 ✅
+  - resSOR修正 ✅
+  - rbsor!修正 ✅
+  - コミット: 4d65584
+- [ ] Phase 4: DHCPSolver等での統合（次セッション）
+  - set_BC_coef拡張（HC配列生成）
+  - PBiCGSTAB!シグネチャ修正
+  - Preconditioner!へのHC伝播
 
 ### Day 3（約3時間）
 - [ ] Phase 5: ソルバー統合（1.5時間）
@@ -626,10 +636,31 @@ git commit -m "Revert volume integral form due to unresolved issues"
 
 ## 📝 実装ログ
 
-### 2025-10-16 22:XX - 計画書作成完了
+### 2025-10-16 22:00 - 計画書作成完了
 - Codex調査報告に基づき詳細計画を策定
-- tuning7-volume-integral-complete ブランチ作成予定
-- 次: Phase 1（準備作業）開始
+- tuning7-volume-integral-complete ブランチ作成
+- コミット: f024ee2, 05ebe81
+
+### 2025-10-17 - Phase 2完了
+- RHSCore.jl修正完了
+- `RHS_convection!`からθ引数除去、全6面でRHS項を`h·A·T∞`のみに
+- コンパイル成功確認
+- コミット: 9815b9d
+
+### 2025-10-17 - Phase 3完了
+- CommonSolver.jl修正完了
+- 6つの主要関数にHC引数追加:
+  - CalcAX!, CalcRK!, jacobi_preconditioner!
+  - resSOR, rbsor_core!, rbsor!
+- マスク直接利用方式で対流項実装
+- コンパイル成功確認
+- コミット: 4d65584
+
+### 次セッション: Phase 4開始
+- DHCPSolver.jl等でのHC配列生成と伝播
+- PBiCGSTAB!, PCG!へのHC引数追加
+- Preconditioner!システム全体へのHC伝播
+- 詳細: `TODO_NEXT_SESSION.md`参照
 
 ---
 
