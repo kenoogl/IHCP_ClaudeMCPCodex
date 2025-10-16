@@ -15,7 +15,7 @@ using JSON
 
 # IHCP_CGMモジュールとその関数をインポート
 using IHCP_CGM
-using IHCP_CGM: solve_cgm!, WorkBuffers, convert_to_guard_cell_grid
+using IHCP_CGM: solve_cgm!, WorkBuffers
 using IHCP_CGM.StoppingCriteria: check_discrepancy, check_plateau
 
 
@@ -105,8 +105,28 @@ end
     # WorkBuffers作成（ガイドセル含む）
     wk = WorkBuffers(ni+2, nj+2, nk+2)
 
-    # ガイドセルグリッド変換
-    z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+    # ガイドセルグリッド作成
+    ΔZ = zeros(nk+2)
+    ΔZ[2:nk+1] = dz[1:nk]
+    ΔZ[1] = ΔZ[2]
+    ΔZ[nk+2] = ΔZ[nk+1]
+
+    # z_faces計算
+    z_faces = zeros(nk + 1)
+    z_faces[1] = 0.0
+    for k in 1:nk
+      z_faces[k+1] = z_faces[k] + dz[k]
+    end
+
+    # z_centers計算（ガイドセル込み）
+    z_centers = zeros(nk+2)
+    z_centers[1] = z_faces[1]
+    z_centers[2] = z_faces[1]
+    z_centers[end-1] = z_faces[end]
+    z_centers[end] = z_faces[end]
+    for k in 2:(nk+1)
+      z_centers[k] = (z_faces[k] + z_faces[k-1]) * 0.5
+    end
 
     # CGM実行
     cgm_params = (
@@ -129,7 +149,7 @@ end
       T_init, Y_obs, q_init,
       wk,
       dx, dy,
-      z_centers, dz_grid,
+      z_centers, ΔZ,
       dt,
       rho, cp_coeffs, k_coeffs;
       params = cgm_params,

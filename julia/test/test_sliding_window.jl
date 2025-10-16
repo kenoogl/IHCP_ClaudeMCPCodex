@@ -21,7 +21,7 @@ using JSON
 
 # IHCP_CGMモジュールと必要な関数をインポート
 using IHCP_CGM
-using IHCP_CGM: solve_sliding_window_cgm, WindowInfo, WorkBuffers, convert_to_guard_cell_grid
+using IHCP_CGM: solve_sliding_window_cgm, WindowInfo, WorkBuffers
 
 
 """
@@ -256,13 +256,35 @@ end
     println("  オーバーラップ: $overlap")
     println("  CGM反復: $cgm_iteration")
 
-    # WorkBuffersとz_centers, dz_gridを作成
+    # WorkBuffers作成
     work = WorkBuffers(ni+2, nj+2, nk+2)
-    z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
+    # ガイドセルグリッド作成
+    ΔZ = zeros(nk+2)
+    ΔZ[2:nk+1] = dz[1:nk]
+    ΔZ[1] = ΔZ[2]
+    ΔZ[nk+2] = ΔZ[nk+1]
+
+    # z_faces計算
+    z_faces = zeros(nk + 1)
+    z_faces[1] = 0.0
+    for k in 1:nk
+      z_faces[k+1] = z_faces[k] + dz[k]
+    end
+
+    # z_centers計算（ガイドセル込み）
+    z_centers = zeros(nk+2)
+    z_centers[1] = z_faces[1]
+    z_centers[2] = z_faces[1]
+    z_centers[end-1] = z_faces[end]
+    z_centers[end] = z_faces[end]
+    for k in 2:(nk+1)
+      z_centers[k] = (z_faces[k] + z_faces[k-1]) * 0.5
+    end
 
     # Julia実装のスライディングウィンドウCGM実行
     q_global_julia, windows_info = solve_sliding_window_cgm(
-      Y_obs, T_init, work, dx, dy, z_centers, dz_grid, dt, rho, cp_coeffs, k_coeffs,
+      Y_obs, T_init, work, dx, dy, z_centers, ΔZ, dt, rho, cp_coeffs, k_coeffs,
       window_size, overlap, q_init_value, cgm_iteration;
       use_window_continuation=false
     )
@@ -359,13 +381,35 @@ end
     println("  オーバーラップ: $overlap")
     println("  CGM反復: $cgm_iteration")
 
-    # WorkBuffersとz_centers, dz_gridを作成
+    # WorkBuffers作成
     work = WorkBuffers(ni+2, nj+2, nk+2)
-    z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+
+    # ガイドセルグリッド作成
+    ΔZ = zeros(nk+2)
+    ΔZ[2:nk+1] = dz[1:nk]
+    ΔZ[1] = ΔZ[2]
+    ΔZ[nk+2] = ΔZ[nk+1]
+
+    # z_faces計算
+    z_faces = zeros(nk + 1)
+    z_faces[1] = 0.0
+    for k in 1:nk
+      z_faces[k+1] = z_faces[k] + dz[k]
+    end
+
+    # z_centers計算（ガイドセル込み）
+    z_centers = zeros(nk+2)
+    z_centers[1] = z_faces[1]
+    z_centers[2] = z_faces[1]
+    z_centers[end-1] = z_faces[end]
+    z_centers[end] = z_faces[end]
+    for k in 2:(nk+1)
+      z_centers[k] = (z_faces[k] + z_faces[k-1]) * 0.5
+    end
 
     # Julia実装のスライディングウィンドウCGM実行
     q_global_julia, windows_info = solve_sliding_window_cgm(
-      Y_obs, T_init, work, dx, dy, z_centers, dz_grid, dt, rho, cp_coeffs, k_coeffs,
+      Y_obs, T_init, work, dx, dy, z_centers, ΔZ, dt, rho, cp_coeffs, k_coeffs,
       window_size, overlap, q_init_value, cgm_iteration;
       use_window_continuation=false
     )

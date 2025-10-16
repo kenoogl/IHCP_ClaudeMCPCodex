@@ -27,7 +27,6 @@ module IHCP_CGM
 
 # 共通モジュールを最初にインクルード
 include("utils/commons.jl")
-include("utils/GridTransform.jl")
 include("utils/boundary_conditions.jl")
 
 
@@ -64,7 +63,6 @@ using .StoppingCriteria
 using .CGMSolver
 using .SlidingWindowSolver
 using .Validators
-using .GridTransform
 using .BoundaryConditions
 
 # Phase 6 C-1: 実データ読込機能のインポート
