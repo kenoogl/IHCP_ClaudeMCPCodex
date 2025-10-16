@@ -45,7 +45,8 @@ function PCG!(wk::WorkBuffers,
               Δt::T,
               ZC::AbstractVector{T},
               ΔZ::AbstractVector{T},
-              ρ::T;
+              ρ::T,
+              HC::AbstractVector{T};
               tol::T = T(1e-6),
               maxItr::Int = 20_000,
               smoother::Symbol = :none,
@@ -56,7 +57,7 @@ function PCG!(wk::WorkBuffers,
 
     # 初期残差を計算: r = b - Ax
     myfill!(wk.pcg_q, zero(T), par)
-    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, ZC, ΔZ, par)
+    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, ZC, ΔZ, HC, par)
     if verbose
         println("Inital residual = ", res0)
     end
@@ -71,7 +72,7 @@ function PCG!(wk::WorkBuffers,
 
     # 前処理: z = M^-1 * r (pcg_sをzとして使用)
     myfill!(wk.pcg_s, zero(T), par)
-    Preconditioner!(wk.pcg_s, wk.pcg_r, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, par, wk.tmp)
+    Preconditioner!(wk.pcg_s, wk.pcg_r, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, HC, par, wk.tmp)
 
     # p = z
     mycopy!(wk.pcg_p, wk.pcg_s, par)
@@ -86,7 +87,7 @@ function PCG!(wk::WorkBuffers,
         itr = k
 
         # q = A * p
-        CalcAX!(wk.pcg_q, wk.pcg_p, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, par)
+        CalcAX!(wk.pcg_q, wk.pcg_p, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, HC, par)
 
         # 分母ゼロ対策（数値安定性）
         denom = Fdot2(wk.pcg_p, wk.pcg_q, par)
@@ -116,7 +117,7 @@ function PCG!(wk::WorkBuffers,
 
         # 前処理: z = M^-1 * r
         myfill!(wk.pcg_s, zero(T), par)
-        Preconditioner!(wk.pcg_s, wk.pcg_r, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, par, wk.tmp)
+        Preconditioner!(wk.pcg_s, wk.pcg_r, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, HC, par, wk.tmp)
 
         # rho_new = (r, z)
         rho_new = Fdot2(wk.pcg_r, wk.pcg_s, par)
@@ -196,7 +197,8 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     Δt::T,
                     ZC::AbstractVector{T},
                     ΔZ::AbstractVector{T},
-                    ρ::T;
+                    ρ::T,
+                    HC::AbstractVector{T};
                     tol::T = T(1e-6),
                     maxItr::Int = 20_000,
                     smoother::Symbol = :none,
@@ -204,7 +206,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     verbose::Bool=false) where {T <: AbstractFloat}
     SZ = size(wk.θ)
     myfill!(wk.pcg_q, zero(T), par)
-    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, ZC, ΔZ, par)
+    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, ZC, ΔZ, HC, par)
     if verbose
         println("Inital residual = ", res0)
     end
@@ -249,18 +251,18 @@ function PBiCGSTAB!(wk::WorkBuffers,
 
         myfill!(wk.pcg_p_, zero(T), par)  #fill!(pcg_p_, 0.0)
         # 前処理: pcg_p_ ≈ M^{-1} pcg_p （smoother_valで分岐、wk.tmpはJacobi用）
-        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, par, wk.tmp)
+        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, HC, par, wk.tmp)
 
-        CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, par)
+        CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, HC, par)
         alpha = rho / Fdot2(wk.pcg_q, wk.pcg_r0, par)
         r_alpha = -alpha
         Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, par)
 
         myfill!(wk.pcg_s_, zero(T), par)  #fill!(pcg_s_, 0.0)
         # 前処理: pcg_s_ ≈ M^{-1} pcg_s （2回目の前処理適用）
-        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, par, wk.tmp);
+        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, HC, par, wk.tmp);
 
-        CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, par)
+        CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, HC, par)
 
         # 分母ゼロ対策（数値安定性）
         denom = Fdot1(wk.pcg_t_, par)
@@ -464,10 +466,11 @@ function Preconditioner!(xx::AbstractArray{T,3},
                          smoother::Val,
                          ZC::AbstractVector{T},
                          ΔZ::AbstractVector{T},
+                         HC::AbstractVector{T},
                          par::String,
                          scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
     # 内部実装にディスパッチ（Val型による分岐はコンパイル時に解決）
-    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, ZC, ΔZ, par, scratch)
+    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, ZC, ΔZ, HC, par, scratch)
 end
 
 """
@@ -483,7 +486,7 @@ xx = bb
 
 【計算量】 O(N)（単純なコピー）
 """
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, ZC, ΔZ, par, _)
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, ZC, ΔZ, HC, par, _)
     mycopy!(xx, bb, par)
     return nothing
 end
@@ -505,9 +508,9 @@ xx ≈ M^{-1} bb （M: 前処理行列、ここではGS反復5回による近似
 
 【計算量】 O(5N)（5回反復 × N点更新）
 """
-function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, ZC, ΔZ, par, _)
+function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, ZC, ΔZ, HC, par, _)
     for _ in 1:PRECONDITIONER_SWEEPS
-        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), ZC, ΔZ, par)
+        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), ZC, ΔZ, HC, par)
     end
     return nothing
 end
@@ -546,9 +549,10 @@ function _Preconditioner!(xx::AbstractArray{T,3},
                           ::Val{:jacobi},
                           ZC::AbstractVector{T},
                           ΔZ::AbstractVector{T},
+                          HC::AbstractVector{T},
                           par::String,
                           scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
-    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ZC, ΔZ, par, scratch)
+    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ZC, ΔZ, HC, par, scratch)
     return nothing
 end
 
@@ -560,7 +564,7 @@ end
 
 型システムの完全性のために定義。
 """
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, ZC, ΔZ, par, scratch) where {s}
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, ZC, ΔZ, HC, par, scratch) where {s}
     throw(ArgumentError("Unsupported smoother: $(s)"))
 end
 
@@ -1050,7 +1054,8 @@ function solve_linear_system!(
     Δt::T,
     ZC::AbstractVector{T},
     ΔZ::AbstractVector{T},
-    ρ::T;
+    ρ::T,
+    HC::AbstractVector{T};
     solver::Symbol = :pbicgstab,
     tol::T = T(1e-6),
     maxItr::Int = 20_000,
@@ -1059,10 +1064,10 @@ function solve_linear_system!(
     verbose::Bool=false
 ) where {T <: AbstractFloat}
     if solver === :pbicgstab
-        return PBiCGSTAB!(wk, Δh, Δt, ZC, ΔZ, ρ,
+        return PBiCGSTAB!(wk, Δh, Δt, ZC, ΔZ, ρ, HC,
             tol=tol, maxItr=maxItr, smoother=smoother, par=par, verbose=verbose)
     elseif solver === :pcg
-        return PCG!(wk, Δh, Δt, ZC, ΔZ, ρ,
+        return PCG!(wk, Δh, Δt, ZC, ΔZ, ρ, HC,
             tol=tol, maxItr=maxItr, smoother=smoother, par=par, verbose=verbose)
     else
         throw(ArgumentError("Unsupported solver: $(solver). Use :pbicgstab or :pcg."))

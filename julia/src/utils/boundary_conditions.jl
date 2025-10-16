@@ -7,7 +7,7 @@ using ..Commons: BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION
 export BoundaryCondition, BoundaryConditionSet,
        isothermal_bc, heat_flux_bc, adiabatic_bc, convection_bc,
        create_boundary_conditions, apply_boundary_conditions!,
-       print_boundary_conditions, apply_face_boundary!
+       print_boundary_conditions, apply_face_boundary!, set_BC_coef
 
 # 単一境界面の境界条件
 struct BoundaryCondition
@@ -343,7 +343,7 @@ end
 """
 function print_boundary_conditions(bc_set::BoundaryConditionSet)
     println("=== Boundary Conditions ===")
-    
+
     faces = [
         ("X-minus", bc_set.x_minus),
         ("X-plus ", bc_set.x_plus),
@@ -352,7 +352,7 @@ function print_boundary_conditions(bc_set::BoundaryConditionSet)
         ("Z-minus", bc_set.z_minus),
         ("Z-plus ", bc_set.z_plus)
     ]
-    
+
     for (face_name, bc) in faces
         print("$face_name: ")
         if bc.type == ISOTHERMAL
@@ -372,6 +372,56 @@ function print_boundary_conditions(bc_set::BoundaryConditionSet)
         end
     end
     println("===================")
+end
+
+
+"""
+境界条件セットから熱伝達係数配列を生成
+
+境界条件セットから熱伝達係数配列を抽出し、CommonSolverに渡す形式に変換
+
+# 引数
+- `bc_set::BoundaryConditionSet`: 境界条件セット
+
+# 戻り値
+- `HC::Vector{Float64}`: 熱伝達係数配列 [h_xm, h_xp, h_ym, h_yp, h_zm, h_zp]
+  - 対流境界条件の場合: heat_transfer_coefficient
+  - それ以外の境界条件: 0.0
+"""
+function set_BC_coef(bc_set::BoundaryConditionSet)
+    HC = zeros(6)
+
+    # X-minus
+    if bc_set.x_minus.type == CONVECTION
+        HC[1] = bc_set.x_minus.heat_transfer_coefficient
+    end
+
+    # X-plus
+    if bc_set.x_plus.type == CONVECTION
+        HC[2] = bc_set.x_plus.heat_transfer_coefficient
+    end
+
+    # Y-minus
+    if bc_set.y_minus.type == CONVECTION
+        HC[3] = bc_set.y_minus.heat_transfer_coefficient
+    end
+
+    # Y-plus
+    if bc_set.y_plus.type == CONVECTION
+        HC[4] = bc_set.y_plus.heat_transfer_coefficient
+    end
+
+    # Z-minus
+    if bc_set.z_minus.type == CONVECTION
+        HC[5] = bc_set.z_minus.heat_transfer_coefficient
+    end
+
+    # Z-plus
+    if bc_set.z_plus.type == CONVECTION
+        HC[6] = bc_set.z_plus.heat_transfer_coefficient
+    end
+
+    return HC
 end
 
 end # module BoundaryConditions

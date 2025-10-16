@@ -28,7 +28,7 @@ using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet,
             isothermal_bc, heat_flux_bc, adiabatic_bc, convection_bc,
             create_boundary_conditions, apply_boundary_conditions!,
             print_boundary_conditions, ISOTHERMAL, HEAT_FLUX,
-            apply_face_boundary!
+            apply_face_boundary!, set_BC_coef
 
 import ..RHSCore
 using ..RHSCore: calRHS_core!
@@ -241,6 +241,8 @@ function solve_dhcp!(
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
 
+  # HC配列を生成
+  HC = set_BC_coef(bc_set)
 
 # 時間積分ループ
   for t in 2:nt
@@ -274,7 +276,7 @@ function solve_dhcp!(
       end
     end
 
-    isconverged, itr, res0 = solve_linear_system!(wk, Δh, dt, ZC, dz, ρ,
+    isconverged, itr, res0 = solve_linear_system!(wk, Δh, dt, ZC, dz, ρ, HC,
         solver=solver, tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
 
     iter_counts[t] = itr
