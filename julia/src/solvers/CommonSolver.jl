@@ -303,6 +303,7 @@ end
 @param [in]     Δt   時間積分幅
 @param [in]     ZC   CVセンター座標
 @param [in]     ΔZ   CV幅
+@param [in]     HC   熱伝達係数 [h_xm, h_xp, h_ym, h_yp, h_zm, h_zp]
 
 @ret                 セルあたりの残差RMS
 """
@@ -318,6 +319,7 @@ function CalcRK!(
                 Δt::T,
                 ZC::AbstractVector{T},
                 ΔZ::AbstractVector{T},
+                HC::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
@@ -332,13 +334,13 @@ function CalcRK!(
         λ0 = λ[i,j,k]
         m0 = m[i,j,k]
 
-        # 体積積分形式：面積×コンダクタンス
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+        # 体積積分形式：面積×コンダクタンス + 対流項
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
@@ -365,8 +367,9 @@ end
 @param [in]  cp   比熱
 @param [in]  m    マスク配列
 @param [in]  ρ    密度
-@param [in]     ZC   CVセンター座標
+@param [in]  ZC   CVセンター座標
 @param [in]  ΔZ   CV幅
+@param [in]  HC   熱伝達係数 [h_xm, h_xp, h_ym, h_yp, h_zm, h_zp]
 
 """
 function CalcAX!(ax::AbstractArray{T,3},
@@ -379,6 +382,7 @@ function CalcAX!(ax::AbstractArray{T,3},
                   ρ::T,
                   ZC::AbstractVector{T},
                   ΔZ::AbstractVector{T},
+                  HC::AbstractVector{T},
                   par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
@@ -393,13 +397,13 @@ function CalcAX!(ax::AbstractArray{T,3},
         λ0 = λ[i,j,k]
         m0 = m[i,j,k]
 
-        # 体積積分形式：面積×コンダクタンス
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+        # 体積積分形式：面積×コンダクタンス + 対流項
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
@@ -610,6 +614,7 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
                                 Δt::T,
                                 ZC::AbstractVector{T},
                                 ΔZ::AbstractVector{T},
+                                HC::AbstractVector{T},
                                 par::String,
                                 scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
     backend = get_backend(par)
@@ -630,20 +635,20 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
         dz_k = ΔZ[k]
         λ0 = λ[i,j,k]
         m0 = m[i,j,k]
-        
+
         # Dirichlet/ghost cells are copied through
         if m0 == zero(T)
           scratch[i,j,k] = bb[i,j,k]
           continue
         end
 
-        # 体積積分形式：面積×コンダクタンス
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+        # 体積積分形式：面積×コンダクタンス + 対流項
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
@@ -658,7 +663,7 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
         diag = max(dd, float_min_T)
         scratch[i,j,k] = xx[i,j,k] + ω * (rhs - Ax) / diag
       end
-        
+
       mycopy!(xx, scratch, par)
     end
 
@@ -783,6 +788,7 @@ end
 @param [in]     ω    加速係数
 @param [in]     ZC   CVセンター座標
 @param [in]     ΔZ   格子幅
+@param [in]     HC   熱伝達係数 [h_xm, h_xp, h_ym, h_yp, h_zm, h_zp]
 @ret                 残差RMS
 """
 function resSOR(θ::AbstractArray{T,3},
@@ -796,6 +802,7 @@ function resSOR(θ::AbstractArray{T,3},
                 ω::T,
                 ZC::AbstractVector{T},
                 ΔZ::AbstractVector{T},
+                HC::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
@@ -811,13 +818,13 @@ function resSOR(θ::AbstractArray{T,3},
         λ0 = λ[i,j,k]
         m0 = m[i,j,k]
 
-        # 体積積分形式：面積×コンダクタンス
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+        # 体積積分形式：面積×コンダクタンス + 対流項
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
@@ -848,6 +855,7 @@ end
 @param [in]     ω    加速係数
 @param [in]     ZC   CVセンター座標
 @param [in]     ΔZ   格子幅
+@param [in]     HC   熱伝達係数 [h_xm, h_xp, h_ym, h_yp, h_zm, h_zp]
 @param [in]     color R or B
 @ret                 残差2乗和
 """
@@ -862,6 +870,7 @@ function rbsor_core!(θ::AbstractArray{T,3},
                      ω::T,
                      ZC::AbstractVector{T},
                      ΔZ::AbstractVector{T},
+                     HC::AbstractVector{T},
                      color::Int,
                      par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
@@ -879,13 +888,13 @@ function rbsor_core!(θ::AbstractArray{T,3},
             λ0 = λ[i,j,k]
             m0 = m[i,j,k]
 
-            # 体積積分形式：面積×コンダクタンス
-            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
-            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
-            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
-            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
-            azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
-            azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+            # 体積積分形式：面積×コンダクタンス + 対流項
+            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
+            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
+            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
+            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
+            azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
+            azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
 
             # 時間項（体積積分形式） - 定常解析の場合は0
             a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
@@ -918,6 +927,7 @@ end
 @param [in]     ω    加速係数
 @param [in]     ZC   CVセンター座標
 @param [in]     ΔZ   格子幅
+@param [in]     HC   熱伝達係数 [h_xm, h_xp, h_ym, h_yp, h_zm, h_zp]
 @ret                 残差RMS
 """
 function rbsor!(θ::AbstractArray{T,3},
@@ -931,13 +941,14 @@ function rbsor!(θ::AbstractArray{T,3},
                 ω::T,
                 ZC::AbstractVector{T},
                 ΔZ::AbstractVector{T},
+                HC::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     SZ = size(b)
     res = zero(T)
 
     # 2色のマルチカラー(Red&Black)のセットアップ
     for c in 0:1
-        res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, ZC, ΔZ, c, par)
+        res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, ZC, ΔZ, HC, c, par)
     end
     #norm_factor = T((SZ[1]-2)*(SZ[2]-2)*(SZ[3]-2))
     return sqrt(res) #/ norm_factor
