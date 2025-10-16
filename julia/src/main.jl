@@ -152,7 +152,7 @@ function run_full_calculation(config::Dict, output_file::String)
         end
 
         # 表面・底面の格子幅（nk要素のベクトル）
-        # dz配列（nk要素、各層の厚さ）からセル中心座標を計算
+        # dz配列（nk要素、各層の厚さ）からセル中心座標を計算し、dz_b、dz_tを構築
         nk = prob["nk"]
 
         # セル境界座標（z_faces）を計算（底面から表面へ）
@@ -173,13 +173,29 @@ function run_full_calculation(config::Dict, output_file::String)
             z_centers[k] = (z_faces[k] + z_faces[k+1]) / 2.0
         end
 
+        # dz_t: 上側境界からの距離
+        dz_t = zeros(nk)
+        dz_t[end] = Inf  # 表面境界条件
+        for k in 1:(nk-1)
+            dz_t[k] = z_centers[k+1] - z_centers[k]
+        end
+
+        # dz_b: 下側境界からの距離
+        dz_b = zeros(nk)
+        dz_b[1] = Inf  # 底面境界条件
+        for k in 2:nk
+            dz_b[k] = z_centers[k] - z_centers[k-1]
+        end
+
         @info @sprintf("IHCP Original")
         @info @sprintf("  格子点数: (%d, %d, %d)", prob["ni"], prob["nj"], prob["nk"])
         @info @sprintf("  格子幅: dx=%.2e, dy=%.2e", prob["dx"], prob["dy"])
         @info @sprintf("  z方向格子幅: %d層, 表面=%.2e, 底面=%.2e", length(dz), dz[1], dz[end])
 
-    
+        z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
         @info @sprintf("IHCP-Heat3d")
+        #println(z_centers)
+        #println(dz_grid)
 
         # 入力データ読み込み
         @info "\n入力データ読み込み中..."
@@ -262,7 +278,7 @@ function run_full_calculation(config::Dict, output_file::String)
 
         q_global, windows_info = solve_sliding_window_cgm(
             Y_obs, T_init, work,
-            prob["dx"], prob["dy"], z_centers, dz, prob["dt"],
+            prob["dx"], prob["dy"], z_centers, dz_grid, prob["dt"],
             mat["rho"], mat["cp_coeffs"], mat["k_coeffs"],
             window_size, overlap, q_init_value, max_iter
         )

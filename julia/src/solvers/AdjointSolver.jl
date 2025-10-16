@@ -169,7 +169,7 @@ end
 
 """
     solve_adjoint_mf!(T_cal, Y_obs, nt, ρ, cp_coeffs, k_coeffs,
-                   dx, dy, dz, dt; rtol=1e-8, maxiter=1000, verbose=false)
+                   dx, dy, dz, dz_b, dz_t, dt; rtol=1e-8, maxiter=1000, verbose=false)
       -> (λ_all, cg_iters)
 
 複数時間ステップ随伴ソルバー（後退時間積分）
@@ -198,6 +198,8 @@ Args:
   k_coeffs: 熱伝導率多項式係数 [k0, k1, k2, k3]
   dx, dy: x, y方向格子幅 [m]
   dz: z方向格子幅配列 (nk,) [m]
+  dz_b: 下側界面距離 (nk,) [m]
+  dz_t: 上側界面距離 (nk,) [m]
   dt: 時間刻み [s]
   rtol: CG相対許容誤差（デフォルト: 1e-8）
   maxiter: CG最大反復回数（デフォルト: 1000）
