@@ -88,13 +88,14 @@ end
 
 """
 個別の境界面に境界条件を適用
-@param θ 温度
-@param λ 熱伝導率
-@param ρ 密度
-@param cp 比熱
-@param mask マスク
+@param b RHSベクトル
+@param θ 温度（対流境界条件では使用しない、体積積分形式のため）
+@param dx x方向格子幅
+@param dy y方向格子幅
+@param dz z方向格子幅配列
 @param bc 境界条件
 @param face_type 面のタイプ (:x_minus, :x_plus, :y_minus, :y_plus, :z_minus, :z_plus)
+@param par 並列化バックエンド
 """
 function apply_face_bc!(b::AbstractArray{T,3},
                         θ::AbstractArray{T,3},
@@ -109,7 +110,7 @@ function apply_face_bc!(b::AbstractArray{T,3},
         RHS_heat_flux!(b, dx, dy, dz, bc, face_type, par)
 
     elseif bc.type == CONVECTION
-        RHS_convection!(b, θ, dx, dy, dz, bc, face_type, par)
+        RHS_convection!(b, dx, dy, dz, bc, face_type, par)
     end
 
     return nothing
@@ -177,9 +178,11 @@ end
 
 """
 熱伝達境界条件のRHS項への適用
+
+体積積分形式では、対流項 h·A·θ は係数行列の対角成分に含まれるため、
+RHS項には h·A·T∞ のみを設定する（θ依存項は除外）。
 """
 function RHS_convection!(b::AbstractArray{T,3},
-                        θ::AbstractArray{T,3},
                         dx::T,
                         dy::T,
                         dz::AbstractVector{T},
@@ -193,40 +196,40 @@ function RHS_convection!(b::AbstractArray{T,3},
     let i=2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
       @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
         area = dy * dz[k]
-        b[i,j,k] -= h * area * (ta - θ[i,j,k])
+        b[i,j,k] -= h * area * ta
       end
     end
   elseif face_type == :x_plus
     let i = SZ[1]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
       @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
         area = dy * dz[k]
-        b[i,j,k] += h * area * (ta - θ[i,j,k])
+        b[i,j,k] += h * area * ta
       end
     end
   elseif face_type == :y_minus
     let j = 2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
       @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
         area = dx * dz[k]
-        b[i,j,k] -= h * area * (ta - θ[i,j,k])
+        b[i,j,k] -= h * area * ta
       end
     end
   elseif face_type == :y_plus
     let j = SZ[2]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
       @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
         area = dx * dz[k]
-        b[i,j,k] += h * area * (ta - θ[i,j,k])
+        b[i,j,k] += h * area * ta
       end
     end
   elseif face_type == :z_minus
     let k = 2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature, area = dx * dy
       @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        b[i,j,k] -= h * area * (ta - θ[i,j,k])
+        b[i,j,k] -= h * area * ta
       end
     end
   elseif face_type == :z_plus
     let k = SZ[3]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature, area = dx * dy
       @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        b[i,j,k] += h * area * (ta - θ[i,j,k])
+        b[i,j,k] += h * area * ta
       end
     end
   end
