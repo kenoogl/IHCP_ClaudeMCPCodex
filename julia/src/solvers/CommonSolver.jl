@@ -632,7 +632,7 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
         m0 = m[i,j,k]
         
         # Dirichlet/ghost cells are copied through
-        if m0 == zeroT
+        if m0 == zero(T)
           scratch[i,j,k] = bb[i,j,k]
           continue
         end
@@ -649,11 +649,11 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
         dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
-        ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
-             + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
-             + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
-            
-        Ax = ss - dd * xx[i,j,k]
+        ss = ( axp * scratch[i+1,j  ,k  ] + axm * scratch[i-1,j  ,k  ]
+             + ayp * scratch[i  ,j+1,k  ] + aym * scratch[i  ,j-1,k  ]
+             + azp * scratch[i  ,j  ,k+1] + azm * scratch[i  ,j  ,k-1] )
+
+        Ax = ss - dd * scratch[i,j,k]
         rhs = bb[i,j,k]
         diag = max(dd, float_min_T)
         scratch[i,j,k] = xx[i,j,k] + ω * (rhs - Ax) / diag
