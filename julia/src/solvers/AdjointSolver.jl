@@ -219,7 +219,7 @@ function solve_adjoint_mf!(
   k_coeffs::Vector{Float64},
   dx::T,
   dy::T,
-  z_centers::Vector{Float64},
+  ZC::Vector{Float64},
   dz::Vector{Float64},
   dt::T;
   rtol::T=T(1e-8),
@@ -314,7 +314,7 @@ function solve_adjoint_mf!(
       end
     end
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, z_centers, dz, ρ,
+    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, ZC, dz, ρ,
           tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
     cg_iters[t] = itr
     step_time = time() - step_start

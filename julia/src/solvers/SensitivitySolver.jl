@@ -120,7 +120,7 @@ nt: 時間ステップ数
 ρ: 密度 [kg/m³]
 cp_coeffs: 比熱多項式係数 [c0, c1, c2, c3]
 k_coeffs: 熱伝導率多項式係数 [k0, k1, k2, k3]
-dx, dy, z_centers, dz, Δt: 格子・時間パラメータ
+dx, dy, ZC, dz, Δt: 格子・時間パラメータ
 rtol, maxiter: 収束パラメータ
 verbose: 進捗表示フラグ（デフォルト: false）
 par: バックエンド
@@ -172,7 +172,7 @@ function solve_sensitivity!(
   k_coeffs::Vector{Float64},
   dx::T,
   dy::T,
-  z_centers::Vector{Float64},
+  ZC::Vector{Float64},
   dz::Vector{Float64},
   dt::T;
   rtol::T=T(1e-6),
@@ -268,7 +268,7 @@ function solve_sensitivity!(
       end
     end
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, z_centers, dz, ρ,
+    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, ZC, dz, ρ,
         tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
 
     iter_counts[t] = itr
