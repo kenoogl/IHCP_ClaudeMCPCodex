@@ -69,10 +69,8 @@ end
 @param y_plus_bc  Y軸正方向面の境界条件
 @param z_minus_bc Z軸負方向面の境界条件
 @param z_plus_bc  Z軸正方向面の境界条件
-@param nk         計算内点数（配列サイズはnk+2）
 
 # Returns
-- [z_start, z_end]: 計算範囲のインデックス（ガイドセル配列基準）
 - BoundaryConditionSet
 
 # 配列インデックス構造 (MZ = nk+2)
@@ -81,36 +79,14 @@ end
 - k=3～nk+1: 計算内点
 - k=nk+2: 上側ガイドセル
 
-# 計算範囲の決定ルール
-- Z-方向が等温条件 → z_start = 3 (k=2は温度固定、計算対象外)
-- Z-方向が熱流束/熱伝達 → z_start = 2 (k=2も計算対象)
-- Z+方向が等温条件 → z_end = nk (k=nk+1は温度固定、計算対象外)
-- Z+方向が熱流束/熱伝達 → z_end = nk+1 (k=nk+1も計算対象)
-
-# Examples
-```julia
-compute_z_range(10, ISOTHERMAL, HEAT_FLUX)  # [3, 11]
-compute_z_range(10, HEAT_FLUX, ISOTHERMAL)  # [2, 10]
-compute_z_range(10, HEAT_FLUX, CONVECTION)  # [2, 11]
-compute_z_range(10, ISOTHERMAL, ISOTHERMAL) # [3, 10]
-```
-
 """
 function create_boundary_conditions(x_minus_bc::BoundaryCondition,
                                     x_plus_bc::BoundaryCondition,
                                     y_minus_bc::BoundaryCondition,
                                     y_plus_bc::BoundaryCondition,
                                     z_minus_bc::BoundaryCondition,
-                                    z_plus_bc::BoundaryCondition,
-                                    nk::Int,)
-    # Z-方向: 等温条件なら内点から開始（k=3）
-    z_start = (z_minus_bc == ISOTHERMAL) ? 3 : 2
-
-    # Z+方向: 等温条件なら境界セルを除外（k=nkまで）
-    z_end = (z_plus_bc == ISOTHERMAL) ? nk : nk+1
-    
-    return [z_start, z_end], 
-            BoundaryConditionSet(x_minus_bc, x_plus_bc, 
+                                    z_plus_bc::BoundaryCondition)
+    return BoundaryConditionSet(x_minus_bc, x_plus_bc,
                                 y_minus_bc, y_plus_bc,
                                 z_minus_bc, z_plus_bc)
 end

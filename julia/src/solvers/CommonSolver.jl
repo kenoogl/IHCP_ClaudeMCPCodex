@@ -98,12 +98,10 @@ const JACOBI_RELAXATION = 0.8
 """
 @brief PBiCGSTAB反復
 @param [in]     wk   ワークベクトル
-@param [in]     Δh     セル幅
-@param [in]     Δt     時間積分幅
-@param [in]     Z      Z座標
-@param [in]     ΔZ     格子幅
-@param [in]     z_range Zループ開始/終了インデクス
-@param [in]     HT   熱伝達境界の値
+@param [in]     Δh   セル幅
+@param [in]     Δt   時間積分幅
+@param [in]     ZC   CVセンター座標
+@param [in]     ΔZ   CV幅
 @param [in]     ρ    SUS密度
 
 # キーワード引数
@@ -113,15 +111,14 @@ const JACOBI_RELAXATION = 0.8
 @param [in]     par    バックエンド（"sequential", "thread"）
 
 収束判定： 相対残差ノルム (||r_k|| / ||r_0||) < tol
-一方、IterativeSolvers.jlのcg!関数は相対残差ノルム
+        IterativeSolvers.jlのcg!関数 : 相対残差ノルム
 @ret            収束/未収束、反復回数、初期残差
 """
 function PBiCGSTAB!(wk::WorkBuffers,
                     Δh::NTuple{3,T},
                     Δt::T,
-                    Z::AbstractVector{T},
+                    ZC::AbstractVector{T},
                     ΔZ::AbstractVector{T},
-                    z_range::AbstractVector{<:Integer},
                     HT::AbstractVector{T},
                     ρ::T;
                     tol::T = T(1e-6),
@@ -131,7 +128,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     verbose::Bool=false) where {T <: AbstractFloat}
     SZ = size(wk.θ)
     myfill!(wk.pcg_q, zero(T), par)
-    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par)
+    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, ZC, ΔZ, HT, par)
     if verbose
         println("Inital residual = ", res0)
     end
@@ -154,12 +151,12 @@ function PBiCGSTAB!(wk::WorkBuffers,
     # Smoother選択: Symbol → Val型変換（コンパイル時分岐解決）
     smoother_val = smoother_selector(smoother)
 
-    inv_cell_count = inv(T((SZ[1]-2)*(SZ[2]-2)*(Int(last(z_range)) - Int(first(z_range)) + 1)))
+    #inv_cell_count = inv(T((SZ[1]-2)*(SZ[2]-2)*(SZ[3]-2)))
     float_min_T = T(FloatMin)
 
     for k in 1:maxItr
         itr = k
-        rho = Fdot2(wk.pcg_r, wk.pcg_r0, z_range, par) # 非計算部分はゼロのこと
+        rho = Fdot2(wk.pcg_r, wk.pcg_r0, par) # 非計算部分はゼロのこと
 
         if abs(rho) < float_min_T
             # rhoがゼロに近い場合は数値的に不安定（未収束として扱う）
@@ -171,38 +168,38 @@ function PBiCGSTAB!(wk::WorkBuffers,
             mycopy!(wk.pcg_p, wk.pcg_r, par)  #copy!(pcg_p, pcg_r)
         else
             beta = rho / rho_old * alpha / omega
-            BiCG1!(wk.pcg_p, wk.pcg_r, wk.pcg_q, beta, omega, z_range, par)
+            BiCG1!(wk.pcg_p, wk.pcg_r, wk.pcg_q, beta, omega, par)
         end
 
         myfill!(wk.pcg_p_, zero(T), par)  #fill!(pcg_p_, 0.0)
         # 前処理: pcg_p_ ≈ M^{-1} pcg_p （smoother_valで分岐、wk.tmpはJacobi用）
-        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par, wk.tmp)
+        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, HT, par, wk.tmp)
 
-        CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
-        alpha = rho / Fdot2(wk.pcg_q, wk.pcg_r0, z_range, par)
+        CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, HT, par)
+        alpha = rho / Fdot2(wk.pcg_q, wk.pcg_r0, par)
         r_alpha = -alpha
-        Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, z_range, par)
+        Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, par)
 
         myfill!(wk.pcg_s_, zero(T), par)  #fill!(pcg_s_, 0.0)
         # 前処理: pcg_s_ ≈ M^{-1} pcg_s （2回目の前処理適用）
-        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, Z, ΔZ, z_range, HT, par, wk.tmp);
+        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, HT, par, wk.tmp);
 
-        CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, Z, ΔZ, z_range, HT, par)
+        CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, HT, par)
 
         # 分母ゼロ対策（数値安定性）
-        denom = Fdot1(wk.pcg_t_, z_range, par)
+        denom = Fdot1(wk.pcg_t_, par)
         if abs(denom) < float_min_T
             # 分母がゼロに近い場合は数値的に不安定（未収束として扱う）
             isconverged = false
             break
         end
-        omega = Fdot2(wk.pcg_t_, wk.pcg_s, z_range, par) / denom
+        omega = Fdot2(wk.pcg_t_, wk.pcg_s, par) / denom
         r_omega = -omega
 
-        BICG2!(wk.θ, wk.pcg_p_, wk.pcg_s_, alpha , omega, z_range, par)
+        BICG2!(wk.θ, wk.pcg_p_, wk.pcg_s_, alpha , omega, par)
 
-        Triad!(wk.pcg_r, wk.pcg_t_, wk.pcg_s, r_omega, z_range, par)
-        res = sqrt(Fdot1(wk.pcg_r, z_range, par)) * inv_cell_count
+        Triad!(wk.pcg_r, wk.pcg_t_, wk.pcg_s, r_omega, par)
+        res = sqrt(Fdot1(wk.pcg_r, par)) #* inv_cell_count
         res /= res0
 
         if res < tol
@@ -230,7 +227,6 @@ end
 @param [in]     Δt   時間積分幅
 @param [in]     Z    CV境界座標
 @param [in]     ΔZ   CV幅
-@param [in]     z_range Zループ開始/終了インデクス
 @param [in]     HT   熱伝達境界の値
 
 @ret                 セルあたりの残差RMS
@@ -247,7 +243,6 @@ function CalcRK!(
                 Δt::T,
                 Z::AbstractVector{T},
                 ΔZ::AbstractVector{T},
-                z_range::AbstractVector{<:Integer},
                 HT::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
@@ -258,10 +253,10 @@ function CalcRK!(
     dy2 = inv(dy0 * dy0)
     dx1 = inv(dx0)
     dy1 = inv(dy0)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     ddt = inv(Δt)
-    cell_count_inv = inv(T((SZ[1]-2)*(SZ[2]-2)*(z_ed - z_st + 1)))
+    #cell_count_inv = inv(T((SZ[1]-2)*(SZ[2]-2)*(z_ed - z_st + 1)))
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         λ0 = λ[i,j,k]
@@ -289,7 +284,7 @@ function CalcRK!(
         r[i,j,k] = rs
         @reduce(res = zero(T) + rs*rs)
     end
-    return sqrt(res) * cell_count_inv
+    return sqrt(res) #* cell_count_inv
 end
 
 
@@ -305,7 +300,6 @@ end
 @param [in]  ρ    密度
 @param [in]  Z    CV境界座標
 @param [in]  ΔZ   CV幅
-@param [in]  z_range Zループ開始/終了インデクス
 @param [in]  HT   熱伝達境界の値
 
 """
@@ -319,7 +313,6 @@ function CalcAX!(ax::AbstractArray{T,3},
                   ρ::T,
                   Z::AbstractVector{T},
                   ΔZ::AbstractVector{T},
-                  z_range::AbstractVector{<:Integer},
                   HT::AbstractVector{T},
                   par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
@@ -330,8 +323,8 @@ function CalcAX!(ax::AbstractArray{T,3},
     dy2 = inv(dy0*dy0)
     dx1 = inv(dx0)
     dy1 = inv(dy0)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     ddt = inv(Δt)
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
@@ -394,7 +387,6 @@ BiCGSTAB法の収束を加速するための前処理を適用する。
 @param [in]     smoother Val{:none}, Val{:gs}, Val{:jacobi}
 @param [in]     Z        CV境界座標
 @param [in]     ΔZ       CV幅
-@param [in]     z_range  Zループ開始/終了インデクス
 @param [in]     HT       熱伝達境界の値
 @param [in]     par      バックエンド（"sequential", "thread"）
 @param [in]     scratch  ワーク配列（Jacobi前処理で使用、WorkBuffers.tmp）
@@ -410,12 +402,11 @@ function Preconditioner!(xx::AbstractArray{T,3},
                          smoother::Val,
                          Z::AbstractVector{T},
                          ΔZ::AbstractVector{T},
-                         z_range::AbstractVector{<:Integer},
                          HT::AbstractVector{T},
                          par::String,
                          scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
     # 内部実装にディスパッチ（Val型による分岐はコンパイル時に解決）
-    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, z_range, HT, par, scratch)
+    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, HT, par, scratch)
 end
 
 """
@@ -431,7 +422,7 @@ xx = bb
 
 【計算量】 O(N)（単純なコピー）
 """
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, z_range, HT, par, _)
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, HT, par, _)
     mycopy!(xx, bb, par)
     return nothing
 end
@@ -453,9 +444,9 @@ xx ≈ M^{-1} bb （M: 前処理行列、ここではGS反復5回による近似
 
 【計算量】 O(5N)（5回反復 × N点更新）
 """
-function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, z_range, HT, par, _)
+function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, HT, par, _)
     for _ in 1:PRECONDITIONER_SWEEPS
-        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), Z, ΔZ, z_range, HT, par)
+        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), Z, ΔZ, HT, par)
     end
     return nothing
 end
@@ -494,11 +485,10 @@ function _Preconditioner!(xx::AbstractArray{T,3},
                           ::Val{:jacobi},
                           Z::AbstractVector{T},
                           ΔZ::AbstractVector{T},
-                          z_range::AbstractVector{<:Integer},
                           HT::AbstractVector{T},
                           par::String,
                           scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
-    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, Z, ΔZ, z_range, HT, par, scratch)
+    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, Z, ΔZ, HT, par, scratch)
     return nothing
 end
 
@@ -510,7 +500,7 @@ end
 
 型システムの完全性のために定義。
 """
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, z_range, HT, par, scratch) where {s}
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, HT, par, scratch) where {s}
     throw(ArgumentError("Unsupported smoother: $(s)"))
 end
 
@@ -551,7 +541,6 @@ xx ≈ (I - ωD^{-1}(A-D))^5 bb
 @param [in]     Δt       時間積分幅
 @param [in]     Z        CV境界座標
 @param [in]     ΔZ       CV幅
-@param [in]     z_range  Zループ開始/終了インデクス
 @param [in]     HT       熱伝達境界の値（6面分）
 @param [in]     par      バックエンド（"sequential", "thread"）
 @param [in]     scratch  ワーク配列（WorkBuffers.tmp）
@@ -566,7 +555,6 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
                                 Δt::T,
                                 Z::AbstractVector{T},
                                 ΔZ::AbstractVector{T},
-                                z_range::AbstractVector{<:Integer},
                                 HT::AbstractVector{T},
                                 par::String,
                                 scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
@@ -578,8 +566,8 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
     dy2 = inv(dy0 * dy0)
     dx1 = inv(dx0)
     dy1 = inv(dy0)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     ddt = inv(Δt)
     float_min_T = T(FloatMin)
     ω = T(JACOBI_RELAXATION)
@@ -631,14 +619,13 @@ end
 """
 @brief ベクトルの内積
 @param [in]     x    ベクトル
-@param [in]     z_range Zループ開始/終了インデクス
 @ret            内積
 """
-function Fdot1(x::AbstractArray{T,3}, z_range::AbstractVector{<:Integer}, par::String) where {T <: AbstractFloat}
+function Fdot1(x::AbstractArray{T,3}, par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(x)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         @reduce(sum = zero(T) + x[i,j,k] * x[i,j,k])
     end
@@ -650,14 +637,13 @@ end
 @brief 2ベクトルの内積
 @param [in]     x    ベクトル
 @param [in]     y    ベクトル
-@param [in]     z_range Zループ開始/終了インデクス
 @ret            内積
 """
-function Fdot2(x::AbstractArray{T,3}, y::AbstractArray{T,3}, z_range::AbstractVector{<:Integer}, par::String) where {T <: AbstractFloat}
+function Fdot2(x::AbstractArray{T,3}, y::AbstractArray{T,3}, par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(x)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         @reduce(sum = zero(T) + x[i,j,k] * y[i,j,k])
     end
@@ -672,19 +658,17 @@ end
 @param [in]     q    ベクトル
 @param [in]     beta 係数
 @param [in]     omg  係数
-@param [in]     z_range Zループ開始/終了インデクス
 """
 function BiCG1!(p::AbstractArray{T,3},
                 r::AbstractArray{T,3},
                 q::AbstractArray{T,3},
                 beta::T,
                 omg::T,
-                z_range::AbstractVector{<:Integer},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(p)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         p[i,j,k] = r[i,j,k] + beta * (p[i,j,k] - omg * q[i,j,k])
     end
@@ -697,18 +681,16 @@ end
 @param [in]     y    ベクトル
 @param [in]     x    ベクトル
 @param [in]     a    係数
-@param [in]     z_range Zループ開始/終了インデクス
 """
 function Triad!(z::AbstractArray{T,3},
                 x::AbstractArray{T,3},
                 y::AbstractArray{T,3},
                 a::T,
-                z_range::AbstractVector{<:Integer},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(z)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         z[i,j,k] = a * x[i,j,k] + y[i,j,k]
     end
@@ -722,19 +704,17 @@ end
 @param [in]     x    ベクトル
 @param [in]     a    係数
 @param [in]     b    係数
-@param [in]     z_range Zループ開始/終了インデクス
 """
 function BICG2!(z::AbstractArray{T,3},
                 x::AbstractArray{T,3},
                 y::AbstractArray{T,3},
                 a::T,
                 b::T,
-                z_range::AbstractVector{<:Integer},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(z)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         z[i,j,k] += a * x[i,j,k] + b * y[i,j,k]
     end
@@ -753,7 +733,6 @@ end
 @param [in]     ω    加速係数
 @param [in]     Z    Z座標
 @param [in]     ΔZ   格子幅
-@param [in]     z_range Zループ開始/終了インデクス
 @param [in]     HT   熱伝達境界の値
 @ret                 1セルあたりの残差RMS
 """
@@ -768,7 +747,6 @@ function resSOR(θ::AbstractArray{T,3},
                 ω::T,
                 Z::AbstractVector{T},
                 ΔZ::AbstractVector{T},
-                z_range::AbstractVector{<:Integer},
                 HT::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
@@ -779,8 +757,8 @@ function resSOR(θ::AbstractArray{T,3},
     dy2 = inv(dy0*dy0)
     dx1 = inv(dx0)
     dy1 = inv(dy0)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     ddt = inv(Δt)
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
@@ -827,7 +805,6 @@ end
 @param [in]     ω    加速係数
 @param [in]     Z    Z座標
 @param [in]     ΔZ   格子幅
-@param [in]     z_range Zループ開始/終了インデクス
 @param [in]     HT   熱伝達境界の値
 @param [in]     color R or B
 @ret                 残差2乗和
@@ -843,7 +820,6 @@ function rbsor_core!(θ::AbstractArray{T,3},
                      ω::T,
                      Z::AbstractVector{T},
                      ΔZ::AbstractVector{T},
-                     z_range::AbstractVector{<:Integer},
                      HT::AbstractVector{T},
                      color::Int,
                      par::String) where {T <: AbstractFloat}
@@ -855,8 +831,8 @@ function rbsor_core!(θ::AbstractArray{T,3},
     dy2 = inv(dy0*dy0)
     dx1 = inv(dx0)
     dy1 = inv(dy0)
-    z_st = Int(first(z_range))
-    z_ed = Int(last(z_range))
+    z_st = 2
+    z_ed = SZ[3] - 1
     ddt = inv(Δt)
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1
@@ -906,7 +882,6 @@ end
 @param [in]     ω    加速係数
 @param [in]     Z    Z座標
 @param [in]     ΔZ   格子幅
-@param [in]     z_range Zループ開始/終了インデクス
 @param [in]     HT   熱伝達境界の値
 @ret                 セルあたりの残差RMS
 """
@@ -921,7 +896,6 @@ function rbsor!(θ::AbstractArray{T,3},
                 ω::T,
                 Z::AbstractVector{T},
                 ΔZ::AbstractVector{T},
-                z_range::AbstractVector{<:Integer},
                 HT::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     SZ = size(b)
@@ -929,10 +903,10 @@ function rbsor!(θ::AbstractArray{T,3},
 
     # 2色のマルチカラー(Red&Black)のセットアップ
     for c in 0:1
-        res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, c, par)
+        res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, HT, c, par)
     end
-    norm_factor = T((SZ[1]-2)*(SZ[2]-2)*(SZ[3]-2))
-    return sqrt(res) / norm_factor
+    #norm_factor = T((SZ[1]-2)*(SZ[2]-2)*(SZ[3]-2))
+    return sqrt(res) #/ norm_factor
 end
 
 
@@ -949,7 +923,6 @@ end
 @param [in]     ω    加速係数
 @param [in]     Z    Z座標
 @param [in]     ΔZ   格子幅
-@param [in]     z_range Zループ開始/終了インデクス
 @param [in]     F    ファイルディスクリプタ
 @param [in]     tol  収束判定基準
 @param [in]     HT   熱伝達境界の値
@@ -967,14 +940,13 @@ function solveSOR!(θ::AbstractArray{T,3},
                     ω::T,
                     Z::AbstractVector{T},
                     ΔZ::AbstractVector{T},
-                    z_range::AbstractVector{<:Integer},
                     F,
                     tol::T,
                     HT::AbstractVector{T},
                     par::String;
                     ItrMax::Int=1000) where {T <: AbstractFloat}
 
-    res0 = resSOR(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, par)
+    res0 = resSOR(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, HT, par)
     if res0 == zero(T)
         res0 = one(T)
     end
@@ -982,8 +954,8 @@ function solveSOR!(θ::AbstractArray{T,3},
 
     n = 0
     for n in 1:ItrMax
-        #res = sor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, par) / res0
-        res = rbsor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, z_range, HT, par) / res0
+        #res = sor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, HT, par) / res0
+        res = rbsor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, HT, par) / res0
         @printf(F, "%10d %24.14E\n", n, Float64(res)) # 時間計測の場合にはコメントアウト
         @printf(stdout, "%10d %24.14E\n", n, Float64(res)) # 時間計測の場合にはコメントアウト
         if res < tol

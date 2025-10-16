@@ -46,7 +46,7 @@ export solve_dhcp!
 Z下面: 断熱、Z上面: 熱流束、側面: 断熱
 """
 
-function set_dhcp_bc_parameters(nk::Int)
+function set_dhcp_bc_parameters()
     x_minus_bc = adiabatic_bc()
     x_plus_bc  = adiabatic_bc()
     y_minus_bc = adiabatic_bc()
@@ -58,7 +58,7 @@ function set_dhcp_bc_parameters(nk::Int)
     return create_boundary_conditions(
                               x_minus_bc, x_plus_bc,
                               y_minus_bc, y_plus_bc,
-                              z_minus_bc, z_plus_bc, nk)
+                              z_minus_bc, z_plus_bc)
 end
 
 
@@ -69,7 +69,6 @@ end
 @param [in]     dx, dy セル幅
 @param [in]     Δt   時間積分幅
 @param [in]     ΔZ   CV幅
-@param [in]     z_range Zループ開始/終了インデクス
 @param [in]     qsrf 熱流束分布
 @param [in]     q_dist 熱流束分布を与える場合true
 
@@ -80,7 +79,6 @@ function calRHS!(wk::WorkBuffers,
     dy::T,
     Δt::T,
     ΔZ::AbstractVector{T},
-    z_range::AbstractVector{<:Integer},
     qsrf::AbstractArray{T,2},
     q_dist::Bool,
     ρ::T,
@@ -88,7 +86,7 @@ function calRHS!(wk::WorkBuffers,
     ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
-    SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
+    SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, par)
     backend = get_backend(par)
     inv_ΔZ_ed = inv(ΔZ[z_ed])
 
@@ -236,7 +234,7 @@ function solve_dhcp!(
   set_properties!(T_initial, wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
   # Boundary condition
-  z_range, bc_set = set_dhcp_bc_parameters(nk)
+  bc_set = set_dhcp_bc_parameters()
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
   HF, HT = set_BC_coef(bc_set) # 時間変化なし
@@ -255,7 +253,7 @@ function solve_dhcp!(
     apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_plus, :z_plus)
 
     # work.b (RHS)の計算
-    calRHS!(wk, HF, dx, dy, dt, ΔZ, z_range,
+    calRHS!(wk, HF, dx, dy, dt, ΔZ,
       @view(q_surface[:, :, t-1]),
       true, ρ, par)
 
@@ -274,7 +272,7 @@ function solve_dhcp!(
       end
     end
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
+    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, HT, ρ,
         tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
 
     iter_counts[t] = itr

@@ -25,7 +25,7 @@ using ..Commons: WorkBuffers, get_backend
 export calRHS_core!
 
 """
-    calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
+    calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, par)
       -> (SZ, dx1, dy1, z_st, z_ed, ddt)
 
 RHSベクトルのコア計算（3ソルバー共通部分）
@@ -40,7 +40,6 @@ RHSベクトルのコア計算（3ソルバー共通部分）
 - `dy::Float64`: y方向格子幅 [m]
 - `Δt::Float64`: 時間刻み [s]
 - `ΔZ::Vector{Float64}`: z方向格子幅配列 [m]
-- `z_range::Vector{Int64}`: [z_st, z_ed] 計算範囲（ガイドセル座標）
 - `par::String`: 並列化バックエンド（"sequential" or "thread"）
 
 # 戻り値
@@ -48,8 +47,8 @@ RHSベクトルのコア計算（3ソルバー共通部分）
   - `SZ`: wk.bのサイズ (ni+2, nj+2, nk+2)
   - `dx1`: 1.0 / dx
   - `dy1`: 1.0 / dy
-  - `z_st`: z方向開始インデックス（ガイドセル座標）
-  - `z_ed`: z方向終了インデックス（ガイドセル座標）
+  - `z_st`: z方向開始インデックス（常に2）
+  - `z_ed`: z方向終了インデックス（常にSZ[3]-1）
   - `ddt`: 1.0 / Δt
 
 # 処理内容
@@ -74,15 +73,14 @@ function calRHS_core!(
   dy::Float64,
   Δt::Float64,
   ΔZ::Vector{Float64},
-  z_range::Vector{Int64},
   par::String
 )
   backend = get_backend(par)
   SZ = size(wk.b)
   dx1 = 1.0 / dx
   dy1 = 1.0 / dy
-  z_st = z_range[1]
-  z_ed = z_range[2]
+  z_st = 2
+  z_ed = SZ[3] - 1
   ddt = 1.0 / Δt
 
   # wk.bをゼロクリア
