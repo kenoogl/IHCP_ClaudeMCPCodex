@@ -173,7 +173,10 @@ grep -rn '\b(Z|ΔZ)\b' julia/src/solvers/CGMSolver.jl
 ## 🎯 次回セッション開始時のアクション
 
 1. **このファイルを読む**: `cat VARIABLE_RENAME_PROGRESS.md`
-2. **次のファイルを変更**: `julia/src/solvers/CGMSolver.jl`から開始
+2. **次のファイル群を変更**: テストコード3ファイル（第3弾）
+   - `julia/test/test_sliding_window.jl`
+   - `julia/test/test_cgm_solver.jl`
+   - `julia/test/deprecated/test_dhcp_solver.jl`
 3. **変更方法**: オプションC（手動で慎重に）を継続
 
 ---
