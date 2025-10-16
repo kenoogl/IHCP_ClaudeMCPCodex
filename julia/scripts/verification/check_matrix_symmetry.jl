@@ -47,7 +47,7 @@ function check_matrix_symmetry()
         dz_bottom[2:end] = z_centers[2:end] .- z_centers[1:end-1]
     end
 
-    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
+    z_centers_grid, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
 
     # 熱物性値
     rho = 7823.493962874829
@@ -126,11 +126,11 @@ function check_matrix_symmetry()
         aym = λf(work.λ[ig,jg-1,kg], λ0, work.mask[ig,jg-1,kg], m0) * dy2 + ms*dy1*HT[3]*r_ρc
         ayp = λf(work.λ[ig,jg+1,kg], λ0, work.mask[ig,jg+1,kg], m0) * dy2 + mn*dy1*HT[4]*r_ρc
 
-        zb = (Z[kg]-Z[kg-1])*mb + (1.0-mb)*ΔZ[kg]
-        zt = (Z[kg+1]-Z[kg])*m0 + (1.0-m0)*ΔZ[kg]
+        zb = (z_centers_grid[kg]-z_centers_grid[kg-1])*mb + (1.0-mb)*dz_grid[kg]
+        zt = (z_centers_grid[kg+1]-z_centers_grid[kg])*m0 + (1.0-m0)*dz_grid[kg]
 
-        azm = (work.λ[ig,jg,kg-1]/ (ΔZ[kg]*zb))*mb + (1.0-mb)/ΔZ[kg]*HT[5]*r_ρc
-        azp = (λ0        / (ΔZ[kg]*zt))*mt + (1.0-mt)/ΔZ[kg]*HT[6]*r_ρc
+        azm = (work.λ[ig,jg,kg-1]/ (dz_grid[kg]*zb))*mb + (1.0-mb)/dz_grid[kg]*HT[5]*r_ρc
+        azp = (λ0        / (dz_grid[kg]*zt))*mt + (1.0-mt)/dz_grid[kg]*HT[6]*r_ρc
 
         dd = (1.0-m0) + (axp + axm + ayp + aym + azp + azm + ddt)*m0
 

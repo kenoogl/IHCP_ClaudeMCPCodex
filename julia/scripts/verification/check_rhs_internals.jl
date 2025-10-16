@@ -17,7 +17,7 @@ function main()
   θ = fill(300.0, ni, nj, nk)
   dx = 0.05
   dy = 0.05
-  ΔZ = fill(0.02, nk)
+  dz = fill(0.02, nk)
 
   # 境界条件セット作成
   bc_set = BC.BoundaryConditionSet(
@@ -30,11 +30,11 @@ function main()
   )
 
   println("=== RHS_heat_flux! の型推論 ===")
-  @code_warntype RHSCore.RHS_heat_flux!(b, dx, dy, ΔZ, bc_set.x_minus, :x_minus, "sequential")
+  @code_warntype RHSCore.RHS_heat_flux!(b, dx, dy, dz, bc_set.x_minus, :x_minus, "sequential")
   println()
 
   println("=== RHS_convection! の型推論 ===")
-  @code_warntype RHSCore.RHS_convection!(b, θ, dx, dy, ΔZ, bc_set.z_plus, :z_plus, "sequential")
+  @code_warntype RHSCore.RHS_convection!(b, θ, dx, dy, dz, bc_set.z_plus, :z_plus, "sequential")
   println()
 
   # Float32でもチェック
@@ -43,10 +43,10 @@ function main()
   θ32 = fill(Float32(300.0), ni, nj, nk)
   dx32 = Float32(0.05)
   dy32 = Float32(0.05)
-  ΔZ32 = fill(Float32(0.02), nk)
+  dz32 = fill(Float32(0.02), nk)
 
   println("\n--- RHS_heat_flux! (Float32) ---")
-  @code_warntype RHSCore.RHS_heat_flux!(b32, dx32, dy32, ΔZ32, bc_set.x_minus, :x_minus, "sequential")
+  @code_warntype RHSCore.RHS_heat_flux!(b32, dx32, dy32, dz32, bc_set.x_minus, :x_minus, "sequential")
 end
 
 if abspath(PROGRAM_FILE) == @__FILE__

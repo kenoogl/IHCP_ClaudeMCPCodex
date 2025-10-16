@@ -18,7 +18,7 @@ function main()
   θ = fill(300.0, ni, nj, nk)
   dx = 0.05
   dy = 0.05
-  ΔZ = fill(0.02, nk)
+  dz = fill(0.02, nk)
 
   # テスト1: 熱流束境界条件
   println("テスト1: 熱流束境界条件")
@@ -32,7 +32,7 @@ function main()
   )
 
   fill!(b, 0.0)
-  result = RHSCore.calRHS_core!(b, θ, dx, dy, ΔZ, bc_set, "sequential")
+  result = RHSCore.calRHS_core!(b, θ, dx, dy, dz, bc_set, "sequential")
   println("  戻り値の型: ", typeof(result))
   println("  戻り値: ", result)
   println("  b[2,3,3] (x_minus境界近く): ", b[2,3,3])
@@ -53,7 +53,7 @@ function main()
   )
 
   fill!(b, 0.0)
-  result2 = RHSCore.calRHS_core!(b, θ, dx, dy, ΔZ, bc_set2, "sequential")
+  result2 = RHSCore.calRHS_core!(b, θ, dx, dy, dz, bc_set2, "sequential")
   println("  戻り値の型: ", typeof(result2))
   println("  戻り値: ", result2)
   println("  b[3,3,4] (z_plus境界近く): ", b[3,3,4])
@@ -64,7 +64,7 @@ function main()
   if Threads.nthreads() > 1
     println("テスト3: 並列実行")
     fill!(b, 0.0)
-    result3 = RHSCore.calRHS_core!(b, θ, dx, dy, ΔZ, bc_set, "thread")
+    result3 = RHSCore.calRHS_core!(b, θ, dx, dy, dz, bc_set, "thread")
     println("  戻り値の型: ", typeof(result3))
     println("  戻り値: ", result3)
     println("  b[2,3,3]: ", b[2,3,3])

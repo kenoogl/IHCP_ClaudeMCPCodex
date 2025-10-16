@@ -51,7 +51,7 @@ function test_cg_vs_bicgstab()
         dz_bottom[2:end] = z_centers[2:end] .- z_centers[1:end-1]
     end
 
-    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
+    z_centers_grid, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
 
     # 熱物性値
     rho = 7823.493962874829
@@ -88,7 +88,7 @@ function test_cg_vs_bicgstab()
     println("\n1. BICGSTAB法（現在のJulia実装、前処理: Jacobi）")
     work_copy = deepcopy(work)
     t_start = time()
-    success, iters, res0 = PBiCGSTAB!(work_copy, Δh, dt, Z, ΔZ, z_range, HT, rho,
+    success, iters, res0 = PBiCGSTAB!(work_copy, Δh, dt, z_centers_grid, dz_grid, z_range, HT, rho,
                                       tol=1e-6, maxItr=5000, smoother=:jacobi, par="sequential")
     t_bicgstab = time() - t_start
     @printf("  反復回数: %d\n", iters)

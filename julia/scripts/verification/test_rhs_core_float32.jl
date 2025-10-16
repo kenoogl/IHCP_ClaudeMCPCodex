@@ -18,7 +18,7 @@ function main()
   θ = fill(Float32(300.0), ni, nj, nk)
   dx = Float32(0.05)
   dy = Float32(0.05)
-  ΔZ = fill(Float32(0.02), nk)
+  dz = fill(Float32(0.02), nk)
 
   # テスト: Float32で熱流束境界条件
   println("テスト: Float32型での熱流束境界条件")
@@ -32,7 +32,7 @@ function main()
   )
 
   fill!(b, Float32(0.0))
-  result = RHSCore.calRHS_core!(b, θ, dx, dy, ΔZ, bc_set, "sequential")
+  result = RHSCore.calRHS_core!(b, θ, dx, dy, dz, bc_set, "sequential")
 
   println("  配列bの型: ", typeof(b))
   println("  配列bの要素型: ", eltype(b))
@@ -50,9 +50,9 @@ function main()
   θ64 = fill(300.0, ni, nj, nk)
   dx64 = 0.05
   dy64 = 0.05
-  ΔZ64 = fill(0.02, nk)
+  dz64 = fill(0.02, nk)
 
-  result64 = RHSCore.calRHS_core!(b64, θ64, dx64, dy64, ΔZ64, bc_set, "sequential")
+  result64 = RHSCore.calRHS_core!(b64, θ64, dx64, dy64, dz64, bc_set, "sequential")
 
   println("  配列b64の型: ", typeof(b64))
   println("  配列b64の要素型: ", eltype(b64))

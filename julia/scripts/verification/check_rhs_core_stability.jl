@@ -17,7 +17,7 @@ function main()
   θ = fill(300.0, ni, nj, nk)
   dx = 0.05
   dy = 0.05
-  ΔZ = fill(0.02, nk)
+  dz = fill(0.02, nk)
 
   # 境界条件セット作成
   bc_set = BC.BoundaryConditionSet(
@@ -30,11 +30,11 @@ function main()
   )
 
   println("== @code_warntype calRHS_core! ==")
-  @code_warntype RHSCore.calRHS_core!(b, θ, dx, dy, ΔZ, bc_set, "sequential")
+  @code_warntype RHSCore.calRHS_core!(b, θ, dx, dy, dz, bc_set, "sequential")
   println()
 
   println("== @code_warntype apply_face_bc! ==")
-  @code_warntype RHSCore.apply_face_bc!(b, θ, dx, dy, ΔZ, bc_set.x_minus, :x_minus, "sequential")
+  @code_warntype RHSCore.apply_face_bc!(b, θ, dx, dy, dz, bc_set.x_minus, :x_minus, "sequential")
   println()
 end
 
