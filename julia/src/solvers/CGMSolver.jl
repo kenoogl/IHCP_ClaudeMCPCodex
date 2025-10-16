@@ -124,6 +124,7 @@ function compute_gradient!(
   initial_strategy::Symbol=:residual,
   residual_scale::T=T(1),
   smoother::Symbol=:gs,
+  solver::Symbol=:pbicgstab,
   adaptive_tol::Bool=false,
   adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing
 ) where {T <: AbstractFloat}
@@ -139,6 +140,7 @@ function compute_gradient!(
     initial_strategy=initial_strategy,
     residual_scale=residual_scale,
     smoother=smoother,
+    solver=solver,
     adaptive_tol=adaptive_tol,
     adaptive_tol_params=adaptive_tol_params
   )
@@ -272,12 +274,15 @@ function solve_cgm!(
   dhcp_use_previous_solution = get(params, :dhcp_use_previous_solution, true)
   dhcp_extrapolation = get(params, :dhcp_extrapolation, :none)
   dhcp_smoother = get(params, :dhcp_smoother, :gs)
+  dhcp_solver = get(params, :dhcp_solver, :pbicgstab)
   sensitivity_use_previous_solution = get(params, :sensitivity_use_previous_solution, true)
   sensitivity_extrapolation = get(params, :sensitivity_extrapolation, :none)
   sensitivity_smoother = get(params, :sensitivity_smoother, :gs)
+  sensitivity_solver = get(params, :sensitivity_solver, :pbicgstab)
   adjoint_initial_strategy = get(params, :adjoint_initial_strategy, :residual)
   adjoint_residual_scale = T(get(params, :adjoint_residual_scale, 1.0))
   adjoint_smoother = get(params, :adjoint_smoother, :gs)
+  adjoint_solver = get(params, :adjoint_solver, :pbicgstab)
 
   # Phase 1-E: 適応的収束判定パラメータ
   adaptive_tol = get(params, :adaptive_tol, false)
@@ -364,6 +369,7 @@ function solve_cgm!(
       use_previous_solution=dhcp_use_previous_solution,
       extrapolation=dhcp_extrapolation,
       smoother=dhcp_smoother,
+      solver=dhcp_solver,
       adaptive_tol=adaptive_tol,
       adaptive_tol_params=adaptive_tol_params_dhcp
     )
@@ -396,6 +402,7 @@ function solve_cgm!(
       initial_strategy=adjoint_initial_strategy,
       residual_scale=adjoint_residual_scale,
       smoother=adjoint_smoother,
+      solver=adjoint_solver,
       adaptive_tol=adaptive_tol,
       adaptive_tol_params=adaptive_tol_params_adjoint
     )
@@ -447,6 +454,7 @@ function solve_cgm!(
       use_previous_solution=sensitivity_use_previous_solution,
       extrapolation=sensitivity_extrapolation,
       smoother=sensitivity_smoother,
+      solver=sensitivity_solver,
       adaptive_tol=adaptive_tol,
       adaptive_tol_params=adaptive_tol_params_sensitivity
     )
