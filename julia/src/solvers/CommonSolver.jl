@@ -330,6 +330,7 @@ function CalcRK!(
     ddt = inv(Δt)
     ddx = inv(dx0)
     ddy = inv(dy0)
+    oneT = one(T)  # ループ外で事前計算
 
     @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         dz_k = ΔZ[k]
@@ -337,17 +338,17 @@ function CalcRK!(
         m0 = m[i,j,k]
 
         # 体積積分形式：面積×コンダクタンス + 対流項
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
-        dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
+        dd = (oneT-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
@@ -393,6 +394,7 @@ function CalcAX!(ax::AbstractArray{T,3},
     ddt = inv(Δt)
     ddx = inv(dx0)
     ddy = inv(dy0)
+    oneT = one(T)  # ループ外で事前計算
 
     @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         dz_k = ΔZ[k]
@@ -400,17 +402,17 @@ function CalcAX!(ax::AbstractArray{T,3},
         m0 = m[i,j,k]
 
         # 体積積分形式：面積×コンダクタンス + 対流項
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
-        dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
+        dd = (oneT-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
@@ -630,6 +632,8 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
     ddy = inv(dy0)
     float_min_T = T(FloatMin)
     ω = T(JACOBI_RELAXATION)
+    zeroT = zero(T)  # ループ外で事前計算
+    oneT = one(T)    # ループ外で事前計算
 
     # 加重Jacobi法を5回反復
     for _ in 1:PRECONDITIONER_SWEEPS
@@ -641,23 +645,23 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
         m0 = m[i,j,k]
 
         # Dirichlet/ghost cells are copied through
-        if m0 == zero(T)
+        if m0 == zeroT
           scratch[i,j,k] = bb[i,j,k]
           continue
         end
 
         # 体積積分形式：面積×コンダクタンス + 対流項
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
-        dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
+        dd = (oneT-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
         ss = ( axp * scratch[i+1,j  ,k  ] + axm * scratch[i-1,j  ,k  ]
              + ayp * scratch[i  ,j+1,k  ] + aym * scratch[i  ,j-1,k  ]
              + azp * scratch[i  ,j  ,k+1] + azm * scratch[i  ,j  ,k-1] )
@@ -815,6 +819,7 @@ function resSOR(θ::AbstractArray{T,3},
     ddt = inv(Δt)
     ddx = inv(dx0)
     ddy = inv(dy0)
+    oneT = one(T)  # ループ外で事前計算
 
     @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         dz_k = ΔZ[k]
@@ -823,17 +828,17 @@ function resSOR(θ::AbstractArray{T,3},
         m0 = m[i,j,k]
 
         # 体積積分形式：面積×コンダクタンス + 対流項
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
-        dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
+        dd = (oneT-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
              + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
@@ -884,6 +889,7 @@ function rbsor_core!(θ::AbstractArray{T,3},
     ddt = inv(Δt)
     ddx = inv(dx0)
     ddy = inv(dy0)
+    oneT = one(T)  # ループ外で事前計算
 
     @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
         @simd for i in 2+mod(k+j+color,2):2:SZ[1]-1
@@ -893,17 +899,17 @@ function rbsor_core!(θ::AbstractArray{T,3},
             m0 = m[i,j,k]
 
             # 体積積分形式：面積×コンダクタンス + 対流項
-            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (one(T) - m[i-1,j,k])
-            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (one(T) - m[i+1,j,k])
-            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (one(T) - m[i,j-1,k])
-            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (one(T) - m[i,j+1,k])
-            azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (one(T) - m[i,j,k-1])
-            azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (one(T) - m[i,j,k+1])
+            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+            azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+            azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
 
             # 時間項（体積積分形式） - 定常解析の場合は0
             a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
-            dd = (one(T)-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
+            dd = (oneT-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
             ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
                  + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
                  + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
