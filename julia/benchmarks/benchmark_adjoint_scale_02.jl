@@ -118,7 +118,7 @@ solve_cgm!を呼び出して、各ソルバーの反復数を記録
 function run_cgm_with_logging(grid_params, material_params, Y_obs, T_init)
   ni, nj, nk, nt = grid_params.ni, grid_params.nj, grid_params.nk, grid_params.nt
   dx, dy, dt = grid_params.dx, grid_params.dy, grid_params.dt
-  Z, ΔZ = grid_params.Z, grid_params.ΔZ
+  z_centers, dz = grid_params.z_centers, grid_params.dz
   rho, cp_coeffs, k_coeffs = material_params
 
   # 初期熱流束
@@ -153,7 +153,7 @@ function run_cgm_with_logging(grid_params, material_params, Y_obs, T_init)
     q_init,
     work,
     dx, dy,
-    Z, ΔZ,
+    z_centers, dz,
     dt,
     rho,
     cp_coeffs,
@@ -192,7 +192,7 @@ function main()
   println(@sprintf("  時間ステップ: nt=%d, dt=%.3e s", nt, dt))
 
   dz, dz_bottom, dz_top, z_faces = build_z_grid(nk, Lz, stretch_factor)
-  Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
+  z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
 
   rho, cp_coeffs, k_coeffs = load_material_properties()
 
@@ -213,7 +213,7 @@ function main()
   grid_params = (
     ni = ni, nj = nj, nk = nk, nt = nt,
     dx = dx, dy = dy, dt = dt,
-    Z = Z, ΔZ = ΔZ
+    z_centers = z_centers, dz = dz_grid
   )
   material_params = (rho, cp_coeffs, k_coeffs)
 

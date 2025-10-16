@@ -126,39 +126,59 @@
    - 変数定義: `ΔZ = fill(...)` → `dz = fill(...)`
    - `calRHS_core!`呼び出し（3箇所、テスト1, 2, 3）
 
+### 第5弾（未コミット）: ベンチマーク8ファイル
+
+1. **tuning4_allocation_reduction.jl** (2箇所変更) ✅
+   - Z方向格子定義: `Z = ...` → `z_centers = ...`
+   - `ΔZ = diff(Z)` → `dz = diff(z_centers)`
+
+2. **benchmark_phase1b.jl** (4箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - grid_params定義: `Z = Z, ΔZ = ΔZ` → `z_centers = z_centers, dz = dz_grid`
+   - grid_paramsからの取り出し: `Z, ΔZ = grid_params.Z, grid_params.ΔZ` → `z_centers, dz = grid_params.z_centers, grid_params.dz`
+   - `solve_cgm!`引数: `Z, ΔZ,` → `z_centers, dz,`
+
+3. **benchmark_adjoint_scale_01.jl** (4箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - grid_params定義: `Z = Z, ΔZ = ΔZ` → `z_centers = z_centers, dz = dz_grid`
+   - grid_paramsからの取り出し: `Z, ΔZ = grid_params.Z, grid_params.ΔZ` → `z_centers, dz = grid_params.z_centers, grid_params.dz`
+   - `solve_cgm!`引数: `Z, ΔZ,` → `z_centers, dz,`
+
+4. **benchmark_adjoint_scale_02.jl** (4箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - grid_params定義: `Z = Z, ΔZ = ΔZ` → `z_centers = z_centers, dz = dz_grid`
+   - grid_paramsからの取り出し: `Z, ΔZ = grid_params.Z, grid_params.ΔZ` → `z_centers, dz = grid_params.z_centers, grid_params.dz`
+   - `solve_cgm!`引数: `Z, ΔZ,` → `z_centers, dz,`
+
+5. **benchmark_combined_improvement.jl** (4箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - grid_params定義: `Z = Z, ΔZ = ΔZ` → `z_centers = z_centers, dz = dz_grid`
+   - grid_paramsからの取り出し: `Z, ΔZ = grid_params.Z, grid_params.ΔZ` → `z_centers, dz = grid_params.z_centers, grid_params.dz`
+   - `solve_cgm!`引数: `Z, ΔZ,` → `z_centers, dz,`
+
+6. **benchmark_phase1e_baseline.jl** (2箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - `solve_cgm!`引数: `Z,` → `z_centers,`, `ΔZ,` → `dz_grid,`
+
+7. **benchmark_phase1e_adaptive.jl** (2箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - `solve_cgm!`引数: `Z,` → `z_centers,`, `ΔZ,` → `dz_grid,`
+
+8. **benchmark_phase1e_tuned.jl** (2箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - `solve_cgm!`引数: `Z,` → `z_centers,`, `ΔZ,` → `dz_grid,`
+
 ---
 
-## 🔜 残りの作業（8ファイル）
+## 🔜 残りの作業
 
-### ベンチマーク（8ファイル）
-
-- `tuning4_allocation_reduction.jl`
-- `benchmark_phase1b.jl`
-- `benchmark_adjoint_scale_01.jl`
-- `benchmark_adjoint_scale_02.jl`
-- `benchmark_combined_improvement.jl`
-- `benchmark_phase1e_baseline.jl`
-- `benchmark_phase1e_adaptive.jl`
-- `benchmark_phase1e_tuned.jl`
+**すべて完了！** 🎉
 
 ---
 
-## 📝 作業手順（再開時）
+## 📝 過去の作業手順（参考）
 
-### ステップ1: 状態確認
-```bash
-cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
-git status
-git log --oneline -3
-cat VARIABLE_RENAME_PROGRESS.md
-```
-
-### ステップ2: 次のファイル群の変更（推奨順序）
-
-1. **ベンチマーク8ファイル**
-   - コミット: 第5弾
-
-### ステップ3: 各ファイルの変更パターン
+### 各ファイルの変更パターン
 
 ```julia
 # 関数引数の変更
@@ -199,34 +219,20 @@ grep -rn '\b(Z|ΔZ)\b' julia/src/solvers/CGMSolver.jl
 
 ---
 
-## 🎯 次回セッション開始時のアクション
-
-1. **このファイルを読む**: `cat VARIABLE_RENAME_PROGRESS.md`
-2. **次のファイル群を変更**: ベンチマーク8ファイル（第5弾・最終）
-   - `julia/benchmarks/tuning4_allocation_reduction.jl`
-   - `julia/benchmarks/benchmark_phase1b.jl`
-   - `julia/benchmarks/benchmark_adjoint_scale_01.jl`
-   - `julia/benchmarks/benchmark_adjoint_scale_02.jl`
-   - `julia/benchmarks/benchmark_combined_improvement.jl`
-   - `julia/benchmarks/benchmark_phase1e_baseline.jl`
-   - `julia/benchmarks/benchmark_phase1e_adaptive.jl`
-   - `julia/benchmarks/benchmark_phase1e_tuned.jl`
-3. **変更方法**: オプションC（手動で慎重に）を継続
-
 ---
 
 ## 📊 進捗統計
 
-- **完了**: 21/29ファイル (72.4%)
+- **完了**: 29/29ファイル (100%) ✅
   - 第1弾（3ab7b12）: ソースコード4ファイル
   - 第2弾（841e4be）: ソースコード6ファイル
   - 第3弾（2c96f9f）: テストコード3ファイル
   - 第4弾（6303b27）: スクリプト8ファイル
-- **残り**: 8/29ファイル (27.6%)
-  - ベンチマーク8ファイルのみ
+  - 第5弾（未コミット）: ベンチマーク8ファイル
+- **残り**: 0/29ファイル (0%)
 - **コミット済み**: 第1弾、第2弾、第3弾、第4弾
 - **次回コミット**: 第5弾（ベンチマーク8ファイル・最終）
 
 ---
 
-**更新日時**: 2025-10-16 15:30
+**更新日時**: 2025-10-16 (第5弾完了)

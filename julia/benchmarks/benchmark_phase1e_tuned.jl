@@ -134,7 +134,7 @@ function main()
   println(@sprintf("  time steps: nt=%d, dt=%.3e s", nt, dt))
 
   dz, dz_bottom, dz_top, z_faces = build_z_grid(nk, Lz, stretch_factor)
-  Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
+  z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
 
   rho, cp_coeffs, k_coeffs = load_material_properties()
   println(@sprintf("  rho (reference): %.6f kg/m^3", rho))
@@ -199,8 +199,8 @@ function main()
     work,  # WorkBuffers追加
     dx,
     dy,
-    Z,  # ガイドセルグリッド追加
-    ΔZ,
+    z_centers,  # ガイドセルグリッド追加
+    dz_grid,
     dt,
     rho,
     cp_coeffs,
