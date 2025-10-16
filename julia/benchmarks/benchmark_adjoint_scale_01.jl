@@ -192,7 +192,24 @@ function main()
   println(@sprintf("  時間ステップ: nt=%d, dt=%.3e s", nt, dt))
 
   dz, dz_bottom, dz_top, z_faces = build_z_grid(nk, Lz, stretch_factor)
-  z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
+
+  # Python版と同じ格子生成 + ガイドセル込み配列を直接生成（main.jlと同じ方式）
+  dz_grid = zeros(nk+2)
+  dz_grid[2:nk+1] = dz[1:nk]
+  dz_grid[1] = dz_grid[2]
+  dz_grid[nk+2] = dz_grid[nk+1]
+
+  z_centers = zeros(nk+2)
+  z_centers[1] = z_faces[1]        # 底面ガイドセル
+  z_centers[nk+2] = z_faces[nk+1]  # 表面ガイドセル
+  z_centers[2] = z_faces[1]        # 底面物理セル
+  z_centers[nk+1] = z_faces[nk+1]  # 表面物理セル
+
+  if nk > 2
+    for k in 3:nk
+      z_centers[k] = (z_faces[k-1] + z_faces[k]) * 0.5
+    end
+  end
 
   rho, cp_coeffs, k_coeffs = load_material_properties()
 

@@ -79,7 +79,6 @@ export check_field_finite, check_temperature_range, check_flux_range
 export check_gradient_magnitude, detect_numerical_anomalies
 export check_temperature_field, check_flux_field, check_adjoint_field
 export extract_sorted_mat_files, load_region_temperature
-export convert_to_guard_cell_grid
 export WorkBuffers, λf
 export AdaptiveToleranceParams, compute_adaptive_tol, compute_relative_change
 
