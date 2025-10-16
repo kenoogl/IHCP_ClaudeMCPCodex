@@ -106,7 +106,7 @@ end
     wk = WorkBuffers(ni+2, nj+2, nk+2)
 
     # ガイドセルグリッド変換
-    Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+    z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
 
     # CGM実行
     cgm_params = (
@@ -129,7 +129,7 @@ end
       T_init, Y_obs, q_init,
       wk,
       dx, dy,
-      Z, ΔZ,
+      z_centers, dz_grid,
       dt,
       rho, cp_coeffs, k_coeffs;
       params = cgm_params,
