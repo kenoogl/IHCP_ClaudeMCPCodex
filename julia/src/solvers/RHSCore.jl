@@ -128,43 +128,45 @@ function RHS_heat_flux!(b::AbstractArray{T,3},
                         par::String)::Nothing where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(b)
-    dx1 = inv(dx)
-    dy1 = inv(dy)
 
     if face_type == :x_minus
-      let i=2, a = bc.heat_flux * dx1
+      let i=2, q = bc.heat_flux
         @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
-          b[i,j,k] += a
+          area = dy * dz[k]
+          b[i,j,k] += q * area
         end
       end
     elseif face_type == :x_plus
-      let i = SZ[1]-1, a = bc.heat_flux * dx1
+      let i = SZ[1]-1, q = bc.heat_flux
         @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
-          b[i,j,k] -= a
+          area = dy * dz[k]
+          b[i,j,k] -= q * area
         end
       end
     elseif face_type == :y_minus
-      let j = 2, a = bc.heat_flux * dy1
+      let j = 2, q = bc.heat_flux
         @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
-          b[i,j,k] += a
+          area = dx * dz[k]
+          b[i,j,k] += q * area
         end
       end
     elseif face_type == :y_plus
-      let j = SZ[2]-1, a = bc.heat_flux * dy1
+      let j = SZ[2]-1, q = bc.heat_flux
         @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
-          b[i,j,k] -= a
+          area = dx * dz[k]
+          b[i,j,k] -= q * area
         end
       end
     elseif face_type == :z_minus
-      let k = 2,  a = bc.heat_flux / dz[k]
+      let k = 2, q = bc.heat_flux, area = dx * dy
         @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-          b[i,j,k] += a
+          b[i,j,k] += q * area
         end
       end
     elseif face_type == :z_plus
-      let k = SZ[3]-1, a = bc.heat_flux / dz[k]
+      let k = SZ[3]-1, q = bc.heat_flux, area = dx * dy
         @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-          b[i,j,k] -= a
+          b[i,j,k] -= q * area
         end
       end
     end
@@ -186,43 +188,45 @@ function RHS_convection!(b::AbstractArray{T,3},
                         par::String)::Nothing where {T <: AbstractFloat}
   backend = get_backend(par)
   SZ = size(b)
-  dx1 = inv(dx)
-  dy1 = inv(dy)
 
   if face_type == :x_minus
-    let i=2, a = bc.heat_transfer_coefficient * dx1, ta = bc.ambient_temperature
+    let i=2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
       @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
-        b[i,j,k] -= a * (ta - θ[i,j,k])
+        area = dy * dz[k]
+        b[i,j,k] -= h * area * (ta - θ[i,j,k])
       end
     end
   elseif face_type == :x_plus
-    let i = SZ[1]-1, a = bc.heat_transfer_coefficient * dx1, ta = bc.ambient_temperature
+    let i = SZ[1]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
       @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
-        b[i,j,k] += a * (ta - θ[i,j,k])
+        area = dy * dz[k]
+        b[i,j,k] += h * area * (ta - θ[i,j,k])
       end
     end
   elseif face_type == :y_minus
-    let j = 2, a = bc.heat_transfer_coefficient * dy1, ta = bc.ambient_temperature
+    let j = 2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
       @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
-        b[i,j,k] -= a * (ta - θ[i,j,k])
+        area = dx * dz[k]
+        b[i,j,k] -= h * area * (ta - θ[i,j,k])
       end
     end
   elseif face_type == :y_plus
-    let j = SZ[2]-1, a = bc.heat_transfer_coefficient * dy1, ta = bc.ambient_temperature
+    let j = SZ[2]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
       @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
-        b[i,j,k] += a * (ta - θ[i,j,k])
+        area = dx * dz[k]
+        b[i,j,k] += h * area * (ta - θ[i,j,k])
       end
     end
   elseif face_type == :z_minus
-    let k = 2, a = bc.heat_transfer_coefficient / dz[k], ta = bc.ambient_temperature
+    let k = 2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature, area = dx * dy
       @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        b[i,j,k] -= a * (ta - θ[i,j,k])
+        b[i,j,k] -= h * area * (ta - θ[i,j,k])
       end
     end
   elseif face_type == :z_plus
-    let k = SZ[3]-1, a = bc.heat_transfer_coefficient / dz[k], ta = bc.ambient_temperature
+    let k = SZ[3]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature, area = dx * dy
       @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        b[i,j,k] += a * (ta - θ[i,j,k])
+        b[i,j,k] += h * area * (ta - θ[i,j,k])
       end
     end
   end

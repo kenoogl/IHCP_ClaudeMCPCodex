@@ -143,14 +143,13 @@ function calRHS!(
     calRHS_core!(wk.b, wk.θ, dx, dy, dz, bc_set, par)
     backend = get_backend(par)
     SZ = size(wk.b)
-    inv_ΔZ_st = inv(dz[2])
-    
 
     # Adjoint固有: Z下面の残差注入（residual_scaleで係数を調整可能、デフォルト=1.0で係数2）
+    # 体積積分形式: 残差 * 係数 * 面積
     if distribution == true
-        let k = 2, a = T(2) * residual_scale * inv_ΔZ_st
+        let k = 2, area = dx * dy, a = T(2) * residual_scale
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-                wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i-1,j-1]) * a
+                wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i-1,j-1]) * a * area
             end
         end
     end

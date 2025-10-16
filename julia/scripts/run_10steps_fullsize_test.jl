@@ -98,6 +98,7 @@ function load_measurement_subset(nt::Int)
   end
 
   println("  loading measurement data from: $data_path")
+  flush(stdout)
   load_start = time()
   T_measure_full = npzread(data_path)
   ni_full = size(T_measure_full, 2)
@@ -115,6 +116,7 @@ function load_measurement_subset(nt::Int)
 
   println("  measurement subset shape (Python order): $(size(subset))")
   println(@sprintf("  load time: %.2f s", time() - load_start))
+  flush(stdout)
 
   return subset, ni_full, nj_full
 end
@@ -134,6 +136,7 @@ function main()
   println("Julia 10-step full-size CGM validation")
   println("="^80)
   println("Project root: $PROJECT_ROOT")
+  flush(stdout)
   ensure_single_thread()
 
   total_start = time()
@@ -151,15 +154,18 @@ function main()
   println(@sprintf("  grid: ni=%d, nj=%d, nk=%d", ni, nj, nk))
   println(@sprintf("  spacing: dx=%.3e m, dy=%.3e m", dx, dy))
   println(@sprintf("  time steps: nt=%d, dt=%.3e s", nt, dt))
+  flush(stdout)
 
   # main.jlと同じ直接生成方式
   z_centers, ΔZ, z_faces, dz = build_z_grid(nk, Lz, stretch_factor)
 
   rho, cp_coeffs, k_coeffs = load_material_properties()
   println(@sprintf("  rho (reference): %.6f kg/m^3", rho))
+  flush(stdout)
 
   # Input preparation ------------------------------------------------------
   println("\n[2/5] Loading measurement data")
+  flush(stdout)
   Y_obs_python, ni_file, nj_file = load_measurement_subset(nt)
   if ni_file != ni || nj_file != nj
     error("Measurement grid mismatch: file has $(ni_file)x$(nj_file), expected $(ni)x$(nj)")
@@ -171,6 +177,7 @@ function main()
 
   T_init = build_initial_temperature(@view(Y_obs[:, :, 1]), nk)
   println(@sprintf("  initial temperature range: %.2f ~ %.2f K", minimum(T_init), maximum(T_init)))
+  flush(stdout)
 
   # Phase A: メモリレイアウト最適化 - (nt-1,ni,nj) → (ni,nj,nt-1)
   q_init = zeros(Float64, ni, nj, nt - 1)
@@ -178,6 +185,7 @@ function main()
 
   # CGM solve --------------------------------------------------------------
   println("\n[3/5] Running CGM solver (single window, 1 iteration)")
+  flush(stdout)
   solve_start = time()
 
   # Phase 1-B最適パラメータを適用（16.96%改善達成）
@@ -218,9 +226,11 @@ function main()
   cgm_elapsed = time() - solve_start
   println(@sprintf("  CGM elapsed time: %.2f s", cgm_elapsed))
   println(@sprintf("  iterations completed: %d", length(J_history)))
+  flush(stdout)
 
   # Residual diagnostics ---------------------------------------------------
   println("\n[4/5] Residual analysis")
+  flush(stdout)
   # Phase A: メモリレイアウト最適化 - T_result[ni,nj,nk,nt] の底面(k=1)
   T_bottom = @view T_result[:, :, 1, :]  # (ni, nj, nt)
   residual = T_bottom .- Y_obs
@@ -229,9 +239,11 @@ function main()
   println(@sprintf("  RMS residual: %.4e K", rms_error))
   println(@sprintf("  Max residual: %.4e K", max_error))
   println(@sprintf("  Heat flux range: %.4e ~ %.4e W/m^2", minimum(q_result), maximum(q_result)))
+  flush(stdout)
 
   # Save results -----------------------------------------------------------
   println("\n[5/5] Saving outputs")
+  flush(stdout)
   mkpath(dirname(RESULT_PATH))
 
   # Phase A: メモリレイアウト最適化後の形状
@@ -259,12 +271,14 @@ function main()
 
   npzwrite(RESULT_PATH, metadata)
   println("  saved bundle (.npz) → $RESULT_PATH")
+  flush(stdout)
 
   total_elapsed = time() - total_start
   println("\nSummary")
   println(@sprintf("  Total runtime: %.2f s", total_elapsed))
   println(@sprintf("  CGM share: %.1f%%", 100 * cgm_elapsed / total_elapsed))
   println("="^80)
+  flush(stdout)
 
   return 0
 end

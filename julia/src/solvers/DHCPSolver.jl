@@ -89,13 +89,12 @@ function calRHS!(
     calRHS_core!(wk.b, wk.θ, dx, dy, dz, bc_set, par)
     backend = get_backend(par)
     SZ = size(wk.b)
-    inv_ΔZ_ed = inv(dz[SZ[3]-1])
 
     # DHCP固有: Z上面の熱流束分布
     if distribution == true
-        let k = SZ[3]-1, a = inv_ΔZ_ed
+        let k = SZ[3]-1, area = dx * dy
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-                wk.b[i,j,k] -= qsrf[i-1,j-1] * a
+                wk.b[i,j,k] -= qsrf[i-1,j-1] * area
             end
         end
     end
