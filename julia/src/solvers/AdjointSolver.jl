@@ -40,7 +40,7 @@ using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet,
             isothermal_bc, heat_flux_bc, adiabatic_bc, convection_bc,
             create_boundary_conditions, apply_boundary_conditions!,
             print_boundary_conditions, ISOTHERMAL, HEAT_FLUX,
-            apply_face_boundary!, set_BC_coef
+            apply_face_boundary!
 
 import ..RHSCore
 using ..RHSCore: calRHS_core!
@@ -128,11 +128,11 @@ function calRHS!(
     wk::WorkBuffers,
     Tsrf::AbstractArray{T,2},
     Yobs::AbstractArray{T,2},
-    HF::AbstractVector{T},
     dx::T,
     dy::T,
     Δt::T,
     ΔZ::AbstractVector{T},
+    bc_set::BoundaryConditionSet,
     distribution::Bool,
     ρ::T,
     par::String;
@@ -140,13 +140,15 @@ function calRHS!(
     ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
-    SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, par)
+    calRHS_core!(wk.b, wk.θ, dx, dy, ΔZ, bc_set, par)
     backend = get_backend(par)
-    inv_ΔZ_st = inv(ΔZ[z_st])
+    SZ = size(wk.b)
+    inv_ΔZ_st = inv(ΔZ[2])
+    
 
     # Adjoint固有: Z下面の残差注入（residual_scaleで係数を調整可能、デフォルト=1.0で係数2）
     if distribution == true
-        let k = z_st, a = T(2) * residual_scale * inv_ΔZ_st
+        let k = 2, a = T(2) * residual_scale * inv_ΔZ_st
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
                 wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i-1,j-1]) * a
             end
@@ -154,10 +156,11 @@ function calRHS!(
     end
 
     # Adjoint固有: 最終RHS計算（内部熱源項なし）
-    ddt_T = T(ddt)
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        wk.b[i,j,k] = -( ddt_T * wk.θ[i,j,k]
-                        + wk.b[i,j,k] / (ρ * wk.cp[i,j,k])  )
+    ddt = inv(Δt)
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+      dz_k = ΔZ[k]
+      a_p_0 = ρ * wk.cp[i,j,k] * dx * dy * dz_k * ddt
+      wk.b[i,j,k] = -( a_p_0 * wk.θ[i,j,k] + wk.b[i,j,k] )
     end
 
 end
@@ -275,8 +278,6 @@ function solve_adjoint_mf!(
   bc_set = set_adjoint_bc_parameters()
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
-  HF, HT = set_BC_coef(bc_set) # 時間変化なし
-
 
   # 後退時間ループ（Pythonオリジナル1328行: range(nt-2, -1, -1)）
   for t in (nt-1):-1:1
@@ -293,7 +294,7 @@ function solve_adjoint_mf!(
 
     # work.b (RHS)の計算
     # 底面（物理座標 k=1）の温度と観測値を使用
-    calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), HF, dx, dy, dt, ΔZ,
+    calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), dx, dy, dt, ΔZ, bc_set,
       true, ρ, par, residual_scale=residual_scale)
 
     # 適応的収束基準の計算（後退時間積分）
@@ -313,7 +314,7 @@ function solve_adjoint_mf!(
       end
     end
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, HT, ρ,
+    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, ρ,
           tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
     cg_iters[t] = itr
     step_time = time() - step_start

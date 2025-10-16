@@ -9,7 +9,8 @@ module Commons
 using FLoops
 
 export initialize_cells!, λf, WorkBuffers, get_backend,
-       BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION, FloatMin, reset_work_buffers!
+       BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION, FloatMin, reset_work_buffers!,
+       myfill!, mycopy!
 
 # ゼロ除算回避用の小さな数値（BiCGSTAB法などで使用）
 const FloatMin = 1.0e-37
@@ -108,6 +109,61 @@ function reset_work_buffers!(wk::WorkBuffers)
   wk.mask .= 1.0
 
   # cp、λは物性値計算で毎回設定されるのでリセット不要
+end
+
+
+"""
+並列対応のcopy!関数
+
+3次元配列のコピーを並列実行可能な形で行う。
+シングルスレッド時は組み込みのcopyto!を使用し、
+マルチスレッド時はFLoopsで並列化する。
+
+# 引数
+- `a::AbstractArray{T,3}`: コピー先配列
+- `b::AbstractArray{T,3}`: コピー元配列
+- `par::String`: 並列化バックエンド（"sequential" or "thread"）
+"""
+function mycopy!(a::AbstractArray{T,3}, b::AbstractArray{T,3}, par::String)::Nothing where {T <: AbstractFloat}
+  if par == "sequential" || Threads.nthreads() == 1
+    # シングルスレッド: 高速な組み込み関数を使用
+    copyto!(a, b)
+  else
+    # マルチスレッド: 並列ループ
+    backend = get_backend(par)
+    SZ = size(a)
+    @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
+      a[i,j,k] = b[i,j,k]
+    end
+  end
+  return nothing
+end
+
+"""
+並列対応のfill!関数
+
+3次元配列を指定値で埋める処理を並列実行可能な形で行う。
+シングルスレッド時は組み込みのfill!を使用し、
+マルチスレッド時はFLoopsで並列化する。
+
+# 引数
+- `a::AbstractArray{T,3}`: 埋める配列
+- `val::T`: 埋める値
+- `par::String`: 並列化バックエンド（"sequential" or "thread"）
+"""
+function myfill!(a::AbstractArray{T,3}, val::T, par::String)::Nothing where {T <: AbstractFloat}
+  if par == "sequential" || Threads.nthreads() == 1
+    # シングルスレッド: 高速な組み込み関数を使用
+    fill!(a, val)
+  else
+    # マルチスレッド: 並列ループ
+    backend = get_backend(par)
+    SZ = size(a)
+    @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
+      a[i,j,k] = val
+    end
+  end
+  return nothing
 end
 
 

@@ -28,7 +28,7 @@ using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet,
             isothermal_bc, heat_flux_bc, adiabatic_bc, convection_bc,
             create_boundary_conditions, apply_boundary_conditions!,
             print_boundary_conditions, ISOTHERMAL, HEAT_FLUX,
-            apply_face_boundary!, set_BC_coef
+            apply_face_boundary!
 
 import ..RHSCore
 using ..RHSCore: calRHS_core!
@@ -65,7 +65,6 @@ end
 """
 @brief 右辺項b
 @param [in,out] wk.b   RHS
-@param [in]     HF  熱流束境界の値
 @param [in]     dx, dy セル幅
 @param [in]     Δt   時間積分幅
 @param [in]     ΔZ   CV幅
@@ -73,26 +72,28 @@ end
 @param [in]     q_dist 熱流束分布を与える場合true
 
 """
-function calRHS!(wk::WorkBuffers,
-    HF::AbstractVector{T},
+function calRHS!(
+    wk::WorkBuffers,
     dx::T,
     dy::T,
     Δt::T,
     ΔZ::AbstractVector{T},
     qsrf::AbstractArray{T,2},
-    q_dist::Bool,
+    bc_set::BoundaryConditionSet,
+    distribution::Bool,
     ρ::T,
     par::String
     ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
-    SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, par)
+    calRHS_core!(wk.b, wk.θ, dx, dy, ΔZ, bc_set, par)
     backend = get_backend(par)
-    inv_ΔZ_ed = inv(ΔZ[z_ed])
+    SZ = size(wk.b)
+    inv_ΔZ_ed = inv(ΔZ[SZ[3]-1])
 
     # DHCP固有: Z上面の熱流束分布
-    if q_dist == true
-        let k = z_ed, a = inv_ΔZ_ed
+    if distribution == true
+        let k = SZ[3]-1, a = inv_ΔZ_ed
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
                 wk.b[i,j,k] -= qsrf[i-1,j-1] * a
             end
@@ -100,10 +101,12 @@ function calRHS!(wk::WorkBuffers,
     end
 
     # DHCP固有: 最終RHS計算（内部熱源項含む）
-    ddt_T = T(ddt)
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        wk.b[i,j,k] = -( ddt_T * wk.θ[i,j,k]
-                        + (wk.hsrc[i,j,k] + wk.b[i,j,k]) / (ρ * wk.cp[i,j,k])  )
+    ddt = inv(Δt)
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+      dz_k = ΔZ[k]
+      a_p_0 = ρ * wk.cp[i,j,k] * dx * dy * dz_k * ddt
+      wk.b[i,j,k] = -( a_p_0 * wk.θ[i,j,k]
+                  + wk.hsrc[i,j,k] * dx * dy * dz_k + wk.b[i,j,k] )
     end
 
 end
@@ -237,8 +240,7 @@ function solve_dhcp!(
   bc_set = set_dhcp_bc_parameters()
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
-  HF, HT = set_BC_coef(bc_set) # 時間変化なし
-  
+
 
 # 時間積分ループ
   for t in 2:nt
@@ -253,9 +255,9 @@ function solve_dhcp!(
     apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_plus, :z_plus)
 
     # work.b (RHS)の計算
-    calRHS!(wk, HF, dx, dy, dt, ΔZ,
+    calRHS!(wk, dx, dy, dt, ΔZ,
       @view(q_surface[:, :, t-1]),
-      true, ρ, par)
+      bc_set, true, ρ, par)
 
     # 適応的収束基準の計算
     current_tol = rtol
@@ -272,7 +274,7 @@ function solve_dhcp!(
       end
     end
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, HT, ρ,
+    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, ρ,
         tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
 
     iter_counts[t] = itr

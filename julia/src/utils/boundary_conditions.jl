@@ -4,9 +4,9 @@ module BoundaryConditions
 import ..Commons
 using ..Commons: BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION
 
-export BoundaryCondition, BoundaryConditionSet, set_BC_coef,
+export BoundaryCondition, BoundaryConditionSet,
        isothermal_bc, heat_flux_bc, adiabatic_bc, convection_bc,
-       create_boundary_conditions, apply_boundary_conditions!, 
+       create_boundary_conditions, apply_boundary_conditions!,
        print_boundary_conditions, apply_face_boundary!
 
 # 単一境界面の境界条件
@@ -372,27 +372,6 @@ function print_boundary_conditions(bc_set::BoundaryConditionSet)
         end
     end
     println("===================")
-end
-
-
-function set_BC_coef(bc_set::BoundaryConditionSet)
-  HF = zeros(Float64, 6)
-  HF[1] = bc_set.x_minus.heat_flux
-  HF[2] = bc_set.x_plus.heat_flux
-  HF[3] = bc_set.y_minus.heat_flux
-  HF[4] = bc_set.y_plus.heat_flux
-  HF[5] = bc_set.z_minus.heat_flux
-  HF[6] = bc_set.z_plus.heat_flux
-
-  HT = zeros(Float64, 6)
-  HT[1] = bc_set.x_minus.heat_transfer_coefficient
-  HT[2] = bc_set.x_plus.heat_transfer_coefficient
-  HT[3] = bc_set.y_minus.heat_transfer_coefficient
-  HT[4] = bc_set.y_plus.heat_transfer_coefficient
-  HT[5] = bc_set.z_minus.heat_transfer_coefficient
-  HT[6] = bc_set.z_plus.heat_transfer_coefficient
-
-  return HF, HT
 end
 
 end # module BoundaryConditions

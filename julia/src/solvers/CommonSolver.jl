@@ -13,56 +13,10 @@ using FLoops
 using ThreadsX
 
 import ..Commons
-using ..Commons: WorkBuffers, FloatMin, λf, get_backend
+using ..Commons: WorkBuffers, FloatMin, λf, get_backend, myfill!, mycopy!
 
 
 export PBiCGSTAB!
-
-"""
-@brief 配列のコピー（並列対応版）
-@param [out]    a    コピー先配列
-@param [in]     b    コピー元配列
-@param [in]     par  バックエンド
-
-シングルスレッド時は組み込みのcopyto!を使用（SIMD最適化）
-マルチスレッド時は並列ループで処理
-"""
-function mycopy!(a::AbstractArray{T,3}, b::AbstractArray{T,3}, par::String) where {T <: AbstractFloat}
-  if par == "sequential" || Threads.nthreads() == 1
-    # シングルスレッド: 高速な組み込み関数を使用
-    copyto!(a, b)
-  else
-    # マルチスレッド: 並列ループ
-    backend = get_backend(par)
-    SZ = size(a)
-    @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
-      a[i,j,k] = b[i,j,k]
-    end
-  end
-end
-
-"""
-@brief 並列用のfill（任意値の代入）
-@param [out]    a    配列
-@param [in]     val  代入値
-@param [in]     par  バックエンド
-
-シングルスレッド時は組み込みのfill!を使用（SIMD最適化）
-マルチスレッド時は並列ループで処理
-"""
-function myfill!(a::AbstractArray{T,3}, val::T, par::String) where {T <: AbstractFloat}
-  if par == "sequential" || Threads.nthreads() == 1
-    # シングルスレッド: 高速な組み込み関数を使用
-    fill!(a, val)
-  else
-    # マルチスレッド: 並列ループ
-    backend = get_backend(par)
-    SZ = size(a)
-    @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
-      a[i,j,k] = val
-    end
-  end
-end
 
 """
 @brief Smoother選択器（Symbol → Val型変換）
@@ -119,7 +73,6 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     Δt::T,
                     ZC::AbstractVector{T},
                     ΔZ::AbstractVector{T},
-                    HT::AbstractVector{T},
                     ρ::T;
                     tol::T = T(1e-6),
                     maxItr::Int = 20_000,
@@ -128,7 +81,7 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     verbose::Bool=false) where {T <: AbstractFloat}
     SZ = size(wk.θ)
     myfill!(wk.pcg_q, zero(T), par)
-    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, ZC, ΔZ, HT, par)
+    res0 = CalcRK!(wk.pcg_r, wk.θ, wk.b, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, ZC, ΔZ, par)
     if verbose
         println("Inital residual = ", res0)
     end
@@ -173,18 +126,18 @@ function PBiCGSTAB!(wk::WorkBuffers,
 
         myfill!(wk.pcg_p_, zero(T), par)  #fill!(pcg_p_, 0.0)
         # 前処理: pcg_p_ ≈ M^{-1} pcg_p （smoother_valで分岐、wk.tmpはJacobi用）
-        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, HT, par, wk.tmp)
+        Preconditioner!(wk.pcg_p_, wk.pcg_p, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, par, wk.tmp)
 
-        CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, HT, par)
+        CalcAX!(wk.pcg_q, wk.pcg_p_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, par)
         alpha = rho / Fdot2(wk.pcg_q, wk.pcg_r0, par)
         r_alpha = -alpha
         Triad!(wk.pcg_s, wk.pcg_q, wk.pcg_r, r_alpha, par)
 
         myfill!(wk.pcg_s_, zero(T), par)  #fill!(pcg_s_, 0.0)
         # 前処理: pcg_s_ ≈ M^{-1} pcg_s （2回目の前処理適用）
-        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, HT, par, wk.tmp);
+        Preconditioner!(wk.pcg_s_, wk.pcg_s, wk.λ, wk.cp, wk.mask, ρ, Δh, Δt, smoother_val, ZC, ΔZ, par, wk.tmp);
 
-        CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, HT, par)
+        CalcAX!(wk.pcg_t_, wk.pcg_s_, Δh, Δt, wk.λ, wk.cp, wk.mask, ρ, ZC, ΔZ, par)
 
         # 分母ゼロ対策（数値安定性）
         denom = Fdot1(wk.pcg_t_, par)
@@ -227,7 +180,6 @@ end
 @param [in]     Δt   時間積分幅
 @param [in]     Z    CV境界座標
 @param [in]     ΔZ   CV幅
-@param [in]     HT   熱伝達境界の値
 
 @ret                 セルあたりの残差RMS
 """
@@ -243,7 +195,6 @@ function CalcRK!(
                 Δt::T,
                 Z::AbstractVector{T},
                 ΔZ::AbstractVector{T},
-                HT::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
@@ -251,8 +202,6 @@ function CalcRK!(
     dy0 = Δh[2]
     dx2 = inv(dx0 * dx0)
     dy2 = inv(dy0 * dy0)
-    dx1 = inv(dx0)
-    dy1 = inv(dy0)
     z_st = 2
     z_ed = SZ[3] - 1
     ddt = inv(Δt)
@@ -260,22 +209,17 @@ function CalcRK!(
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         λ0 = λ[i,j,k]
-        r_ρc = inv(ρ * cp[i,j,k])
         m0 = m[i,j,k]
-        mw = one(T) - m[i-1,j  ,k  ]
-        me = one(T) - m[i+1,j  ,k  ]
-        ms = one(T) - m[i  ,j-1,k  ]
-        mn = one(T) - m[i  ,j+1,k  ]
         mb = m[i  ,j  ,k-1]
         mt = m[i  ,j  ,k+1]
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc 
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc 
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc 
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc 
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2
         zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
         zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (one(T)-mb)/ΔZ[k]*HT[5]*r_ρc 
-        azp = (λ0        / (ΔZ[k]*zt))*mt + (one(T)-mt)/ΔZ[k]*HT[6]*r_ρc 
+        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
+        azp = (λ0        / (ΔZ[k]*zt))*mt
         dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
@@ -300,7 +244,6 @@ end
 @param [in]  ρ    密度
 @param [in]  Z    CV境界座標
 @param [in]  ΔZ   CV幅
-@param [in]  HT   熱伝達境界の値
 
 """
 function CalcAX!(ax::AbstractArray{T,3},
@@ -313,7 +256,6 @@ function CalcAX!(ax::AbstractArray{T,3},
                   ρ::T,
                   Z::AbstractVector{T},
                   ΔZ::AbstractVector{T},
-                  HT::AbstractVector{T},
                   par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
@@ -321,30 +263,23 @@ function CalcAX!(ax::AbstractArray{T,3},
     dy0 = Δh[2]
     dx2 = inv(dx0*dx0)
     dy2 = inv(dy0*dy0)
-    dx1 = inv(dx0)
-    dy1 = inv(dy0)
     z_st = 2
     z_ed = SZ[3] - 1
     ddt = inv(Δt)
 
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         λ0 = λ[i,j,k]
-        r_ρc = inv(ρ * cp[i,j,k])
         m0 = m[i,j,k]
-        mw = one(T)-m[i-1,j  ,k  ]
-        me = one(T)-m[i+1,j  ,k  ]
-        ms = one(T)-m[i  ,j-1,k  ]
-        mn = one(T)-m[i  ,j+1,k  ]
         mb = m[i  ,j  ,k-1]
         mt = m[i  ,j  ,k+1]
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2
         zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
         zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (one(T)-mb)/ΔZ[k]*HT[5]*r_ρc
-        azp = (λ0        / (ΔZ[k]*zt))*mt + (one(T)-mt)/ΔZ[k]*HT[6]*r_ρc
+        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
+        azp = (λ0        / (ΔZ[k]*zt))*mt
         dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
@@ -387,7 +322,6 @@ BiCGSTAB法の収束を加速するための前処理を適用する。
 @param [in]     smoother Val{:none}, Val{:gs}, Val{:jacobi}
 @param [in]     Z        CV境界座標
 @param [in]     ΔZ       CV幅
-@param [in]     HT       熱伝達境界の値
 @param [in]     par      バックエンド（"sequential", "thread"）
 @param [in]     scratch  ワーク配列（Jacobi前処理で使用、WorkBuffers.tmp）
 """
@@ -402,11 +336,10 @@ function Preconditioner!(xx::AbstractArray{T,3},
                          smoother::Val,
                          Z::AbstractVector{T},
                          ΔZ::AbstractVector{T},
-                         HT::AbstractVector{T},
                          par::String,
                          scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
     # 内部実装にディスパッチ（Val型による分岐はコンパイル時に解決）
-    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, HT, par, scratch)
+    _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, smoother, Z, ΔZ, par, scratch)
 end
 
 """
@@ -422,7 +355,7 @@ xx = bb
 
 【計算量】 O(N)（単純なコピー）
 """
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, HT, par, _)
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:none}, Z, ΔZ, par, _)
     mycopy!(xx, bb, par)
     return nothing
 end
@@ -444,9 +377,9 @@ xx ≈ M^{-1} bb （M: 前処理行列、ここではGS反復5回による近似
 
 【計算量】 O(5N)（5回反復 × N点更新）
 """
-function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, HT, par, _)
+function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, Z, ΔZ, par, _)
     for _ in 1:PRECONDITIONER_SWEEPS
-        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), Z, ΔZ, HT, par)
+        rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), Z, ΔZ, par)
     end
     return nothing
 end
@@ -485,10 +418,9 @@ function _Preconditioner!(xx::AbstractArray{T,3},
                           ::Val{:jacobi},
                           Z::AbstractVector{T},
                           ΔZ::AbstractVector{T},
-                          HT::AbstractVector{T},
                           par::String,
                           scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
-    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, Z, ΔZ, HT, par, scratch)
+    jacobi_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, Z, ΔZ, par, scratch)
     return nothing
 end
 
@@ -500,7 +432,7 @@ end
 
 型システムの完全性のために定義。
 """
-@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, HT, par, scratch) where {s}
+@inline function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{s}, Z, ΔZ, par, scratch) where {s}
     throw(ArgumentError("Unsupported smoother: $(s)"))
 end
 
@@ -541,7 +473,6 @@ xx ≈ (I - ωD^{-1}(A-D))^5 bb
 @param [in]     Δt       時間積分幅
 @param [in]     Z        CV境界座標
 @param [in]     ΔZ       CV幅
-@param [in]     HT       熱伝達境界の値（6面分）
 @param [in]     par      バックエンド（"sequential", "thread"）
 @param [in]     scratch  ワーク配列（WorkBuffers.tmp）
 """
@@ -555,7 +486,6 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
                                 Δt::T,
                                 Z::AbstractVector{T},
                                 ΔZ::AbstractVector{T},
-                                HT::AbstractVector{T},
                                 par::String,
                                 scratch::AbstractArray{T,3}) where {T <: AbstractFloat}
     backend = get_backend(par)
@@ -564,8 +494,6 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
     dy0 = Δh[2]
     dx2 = inv(dx0 * dx0)
     dy2 = inv(dy0 * dy0)
-    dx1 = inv(dx0)
-    dy1 = inv(dy0)
     z_st = 2
     z_ed = SZ[3] - 1
     ddt = inv(Δt)
@@ -585,21 +513,16 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
                 scratch[i,j,k] = bb[i,j,k]
                 continue
             end
-            r_ρc = inv(ρ * cp[i,j,k])
-            mw = oneT - mask[i-1,j  ,k  ]
-            me = oneT - mask[i+1,j  ,k  ]
-            ms = oneT - mask[i  ,j-1,k  ]
-            mn = oneT - mask[i  ,j+1,k  ]
             mb = mask[i  ,j  ,k-1]
             mt = mask[i  ,j  ,k+1]
-            axm = λf(λ[i-1,j,k], λ0, mask[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
-            axp = λf(λ[i+1,j,k], λ0, mask[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
-            aym = λf(λ[i,j-1,k], λ0, mask[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
-            ayp = λf(λ[i,j+1,k], λ0, mask[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
+            axm = λf(λ[i-1,j,k], λ0, mask[i-1,j,k], m0) * dx2
+            axp = λf(λ[i+1,j,k], λ0, mask[i+1,j,k], m0) * dx2
+            aym = λf(λ[i,j-1,k], λ0, mask[i,j-1,k], m0) * dy2
+            ayp = λf(λ[i,j+1,k], λ0, mask[i,j+1,k], m0) * dy2
             zb = (Z[k]-Z[k-1])*mb + (oneT-mb)*ΔZ[k]
             zt = (Z[k+1]-Z[k])*m0 + (oneT-m0)*ΔZ[k]
-            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (oneT-mb)/ΔZ[k]*HT[5]*r_ρc
-            azp = (λ0        / (ΔZ[k]*zt))*mt + (oneT-mt)/ΔZ[k]*HT[6]*r_ρc
+            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
+            azp = (λ0        / (ΔZ[k]*zt))*mt
             dd = axp + axm + ayp + aym + azp + azm + ddt
             ss = ( axp * xx[i+1,j  ,k  ] + axm * xx[i-1,j  ,k  ]
                  + ayp * xx[i  ,j+1,k  ] + aym * xx[i  ,j-1,k  ]
@@ -733,7 +656,6 @@ end
 @param [in]     ω    加速係数
 @param [in]     Z    Z座標
 @param [in]     ΔZ   格子幅
-@param [in]     HT   熱伝達境界の値
 @ret                 1セルあたりの残差RMS
 """
 function resSOR(θ::AbstractArray{T,3},
@@ -747,7 +669,6 @@ function resSOR(θ::AbstractArray{T,3},
                 ω::T,
                 Z::AbstractVector{T},
                 ΔZ::AbstractVector{T},
-                HT::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
     SZ = size(θ)
@@ -755,8 +676,6 @@ function resSOR(θ::AbstractArray{T,3},
     dy0 = Δh[2]
     dx2 = inv(dx0*dx0)
     dy2 = inv(dy0*dy0)
-    dx1 = inv(dx0)
-    dy1 = inv(dy0)
     z_st = 2
     z_ed = SZ[3] - 1
     ddt = inv(Δt)
@@ -764,22 +683,17 @@ function resSOR(θ::AbstractArray{T,3},
     @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         pp = θ[i,j,k]
         λ0 = λ[i,j,k]
-        r_ρc = inv(ρ * cp[i,j,k])
         m0 = m[i,j,k]
-        mw = one(T) - m[i-1,j  ,k  ]
-        me = one(T) - m[i+1,j  ,k  ]
-        ms = one(T) - m[i  ,j-1,k  ]
-        mn = one(T) - m[i  ,j+1,k  ]
         mb = m[i  ,j  ,k-1]
         mt = m[i  ,j  ,k+1]
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
+        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2
+        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2
+        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2
+        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2
         zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k] # 境界の半セル処理
         zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
-        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (one(T)-mb)/ΔZ[k]*HT[5]*r_ρc
-        azp = (λ0        / (ΔZ[k]*zt))*mt + (one(T)-mt)/ΔZ[k]*HT[6]*r_ρc
+        azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
+        azp = (λ0        / (ΔZ[k]*zt))*mt
         dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
         ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
@@ -805,7 +719,6 @@ end
 @param [in]     ω    加速係数
 @param [in]     Z    Z座標
 @param [in]     ΔZ   格子幅
-@param [in]     HT   熱伝達境界の値
 @param [in]     color R or B
 @ret                 残差2乗和
 """
@@ -820,7 +733,6 @@ function rbsor_core!(θ::AbstractArray{T,3},
                      ω::T,
                      Z::AbstractVector{T},
                      ΔZ::AbstractVector{T},
-                     HT::AbstractVector{T},
                      color::Int,
                      par::String) where {T <: AbstractFloat}
     backend = get_backend(par)
@@ -829,8 +741,6 @@ function rbsor_core!(θ::AbstractArray{T,3},
     dy0 = Δh[2]
     dx2 = inv(dx0*dx0)
     dy2 = inv(dy0*dy0)
-    dx1 = inv(dx0)
-    dy1 = inv(dy0)
     z_st = 2
     z_ed = SZ[3] - 1
     ddt = inv(Δt)
@@ -839,22 +749,17 @@ function rbsor_core!(θ::AbstractArray{T,3},
         @simd for i in 2+mod(k+j+color,2):2:SZ[1]-1
             pp = θ[i,j,k]
             λ0 = λ[i,j,k]
-            r_ρc = inv(ρ * cp[i,j,k])
             m0 = m[i,j,k]
-            me = one(T) - m[i+1,j  ,k  ]
-            mw = one(T) - m[i-1,j  ,k  ]
-            mn = one(T) - m[i  ,j+1,k  ]
-            ms = one(T) - m[i  ,j-1,k  ]
             mt = m[i  ,j  ,k+1]
             mb = m[i  ,j  ,k-1]
-            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2 + mw*dx1*HT[1]*r_ρc
-            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2 + me*dx1*HT[2]*r_ρc
-            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2 + ms*dy1*HT[3]*r_ρc
-            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2 + mn*dy1*HT[4]*r_ρc
+            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dx2
+            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dx2
+            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dy2
+            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dy2
             zb = (Z[k]-Z[k-1])*mb + (one(T)-mb)*ΔZ[k]
             zt = (Z[k+1]-Z[k])*m0 + (one(T)-m0)*ΔZ[k]
-            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb + (one(T)-mb)/ΔZ[k]*HT[5]*r_ρc
-            azp = (λ0        / (ΔZ[k]*zt))*mt + (one(T)-mt)/ΔZ[k]*HT[6]*r_ρc
+            azm = (λ[i,j,k-1]/ (ΔZ[k]*zb))*mb
+            azp = (λ0        / (ΔZ[k]*zt))*mt
             dd = (one(T)-m0) + ( axp + axm + ayp + aym + azp + azm + ddt)*m0
             ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
              + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
@@ -882,7 +787,6 @@ end
 @param [in]     ω    加速係数
 @param [in]     Z    Z座標
 @param [in]     ΔZ   格子幅
-@param [in]     HT   熱伝達境界の値
 @ret                 セルあたりの残差RMS
 """
 function rbsor!(θ::AbstractArray{T,3},
@@ -896,14 +800,13 @@ function rbsor!(θ::AbstractArray{T,3},
                 ω::T,
                 Z::AbstractVector{T},
                 ΔZ::AbstractVector{T},
-                HT::AbstractVector{T},
                 par::String) where {T <: AbstractFloat}
     SZ = size(b)
     res = zero(T)
 
     # 2色のマルチカラー(Red&Black)のセットアップ
     for c in 0:1
-        res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, HT, c, par)
+        res += rbsor_core!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, c, par)
     end
     #norm_factor = T((SZ[1]-2)*(SZ[2]-2)*(SZ[3]-2))
     return sqrt(res) #/ norm_factor
@@ -925,7 +828,6 @@ end
 @param [in]     ΔZ   格子幅
 @param [in]     F    ファイルディスクリプタ
 @param [in]     tol  収束判定基準
-@param [in]     HT   熱伝達境界の値
 @param [in]     ItrMax 最大反復回数（デフォルト: 1000）
 
 """
@@ -942,11 +844,10 @@ function solveSOR!(θ::AbstractArray{T,3},
                     ΔZ::AbstractVector{T},
                     F,
                     tol::T,
-                    HT::AbstractVector{T},
                     par::String;
                     ItrMax::Int=1000) where {T <: AbstractFloat}
 
-    res0 = resSOR(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, HT, par)
+    res0 = resSOR(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, par)
     if res0 == zero(T)
         res0 = one(T)
     end
@@ -954,8 +855,8 @@ function solveSOR!(θ::AbstractArray{T,3},
 
     n = 0
     for n in 1:ItrMax
-        #res = sor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, HT, par) / res0
-        res = rbsor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, HT, par) / res0
+        #res = sor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, par) / res0
+        res = rbsor!(θ, λ, cp, b, mask, ρ, Δh, Δt, ω, Z, ΔZ, par) / res0
         @printf(F, "%10d %24.14E\n", n, Float64(res)) # 時間計測の場合にはコメントアウト
         @printf(stdout, "%10d %24.14E\n", n, Float64(res)) # 時間計測の場合にはコメントアウト
         if res < tol

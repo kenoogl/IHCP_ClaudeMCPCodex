@@ -66,17 +66,14 @@ end
 function check_pbicgstab(prob::SampleProblem)
   println("== @code_warntype PBiCGSTAB! ==")
   wk = prepare_workbuffers(prob)
-  z_range, bc_set = DHCP.set_dhcp_bc_parameters(prob.nk)
+  bc_set = DHCP.set_dhcp_bc_parameters()
   BC.apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
-  HF, HT = BC.set_BC_coef(bc_set)
   @code_warntype IHCP_CGM.PBiCGSTAB!(
     wk,
     (prob.dx, prob.dy, 1.0),
     prob.dt,
     prob.Z,
     prob.ΔZ,
-    z_range,
-    HT,
     prob.ρ;
     tol=1e-6,
     maxItr=5,
