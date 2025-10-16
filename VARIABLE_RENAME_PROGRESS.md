@@ -69,15 +69,28 @@
 
 **追加修正**: commons.jl モジュール名コメント修正
 
+### 第3弾（2c96f9f）: テストコード3ファイル
+
+1. **test_sliding_window.jl** (4箇所変更) ✅
+   - 1Dテスト: `convert_to_guard_cell_grid`戻り値 `Z, ΔZ` → `z_centers, dz_grid`
+   - 1Dテスト: `solve_sliding_window_cgm`引数 `Z, ΔZ` → `z_centers, dz_grid`
+   - 2Dテスト: `convert_to_guard_cell_grid`戻り値 `Z, ΔZ` → `z_centers, dz_grid`
+   - 2Dテスト: `solve_sliding_window_cgm`引数 `Z, ΔZ` → `z_centers, dz_grid`
+
+2. **test_cgm_solver.jl** (2箇所変更) ✅
+   - `convert_to_guard_cell_grid`戻り値: `Z, ΔZ` → `z_centers, dz_grid`
+   - `solve_cgm!`引数: `Z, ΔZ` → `z_centers, dz_grid`
+
+3. **deprecated/test_dhcp_solver.jl** (8箇所変更) ✅
+   - テスト3（1D定常）: 戻り値、`solve_dhcp!`引数
+   - テスト4（3D小規模）: 戻り値、`solve_dhcp!`引数
+   - テスト5（CG収束性）: 戻り値、`solve_dhcp!`引数
+   - テスト6（ホットスタート）: 戻り値、`solve_dhcp!`引数
+   - すべて `Z, ΔZ` → `z_centers, dz_grid`
+
 ---
 
-## 🔜 残りの作業（19ファイル）
-
-### テストコード（3ファイル）
-
-- `test_sliding_window.jl`
-- `test_cgm_solver.jl`
-- `deprecated/test_dhcp_solver.jl`
+## 🔜 残りの作業（16ファイル）
 
 ### スクリプト（8ファイル）
 
@@ -115,15 +128,7 @@ cat VARIABLE_RENAME_PROGRESS.md
 
 ### ステップ2: 次のファイル群の変更（推奨順序）
 
-1. **ソースコード残り6ファイル**（優先）
-   - CGMSolver.jl → SlidingWindowSolver.jl → RHSCore.jl
-   - boundary_conditions.jl → GridTransform.jl → main.jl
-   - コミット: 第2弾
-
-2. **テストコード3ファイル**
-   - コミット: 第3弾
-
-3. **スクリプト8ファイル**
+1. **スクリプト8ファイル**
    - コミット: 第4弾
 
 4. **ベンチマーク8ファイル**
@@ -173,23 +178,29 @@ grep -rn '\b(Z|ΔZ)\b' julia/src/solvers/CGMSolver.jl
 ## 🎯 次回セッション開始時のアクション
 
 1. **このファイルを読む**: `cat VARIABLE_RENAME_PROGRESS.md`
-2. **次のファイル群を変更**: テストコード3ファイル（第3弾）
-   - `julia/test/test_sliding_window.jl`
-   - `julia/test/test_cgm_solver.jl`
-   - `julia/test/deprecated/test_dhcp_solver.jl`
+2. **次のファイル群を変更**: スクリプト8ファイル（第4弾）
+   - `julia/scripts/check_type_stability.jl`
+   - `julia/scripts/run_10steps_fullsize_test.jl`
+   - `julia/scripts/verification/check_matrix_symmetry.jl`
+   - `julia/scripts/verification/check_rhs_core_stability.jl`
+   - `julia/scripts/verification/check_rhs_internals.jl`
+   - `julia/scripts/verification/test_cg_vs_bicgstab.jl`
+   - `julia/scripts/verification/test_rhs_core_float32.jl`
+   - `julia/scripts/verification/test_rhs_core_simple.jl`
 3. **変更方法**: オプションC（手動で慎重に）を継続
 
 ---
 
 ## 📊 進捗統計
 
-- **完了**: 10/29ファイル (34.5%)
+- **完了**: 13/29ファイル (44.8%)
   - 第1弾（3ab7b12）: 4ファイル
   - 第2弾（841e4be）: 6ファイル
-- **残り**: 19/29ファイル (65.5%)
-- **コミット済み**: 第1弾、第2弾
-- **次回コミット**: 第3弾（テストコード3ファイル）
+  - 第3弾（2c96f9f）: 3ファイル
+- **残り**: 16/29ファイル (55.2%)
+- **コミット済み**: 第1弾、第2弾、第3弾
+- **次回コミット**: 第4弾（スクリプト8ファイル）
 
 ---
 
-**更新日時**: 2025-10-16 14:30
+**更新日時**: 2025-10-16 15:00
