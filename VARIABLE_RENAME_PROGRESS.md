@@ -235,4 +235,51 @@ grep -rn '\b(Z|ΔZ)\b' julia/src/solvers/CGMSolver.jl
 
 ---
 
-**更新日時**: 2025-10-16 (第5弾完了)
+---
+
+## ✅ 追加作業: Solversディレクトリ内の変数名統一（cdde0f4）
+
+**目的**: Solvers層での簡潔な表記と呼び出し側での説明的な表記の両立
+
+**変更内容**: Solversディレクトリ内で `z_centers` → `ZC` に変更（5ファイル）
+
+1. **DHCPSolver.jl** (3箇所変更) ✅
+   - docstring内の格子パラメータ説明: `z_centers, dz` → `ZC, dz`
+   - 関数引数 `solve_dhcp!`: `z_centers::Vector{Float64}` → `ZC::Vector{Float64}`
+   - `PBiCGSTAB!`呼び出し: `z_centers, dz` → `ZC, dz`
+
+2. **AdjointSolver.jl** (2箇所変更) ✅
+   - 関数引数 `solve_adjoint_mf!`: `z_centers::Vector{Float64}` → `ZC::Vector{Float64}`
+   - `PBiCGSTAB!`呼び出し: `z_centers, dz` → `ZC, dz`
+
+3. **SensitivitySolver.jl** (3箇所変更) ✅
+   - docstring内の格子パラメータ説明: `z_centers, dz` → `ZC, dz`
+   - 関数引数 `solve_sensitivity!`: `z_centers::Vector{Float64}` → `ZC::Vector{Float64}`
+   - `PBiCGSTAB!`呼び出し: `z_centers, dz` → `ZC, dz`
+
+4. **CGMSolver.jl** (8箇所変更) ✅
+   - docstring内の格子パラメータ説明（2箇所）: `z_centers, dz` → `ZC, dz`
+   - 関数引数 `compute_gradient!`: `z_centers::Vector{Float64}` → `ZC::Vector{Float64}`
+   - 関数引数 `solve_cgm!`: `z_centers::Vector{Float64}` → `ZC::Vector{Float64}`
+   - `solve_adjoint_mf!`呼び出し（`compute_gradient!`内）: `z_centers, dz` → `ZC, dz`
+   - `solve_dhcp!`呼び出し: `z_centers, dz` → `ZC, dz`
+   - `compute_gradient!`呼び出し: `z_centers, dz` → `ZC, dz`
+   - `solve_sensitivity!`呼び出し: `z_centers, dz` → `ZC, dz`
+
+5. **SlidingWindowSolver.jl** (3箇所変更) ✅
+   - docstring内の格子パラメータ説明: `z_centers:` → `ZC:`
+   - 関数引数 `solve_sliding_window_cgm`: `z_centers::Vector{Float64}` → `ZC::Vector{Float64}`
+   - `solve_cgm!`呼び出し: `z_centers, dz` → `ZC, dz`
+
+**命名規則（最終決定）**:
+- **Solvers層**: `ZC`（簡潔な表記）
+- **呼び出し側（スクリプト、テスト、ベンチマーク等）**: `z_centers`（説明的な表記）
+- **引数渡し時**: 自然に変換される（`z_centers` → `ZC`）
+
+**検証結果**:
+- Solversディレクトリ内に`z_centers`は残存なし ✅
+- 呼び出し側では`z_centers`を継続使用 ✅
+
+---
+
+**最終更新日時**: 2025-10-16 (全作業完了)
