@@ -120,7 +120,7 @@ end
 @param [in]     HF  熱流束境界の値
 @param [in]     dx, dy セル幅
 @param [in]     Δt   時間積分幅
-@param [in]     ΔZ   CV幅
+@param [in]     dz   CV幅
 @param [in]     distribution 分布を与える場合true
 
 """
@@ -131,7 +131,7 @@ function calRHS!(
     dx::T,
     dy::T,
     Δt::T,
-    ΔZ::AbstractVector{T},
+    dz::AbstractVector{T},
     bc_set::BoundaryConditionSet,
     distribution::Bool,
     ρ::T,
@@ -140,10 +140,10 @@ function calRHS!(
     ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
-    calRHS_core!(wk.b, wk.θ, dx, dy, ΔZ, bc_set, par)
+    calRHS_core!(wk.b, wk.θ, dx, dy, dz, bc_set, par)
     backend = get_backend(par)
     SZ = size(wk.b)
-    inv_ΔZ_st = inv(ΔZ[2])
+    inv_ΔZ_st = inv(dz[2])
     
 
     # Adjoint固有: Z下面の残差注入（residual_scaleで係数を調整可能、デフォルト=1.0で係数2）
@@ -158,7 +158,7 @@ function calRHS!(
     # Adjoint固有: 最終RHS計算（内部熱源項なし）
     ddt = inv(Δt)
     @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-      dz_k = ΔZ[k]
+      dz_k = dz[k]
       a_p_0 = ρ * wk.cp[i,j,k] * dx * dy * dz_k * ddt
       wk.b[i,j,k] = -( a_p_0 * wk.θ[i,j,k] + wk.b[i,j,k] )
     end
@@ -219,8 +219,8 @@ function solve_adjoint_mf!(
   k_coeffs::Vector{Float64},
   dx::T,
   dy::T,
-  Z::Vector{Float64},
-  ΔZ::Vector{Float64},
+  z_centers::Vector{Float64},
+  dz::Vector{Float64},
   dt::T;
   rtol::T=T(1e-8),
   maxiter::Int=1000,
@@ -294,7 +294,7 @@ function solve_adjoint_mf!(
 
     # work.b (RHS)の計算
     # 底面（物理座標 k=1）の温度と観測値を使用
-    calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), dx, dy, dt, ΔZ, bc_set,
+    calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), dx, dy, dt, dz, bc_set,
       true, ρ, par, residual_scale=residual_scale)
 
     # 適応的収束基準の計算（後退時間積分）
@@ -314,7 +314,7 @@ function solve_adjoint_mf!(
       end
     end
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, ρ,
+    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, z_centers, dz, ρ,
           tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
     cg_iters[t] = itr
     step_time = time() - step_start

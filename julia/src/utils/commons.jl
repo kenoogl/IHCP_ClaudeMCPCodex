@@ -8,7 +8,7 @@ module Commons
 
 using FLoops
 
-export initialize_cells!, λf, WorkBuffers, get_backend,
+export λf, WorkBuffers, get_backend,
        BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION, FloatMin, reset_work_buffers!,
        myfill!, mycopy!
 
