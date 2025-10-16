@@ -192,10 +192,10 @@ function run_full_calculation(config::Dict, output_file::String)
         @info @sprintf("  格子幅: dx=%.2e, dy=%.2e", prob["dx"], prob["dy"])
         @info @sprintf("  z方向格子幅: %d層, 表面=%.2e, 底面=%.2e", length(dz), dz[1], dz[end])
 
-        Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
+        z_centers, dz_grid = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
         @info @sprintf("IHCP-Heat3d")
-        #println(Z)
-        #println(ΔZ)
+        #println(z_centers)
+        #println(dz_grid)
 
         # 入力データ読み込み
         @info "\n入力データ読み込み中..."
@@ -278,7 +278,7 @@ function run_full_calculation(config::Dict, output_file::String)
 
         q_global, windows_info = solve_sliding_window_cgm(
             Y_obs, T_init, work,
-            prob["dx"], prob["dy"], Z, ΔZ, prob["dt"],
+            prob["dx"], prob["dy"], z_centers, dz_grid, prob["dt"],
             mat["rho"], mat["cp_coeffs"], mat["k_coeffs"],
             window_size, overlap, q_init_value, max_iter
         )

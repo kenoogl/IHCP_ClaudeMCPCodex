@@ -29,7 +29,7 @@ using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet
 export calRHS_core!
 
 """
-    calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, par)
+    calRHS_core!(wk, HF, dx, dy, Δt, dz, par)
       -> (SZ, dx1, dy1, z_st, z_ed, ddt)
 
 RHSベクトルのコア計算（3ソルバー共通部分）
@@ -42,7 +42,7 @@ RHSベクトルのコア計算（3ソルバー共通部分）
 - `dx::Float64`: x方向格子幅 [m]
 - `dy::Float64`: y方向格子幅 [m]
 - `Δt::Float64`: 時間刻み [s]
-- `ΔZ::Vector{Float64}`: z方向格子幅配列 [m]
+- `dz::Vector{Float64}`: z方向格子幅配列 [m]
 - `par::String`: 並列化バックエンド（"sequential" or "thread"）
 
 # 処理内容
@@ -57,7 +57,7 @@ function calRHS_core!(
             θ::AbstractArray{T,3},
             dx::T,
             dy::T,
-            ΔZ::AbstractVector{T},
+            dz::AbstractVector{T},
             bc_set::BoundaryConditionSet,
             par::String)::Nothing where {T <: AbstractFloat}
 
@@ -65,22 +65,22 @@ function calRHS_core!(
   myfill!(b, zero(T), par)
 
   # X軸負方向面 (i=1)
-  apply_face_bc!(b, θ, dx, dy, ΔZ, bc_set.x_minus, :x_minus, par)
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.x_minus, :x_minus, par)
 
   # X軸正方向面 (i=SZ[1])
-  apply_face_bc!(b, θ, dx, dy, ΔZ, bc_set.x_plus, :x_plus, par)
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.x_plus, :x_plus, par)
 
   # Y軸負方向面 (j=1)
-  apply_face_bc!(b, θ, dx, dy, ΔZ, bc_set.y_minus, :y_minus, par)
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.y_minus, :y_minus, par)
 
   # Y軸正方向面 (j=SZ[2])
-   apply_face_bc!(b, θ, dx, dy, ΔZ, bc_set.y_plus, :y_plus, par)
+   apply_face_bc!(b, θ, dx, dy, dz, bc_set.y_plus, :y_plus, par)
 
   # Z軸負方向面 (k=1)
-  apply_face_bc!(b, θ, dx, dy, ΔZ, bc_set.z_minus, :z_minus, par)
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.z_minus, :z_minus, par)
 
   # Z軸正方向面 (k=SZ[3])
-  apply_face_bc!(b, θ, dx, dy, ΔZ, bc_set.z_plus, :z_plus, par)
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.z_plus, :z_plus, par)
 
   return nothing
 end
@@ -100,16 +100,16 @@ function apply_face_bc!(b::AbstractArray{T,3},
                         θ::AbstractArray{T,3},
                         dx::T,
                         dy::T,
-                        ΔZ::AbstractVector{T},
+                        dz::AbstractVector{T},
                         bc::BoundaryCondition,
                         face_type::Symbol,
                         par::String)::Nothing where {T <: AbstractFloat}
 
     if bc.type == HEAT_FLUX
-        RHS_heat_flux!(b, dx, dy, ΔZ, bc, face_type, par)
+        RHS_heat_flux!(b, dx, dy, dz, bc, face_type, par)
 
     elseif bc.type == CONVECTION
-        RHS_convection!(b, θ, dx, dy, ΔZ, bc, face_type, par)
+        RHS_convection!(b, θ, dx, dy, dz, bc, face_type, par)
     end
 
     return nothing
@@ -122,7 +122,7 @@ end
 function RHS_heat_flux!(b::AbstractArray{T,3},
                         dx::T,
                         dy::T,
-                        ΔZ::AbstractVector{T},
+                        dz::AbstractVector{T},
                         bc::BoundaryCondition,
                         face_type::Symbol,
                         par::String)::Nothing where {T <: AbstractFloat}
@@ -156,13 +156,13 @@ function RHS_heat_flux!(b::AbstractArray{T,3},
         end
       end
     elseif face_type == :z_minus
-      let k = 2,  a = bc.heat_flux / ΔZ[k]
+      let k = 2,  a = bc.heat_flux / dz[k]
         @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
           b[i,j,k] += a
         end
       end
     elseif face_type == :z_plus
-      let k = SZ[3]-1, a = bc.heat_flux / ΔZ[k]
+      let k = SZ[3]-1, a = bc.heat_flux / dz[k]
         @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
           b[i,j,k] -= a
         end
@@ -180,7 +180,7 @@ function RHS_convection!(b::AbstractArray{T,3},
                         θ::AbstractArray{T,3},
                         dx::T,
                         dy::T,
-                        ΔZ::AbstractVector{T},
+                        dz::AbstractVector{T},
                         bc::BoundaryCondition,
                         face_type::Symbol,
                         par::String)::Nothing where {T <: AbstractFloat}
@@ -214,13 +214,13 @@ function RHS_convection!(b::AbstractArray{T,3},
       end
     end
   elseif face_type == :z_minus
-    let k = 2, a = bc.heat_transfer_coefficient / ΔZ[k], ta = bc.ambient_temperature
+    let k = 2, a = bc.heat_transfer_coefficient / dz[k], ta = bc.ambient_temperature
       @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
         b[i,j,k] -= a * (ta - θ[i,j,k])
       end
     end
   elseif face_type == :z_plus
-    let k = SZ[3]-1, a = bc.heat_transfer_coefficient / ΔZ[k], ta = bc.ambient_temperature
+    let k = SZ[3]-1, a = bc.heat_transfer_coefficient / dz[k], ta = bc.ambient_temperature
       @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
         b[i,j,k] += a * (ta - θ[i,j,k])
       end
