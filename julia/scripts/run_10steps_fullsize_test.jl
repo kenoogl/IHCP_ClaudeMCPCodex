@@ -350,14 +350,14 @@ function main()
     "max_error" => max_error,
   )
 
+  npzwrite(RESULT_PATH, metadata)
+
   # ソルバー情報を別途テキストファイルに保存
   metadata_txt_path = replace(RESULT_PATH, ".npz" => "_metadata.txt")
   open(metadata_txt_path, "w") do io
     println(io, "solver_type: $(String(solver_type))")
     println(io, "precond_type: $(String(precond_type))")
   end
-
-  npzwrite(RESULT_PATH, metadata)
   println("  saved bundle (.npz) → $RESULT_PATH")
   flush(stdout)
 

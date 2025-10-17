@@ -1,2 +1,2 @@
-solver_type: pbicgstab
+solver_type: pcg
 precond_type: gs
