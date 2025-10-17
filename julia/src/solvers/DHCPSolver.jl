@@ -236,6 +236,9 @@ function solve_dhcp!(
   # 残差を記録
   residuals = zeros(T, nt)
 
+  # 反復解法の計算時間を記録
+  solver_times = zeros(T, nt)
+
   if verbose
     println("="^60)
     println("Start DHCP direct solver")
@@ -300,11 +303,15 @@ function solve_dhcp!(
       end
     end
 
+    # 反復解法の計算時間を測定
+    solver_start = time()
     isconverged, itr, res0 = solve_linear_system!(wk, Δh, dt, ZC, dz, ρ, HC,
         solver=solver, tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
+    solver_time = time() - solver_start
 
     iter_counts[t] = itr
     residuals[t] = res0
+    solver_times[t] = solver_time
     step_time = time() - step_start
 
     if verbose
@@ -335,7 +342,7 @@ function solve_dhcp!(
     println("="^60)
   end
 
-  return T_all, iter_counts, residuals
+  return T_all, iter_counts, residuals, solver_times
 end
 
 

@@ -65,7 +65,7 @@ end
 """
 対流境界条件ありのDHCPテスト
 """
-function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20, solver_type::Symbol = :pbicgstab)
+function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20, solver_type::Symbol = :pbicgstab, smoother_type::Symbol = :gs)
   println("="^60)
   println("DHCP対流境界条件テスト（Phase 6-7）")
   println("="^60)
@@ -104,6 +104,7 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20, s
   println("dx=$(dx*1e3) mm, dy=$(dy*1e3) mm, Lz=$(Lz*1e3) mm")
   println("密度: $(rho) kg/m³")
   println("ソルバー: $(solver_type)")
+  println("前処理: $(smoother_type)")
 
   println("\n【境界条件設定】")
   println("X-minus面: 断熱")
@@ -129,7 +130,7 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20, s
   # DHCPソルバー実行
   start_time = time()
 
-  T_all, iter_counts, residuals = solve_dhcp!(
+  T_all, iter_counts, residuals, solver_times = solve_dhcp!(
     T_init,
     q_surface,
     work,
@@ -148,7 +149,7 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20, s
     par="sequential",
     use_previous_solution=true,  # 前ステップを初期推定値として使用
     extrapolation=:linear,  # 線形外挿
-    smoother=:gs,
+    smoother=smoother_type,
     solver=solver_type,
     bc_set=bc_set
   )
@@ -167,22 +168,26 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20, s
 
   # 1. 収束性チェック
   println("\n【1. 収束性チェック】")
-  println("各時間ステップの反復回数と残差:")
+  println("各時間ステップの反復回数、残差、反復時間:")
   for t in 1:nt
     if t == 1
       println("  t=$(t): 初期条件（反復なし）")
     else
-      @printf("  t=%d: %d回, 残差=%.3e\n", t, iter_counts[t], residuals[t])
+      @printf("  t=%d: %d回, 残差=%.3e, 反復時間=%.6f秒\n", t, iter_counts[t], residuals[t], solver_times[t])
     end
   end
 
   max_iter = maximum(iter_counts[2:end])
   max_residual = maximum(residuals[2:end])
   avg_iter = sum(iter_counts[2:end]) / (nt - 1)
+  total_solver_time = sum(solver_times[2:end])
+  avg_solver_time = total_solver_time / (nt - 1)
   @printf("\n統計情報:\n")
   @printf("  最大反復回数: %d回\n", max_iter)
   @printf("  平均反復回数: %.2f回\n", avg_iter)
   @printf("  最大残差: %.3e\n", max_residual)
+  @printf("  総反復時間: %.6f秒\n", total_solver_time)
+  @printf("  平均反復時間: %.6f秒/ステップ\n", avg_solver_time)
 
   if max_iter < 20000
     println("✓ 全時間ステップで収束")
@@ -274,7 +279,7 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20, s
 
   println("="^60)
 
-  return T_all, iter_counts, residuals, elapsed_time, all_pass
+  return T_all, iter_counts, residuals, solver_times, elapsed_time, all_pass
 end
 
 # メイン実行
@@ -285,14 +290,17 @@ if abspath(PROGRAM_FILE) == @__FILE__
     nt_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 20
     solver_str = length(ARGS) >= 3 ? lowercase(ARGS[3]) : "pbicgstab"
     solver_type = Symbol(solver_str)
+    smoother_str = length(ARGS) >= 4 ? lowercase(ARGS[4]) : "gs"
+    smoother_type = Symbol(smoother_str)
 
     println("\n実行パラメータ:")
     println("  h = $(h_value) W/m²·K")
     println("  時間ステップ数 = $(nt_steps)")
     println("  ソルバー = $(solver_type)")
+    println("  前処理 = $(smoother_type)")
     println()
 
-    T_all, iter_counts, residuals, elapsed_time, success = test_dhcp_with_convection(h_value, nt_steps, solver_type)
+    T_all, iter_counts, residuals, solver_times, elapsed_time, success = test_dhcp_with_convection(h_value, nt_steps, solver_type, smoother_type)
 
     if success
       println("\n✓ テスト完了: 成功")

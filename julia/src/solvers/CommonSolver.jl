@@ -704,7 +704,8 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
              + cond_yp * scratch[i  ,j+1,k  ] + cond_ym * scratch[i  ,j-1,k  ]
              + cond_zp * scratch[i  ,j  ,k+1] + cond_zm * scratch[i  ,j  ,k-1] )
 
-        Ax = ss - dd * scratch[i,j,k]
+        # A*x の計算（正しい符号）: A*x = dd*x - ss
+        Ax = dd * scratch[i,j,k] - ss
         rhs = bb[i,j,k]
         diag = max(dd, float_min_T)
         scratch[i,j,k] = xx[i,j,k] + ω * (rhs - Ax) / diag
