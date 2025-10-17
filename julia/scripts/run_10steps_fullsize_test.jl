@@ -142,17 +142,10 @@ function build_z_grid(nk::Int, Lz::Float64, stretch_factor::Float64)
   z_centers[1] = z_faces[1]        # 底面ガイドセル
   z_centers[nk+2] = z_faces[nk+1]  # 表面ガイドセル
 
-  # 底面物理セル（境界に重なる）
-  z_centers[2] = z_faces[1]
-
-  # 表面物理セル（境界に重なる）
-  z_centers[nk+1] = z_faces[nk+1]
-
-  # 中間物理セルのみ（k=3からnkまで）
-  if nk > 2
-    for k in 3:nk
-      z_centers[k] = (z_faces[k-1] + z_faces[k]) * 0.5
-    end
+  # すべての物理セル（k=2からnk+1）を統一した方法で計算
+  # ゼロ除算を回避し、test_dhcp_convection.jlと整合性を確保
+  for k in 2:nk+1
+    z_centers[k] = (z_faces[k-1] + z_faces[k]) * 0.5
   end
 
   return z_centers, ΔZ, z_faces, dz
@@ -355,9 +348,14 @@ function main()
     "elapsed_cgm" => cgm_elapsed,
     "rms_error" => rms_error,
     "max_error" => max_error,
-    "solver_type" => String(solver_type),      # ソルバータイプを記録
-    "precond_type" => String(precond_type),    # 前処理タイプを記録
   )
+
+  # ソルバー情報を別途テキストファイルに保存
+  metadata_txt_path = replace(RESULT_PATH, ".npz" => "_metadata.txt")
+  open(metadata_txt_path, "w") do io
+    println(io, "solver_type: $(String(solver_type))")
+    println(io, "precond_type: $(String(precond_type))")
+  end
 
   npzwrite(RESULT_PATH, metadata)
   println("  saved bundle (.npz) → $RESULT_PATH")
