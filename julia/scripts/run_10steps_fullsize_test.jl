@@ -6,6 +6,13 @@ This script mirrors ``python/validation/run_10steps_fullsize_test.py``.
 It loads the shared measurement data, runs the CGM solver for a single
 full window (nt = 10), and saves heat-flux and temperature results in a
 Python-friendly ``.npz`` bundle for downstream comparison.
+
+Usage:
+  julia run_10steps_fullsize_test.jl [--solver SOLVER] [--precond PRECOND]
+
+Options:
+  --solver SOLVER     Solver type: pbicgstab (default), pcg
+  --precond PRECOND   Preconditioner type: jacobi (default), gs, none
 """
 
 using Dates
@@ -26,6 +33,73 @@ const DT = 1.0e-3
 # ---------------------------------------------------------------------------
 # Utility helpers
 # ---------------------------------------------------------------------------
+
+"""
+    parse_command_line_args() -> (solver_type, precond_type)
+
+コマンドライン引数をパースしてソルバーと前処理の設定を取得
+
+Returns:
+  solver_type: ソルバータイプ（Symbol: :pbicgstab, :pcg）
+  precond_type: 前処理タイプ（Symbol: :jacobi, :gs, :none）
+"""
+function parse_command_line_args()
+  solver_type = :pbicgstab  # デフォルト
+  precond_type = :jacobi    # デフォルト
+
+  i = 1
+  while i <= length(ARGS)
+    if ARGS[i] == "--help" || ARGS[i] == "-h"
+      println("""
+      Usage: julia run_10steps_fullsize_test.jl [OPTIONS]
+
+      Options:
+        --solver SOLVER       Solver type (default: pbicgstab)
+                              Available: pbicgstab, pcg
+        --precond PRECOND     Preconditioner type (default: jacobi)
+                              Available: jacobi, gs, none
+        -h, --help            Show this help message and exit
+
+      Examples:
+        julia run_10steps_fullsize_test.jl
+        julia run_10steps_fullsize_test.jl --solver pcg --precond gs
+      """)
+      exit(0)
+    elseif ARGS[i] == "--solver"
+      if i + 1 > length(ARGS)
+        error("--solver requires an argument")
+      end
+      solver_str = lowercase(ARGS[i + 1])
+      if solver_str == "pbicgstab"
+        solver_type = :pbicgstab
+      elseif solver_str == "pcg"
+        solver_type = :pcg
+      else
+        error("Unknown solver type: $(ARGS[i + 1]). Available: pbicgstab, pcg")
+      end
+      i += 2
+    elseif ARGS[i] == "--precond"
+      if i + 1 > length(ARGS)
+        error("--precond requires an argument")
+      end
+      precond_str = lowercase(ARGS[i + 1])
+      if precond_str == "jacobi"
+        precond_type = :jacobi
+      elseif precond_str == "gs"
+        precond_type = :gs
+      elseif precond_str == "none"
+        precond_type = :none
+      else
+        error("Unknown preconditioner type: $(ARGS[i + 1]). Available: jacobi, gs, none")
+      end
+      i += 2
+    else
+      error("Unknown argument: $(ARGS[i])")
+    end
+  end
+
+  return solver_type, precond_type
+end
 
 function ensure_single_thread()
   nthreads = Threads.nthreads()
@@ -139,6 +213,13 @@ function main()
   flush(stdout)
   ensure_single_thread()
 
+  # コマンドライン引数パース
+  solver_type, precond_type = parse_command_line_args()
+  println("\n[Configuration]")
+  println("  Solver: $solver_type")
+  println("  Preconditioner: $precond_type")
+  flush(stdout)
+
   total_start = time()
 
   # Problem definition -----------------------------------------------------
@@ -204,7 +285,14 @@ function main()
     verbose = true,
     # Phase 1-B最適化: 初期推定値改善（16.56%改善）
     dhcp_extrapolation = :quadratic,          # DHCP二次外挿（-11.6%）
-    adjoint_residual_scale = 0.5              # Adjoint残差スケール（追加-5.3%）
+    adjoint_residual_scale = 0.5,             # Adjoint残差スケール（追加-5.3%）
+    # ソルバーと前処理の設定（コマンドライン引数から）
+    dhcp_solver = solver_type,
+    dhcp_smoother = precond_type,
+    adjoint_solver = solver_type,
+    adjoint_smoother = precond_type,
+    sensitivity_solver = solver_type,
+    sensitivity_smoother = precond_type
   )
 
   q_result, T_result, J_history = solve_cgm!(
@@ -267,6 +355,8 @@ function main()
     "elapsed_cgm" => cgm_elapsed,
     "rms_error" => rms_error,
     "max_error" => max_error,
+    "solver_type" => String(solver_type),      # ソルバータイプを記録
+    "precond_type" => String(precond_type),    # 前処理タイプを記録
   )
 
   npzwrite(RESULT_PATH, metadata)
