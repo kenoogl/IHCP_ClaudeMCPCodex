@@ -65,9 +65,9 @@ end
 """
 対流境界条件ありのDHCPテスト
 """
-function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20)
+function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20, solver_type::Symbol = :pbicgstab)
   println("="^60)
-  println("DHCP対流境界条件テスト（Phase 6）")
+  println("DHCP対流境界条件テスト（Phase 6-7）")
   println("="^60)
 
   # パラメータ設定
@@ -103,6 +103,7 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20)
   println("初期温度: 550K（均一）")
   println("dx=$(dx*1e3) mm, dy=$(dy*1e3) mm, Lz=$(Lz*1e3) mm")
   println("密度: $(rho) kg/m³")
+  println("ソルバー: $(solver_type)")
 
   println("\n【境界条件設定】")
   println("X-minus面: 断熱")
@@ -113,7 +114,7 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20)
   println("Z-plus面:  対流 (h=$(h_conv) W/m²·K, T_∞=300K)")
 
   println("\n【期待される動作】")
-  println("1. PBICGSTAB!が収束")
+  println("1. $(uppercase(String(solver_type)))が収束")
   println("2. Z-plus面から熱が逃げる（対流冷却）")
   println("3. 温度が300K〜550Kの範囲内")
   println("4. NaN/Infが発生しない")
@@ -148,7 +149,7 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20)
     use_previous_solution=true,  # 前ステップを初期推定値として使用
     extrapolation=:linear,  # 線形外挿
     smoother=:gs,
-    solver=:pbicgstab,
+    solver=solver_type,
     bc_set=bc_set
   )
 
@@ -264,16 +265,16 @@ function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20)
              (T_drop > 0)
 
   if all_pass
-    println("✅ Phase 6テスト成功")
+    println("✅ Phase 6-7テスト成功")
     println("   対流境界条件が正しく動作していることを確認")
   else
-    println("❌ Phase 6テスト失敗")
+    println("❌ Phase 6-7テスト失敗")
     println("   対流境界条件の実装に問題がある可能性")
   end
 
   println("="^60)
 
-  return T_all, iter_counts, all_pass
+  return T_all, iter_counts, residuals, elapsed_time, all_pass
 end
 
 # メイン実行
@@ -282,13 +283,16 @@ if abspath(PROGRAM_FILE) == @__FILE__
     # コマンドライン引数から h値を取得（デフォルト: 10.0）
     h_value = length(ARGS) >= 1 ? parse(Float64, ARGS[1]) : 10.0
     nt_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 20
+    solver_str = length(ARGS) >= 3 ? lowercase(ARGS[3]) : "pbicgstab"
+    solver_type = Symbol(solver_str)
 
     println("\n実行パラメータ:")
     println("  h = $(h_value) W/m²·K")
     println("  時間ステップ数 = $(nt_steps)")
+    println("  ソルバー = $(solver_type)")
     println()
 
-    T_all, iter_counts, success = test_dhcp_with_convection(h_value, nt_steps)
+    T_all, iter_counts, residuals, elapsed_time, success = test_dhcp_with_convection(h_value, nt_steps, solver_type)
 
     if success
       println("\n✓ テスト完了: 成功")
