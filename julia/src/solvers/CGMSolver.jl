@@ -36,6 +36,7 @@ using ..DHCPSolver
 using ..AdjointSolver
 using ..SensitivitySolver
 using ..StoppingCriteria
+using ..AdaptiveTolerance: AdaptiveToleranceParams
 
 import ..CommonSolver
 using ..CommonSolver: PBiCGSTAB!
@@ -94,7 +95,7 @@ Args:
   cp_coeffs: 比熱多項式係数
   k_coeffs: 熱伝導率多項式係数
   dx, dy: x, y方向格子幅 [m]
-  Z, ΔZ: Z方向格子情報
+  ZC, dz: Z方向格子情報
   dt: 時間刻み [s]
   rtol: CG相対許容誤差
   maxiter: CG最大反復数
@@ -111,7 +112,7 @@ function compute_gradient!(
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64},
   dx::T, dy::T,
-  Z::Vector{Float64}, ΔZ::Vector{Float64},
+  ZC::Vector{Float64}, dz::Vector{Float64},
   dt::T;
   rtol::T=T(1e-8),
   maxiter::Int=20000,
@@ -122,20 +123,26 @@ function compute_gradient!(
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   initial_strategy::Symbol=:residual,
   residual_scale::T=T(1),
-  smoother::Symbol=:gs
+  smoother::Symbol=:gs,
+  solver::Symbol=:pbicgstab,
+  adaptive_tol::Bool=false,
+  adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing
 ) where {T <: AbstractFloat}
   ni, nj, nk, nt = size(T_cal)
 
   # 随伴場求解（Phase 3）
   lambda_field, cg_iters = solve_adjoint_mf!(
     T_cal, Y_obs, work, nt, rho, cp_coeffs, k_coeffs,
-    dx, dy, Z, ΔZ, dt;
+    dx, dy, ZC, dz, dt;
     rtol=rtol, maxiter=maxiter, verbose=verbose, par=par,
     lambda_buffer=adjoint_buffer,
     iter_buffer=iter_buffer,
     initial_strategy=initial_strategy,
     residual_scale=residual_scale,
-    smoother=smoother
+    smoother=smoother,
+    solver=solver,
+    adaptive_tol=adaptive_tol,
+    adaptive_tol_params=adaptive_tol_params
   )
 
   # 勾配抽出（表面 k=nk での随伴場）
@@ -212,8 +219,8 @@ Args:
   q_init: 初期熱流束推定 (ni, nj, nt-1) [W/m²] ※Phase 2.2: 時間次元を最後に配置
   work: Heat3d用配列群
   dx, dy: x, y方向格子幅 [m]
-  Z: z方向格子配列 (nk,) [m]
-  ΔZ: CV幅 (nk,) [m]
+  ZC: z方向格子配列 (nk,) [m]
+  dz: CV幅 (nk,) [m]
   dt: 時間刻み [s]
   rho: 密度 [kg/m³]
   cp_coeffs: 比熱多項式係数
@@ -243,7 +250,7 @@ function solve_cgm!(
   q_init::AbstractArray{T,3},
   work::WorkBuffers,
   dx::T, dy::T,
-  Z::Vector{Float64}, ΔZ::Vector{Float64},
+  ZC::Vector{Float64}, dz::Vector{Float64},
   dt::T,
   rho::T,
   cp_coeffs::Vector{Float64},
@@ -267,12 +274,26 @@ function solve_cgm!(
   dhcp_use_previous_solution = get(params, :dhcp_use_previous_solution, true)
   dhcp_extrapolation = get(params, :dhcp_extrapolation, :none)
   dhcp_smoother = get(params, :dhcp_smoother, :gs)
+  dhcp_solver = get(params, :dhcp_solver, :pbicgstab)
   sensitivity_use_previous_solution = get(params, :sensitivity_use_previous_solution, true)
   sensitivity_extrapolation = get(params, :sensitivity_extrapolation, :none)
   sensitivity_smoother = get(params, :sensitivity_smoother, :gs)
+  sensitivity_solver = get(params, :sensitivity_solver, :pbicgstab)
   adjoint_initial_strategy = get(params, :adjoint_initial_strategy, :residual)
   adjoint_residual_scale = T(get(params, :adjoint_residual_scale, 1.0))
   adjoint_smoother = get(params, :adjoint_smoother, :gs)
+  adjoint_solver = get(params, :adjoint_solver, :pbicgstab)
+
+  # Phase 1-E: 適応的収束判定パラメータ
+  adaptive_tol = get(params, :adaptive_tol, false)
+  tol_min_dhcp = T(get(params, :tol_min_dhcp, 1e-7))
+  tol_max_dhcp = T(get(params, :tol_max_dhcp, 1e-5))
+  tol_min_adjoint = T(get(params, :tol_min_adjoint, 1e-9))
+  tol_max_adjoint = T(get(params, :tol_max_adjoint, 1e-5))
+  tol_min_sensitivity = T(get(params, :tol_min_sensitivity, 1e-7))
+  tol_max_sensitivity = T(get(params, :tol_max_sensitivity, 1e-5))
+  kappa_theta = T(get(params, :kappa_theta, 0.2))
+  warmup_steps = get(params, :warmup_steps, 3)
 
   # 問題サイズ（メモリレイアウト最適化: Phase 2.2）
   ni, nj, nt = size(Y_obs)
@@ -311,6 +332,22 @@ function solve_cgm!(
     P=P, eta=eta, max_iter=max_iter, eps=eps
   )
 
+  # Phase 1-E: 適応的収束判定パラメータオブジェクト作成
+  adaptive_tol_params_dhcp = adaptive_tol ? AdaptiveToleranceParams{T}(
+    tol_min=tol_min_dhcp, tol_max=tol_max_dhcp,
+    κ_θ=kappa_theta, warmup_steps=warmup_steps, ε=eps
+  ) : nothing
+
+  adaptive_tol_params_adjoint = adaptive_tol ? AdaptiveToleranceParams{T}(
+    tol_min=tol_min_adjoint, tol_max=tol_max_adjoint,
+    κ_θ=kappa_theta, warmup_steps=warmup_steps, ε=eps
+  ) : nothing
+
+  adaptive_tol_params_sensitivity = adaptive_tol ? AdaptiveToleranceParams{T}(
+    tol_min=tol_min_sensitivity, tol_max=tol_max_sensitivity,
+    κ_θ=kappa_theta, warmup_steps=warmup_steps, ε=eps
+  ) : nothing
+
   T_cal = nothing  # 最終温度場保存用
 
   # CGMループ
@@ -325,13 +362,16 @@ function solve_cgm!(
     T_cal, iter_counts = solve_dhcp!(
       T_init, q, work,
       nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, Z, ΔZ, dt;
+      dx, dy, ZC, dz, dt;
       rtol=rtol_dhcp, maxiter=maxiter_cg, verbose=verbose, par=par,
       T_buffer=dhcp_T_buffer,
       iter_buffer=dhcp_iter_buffer,
       use_previous_solution=dhcp_use_previous_solution,
       extrapolation=dhcp_extrapolation,
-      smoother=dhcp_smoother
+      smoother=dhcp_smoother,
+      solver=dhcp_solver,
+      adaptive_tol=adaptive_tol,
+      adaptive_tol_params=adaptive_tol_params_dhcp
     )
     dhcp_time = time() - dhcp_start
 
@@ -354,14 +394,17 @@ function solve_cgm!(
     gradient_start = time()
     grad, grad_iters = compute_gradient!(
       T_cal, Y_obs, work, rho, cp_coeffs, k_coeffs,
-      dx, dy, Z, ΔZ, dt,
+      dx, dy, ZC, dz, dt,
       rtol=rtol_adjoint, maxiter=maxiter_cg, verbose=verbose, par=par,
       gradient_buffer=grad,
       adjoint_buffer=adjoint_buffer,
       iter_buffer=adjoint_iter_buffer,
       initial_strategy=adjoint_initial_strategy,
       residual_scale=adjoint_residual_scale,
-      smoother=adjoint_smoother
+      smoother=adjoint_smoother,
+      solver=adjoint_solver,
+      adaptive_tol=adaptive_tol,
+      adaptive_tol_params=adaptive_tol_params_adjoint
     )
     gradient_time = time() - gradient_start
 
@@ -401,7 +444,7 @@ function solve_cgm!(
     dT, sens_iters = solve_sensitivity!(
       dT_init, p_n, work,
       nt, rho, cp_coeffs, k_coeffs,
-      dx, dy, Z, ΔZ, dt,
+      dx, dy, ZC, dz, dt,
       rtol=rtol_adjoint,
       maxiter=maxiter_cg,
       verbose=verbose,
@@ -410,7 +453,10 @@ function solve_cgm!(
       iter_buffer=sensitivity_iter_buffer,
       use_previous_solution=sensitivity_use_previous_solution,
       extrapolation=sensitivity_extrapolation,
-      smoother=sensitivity_smoother
+      smoother=sensitivity_smoother,
+      solver=sensitivity_solver,
+      adaptive_tol=adaptive_tol,
+      adaptive_tol_params=adaptive_tol_params_sensitivity
     )
     sensitivity_time = time() - sensitivity_start
 

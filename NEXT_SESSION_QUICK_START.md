@@ -1,140 +1,86 @@
-# 次回セッション クイックスタート
+# 次セッション クイックスタートガイド
 
-**最終更新**: 2025年10月12日 23:05
-**ブランチ**: tuning6
-**最新コミット**: 99ed77c (Phase 1-B組み合わせ改善完了)
-
----
-
-## 🎉 Phase 1-B 完了！
-
-### 達成した成果
-
-**性能改善**: **-16.3%**（ベースライン比）
-- ベースライン: 1,063.42秒
-- 最適化後: **890.47秒** 🏆
-- 時間短縮: **-172.95秒**（約2.9分）
-
-### 最適設定
-
-```julia
-cgm_params = (
-  dhcp_extrapolation = :quadratic,           # -11.6%改善
-  adjoint_residual_scale = 0.5,              # -5.3%追加改善
-  sensitivity_extrapolation = :none,
-  adjoint_initial_strategy = :previous
-)
-```
+**作成日**: 2025年10月17日 21:42
+**ブランチ**: `tuning7-volume-integral-complete`
+**最終コミット**: 4d2ceaf
 
 ---
 
-## 🚀 次のステップ
-
-### オプション1: Phase 1-Cへ進む（推奨）
-
-**前処理改善**:
-- 期待効果: CG反復30-50%削減
-- 実装難易度: 高
-- 参照: `docs/performance_improvement_proposals.md`（提案1）
-
-### オプション2: tuning6をmainにマージ
-
-Phase 1-B完了のため、mainブランチにマージして安定化。
-
-### オプション3: Phase 2（並列化）に進む
-
-別の改善アプローチを試す。
-
----
-
-## 📋 次回セッション開始時の手順
-
-### 簡単な再開（推奨）
-
-```
-「SESSION_STATE.md確認してください」
-```
-
-### 詳細確認
+## 🚀 30秒でセッションを開始
 
 ```bash
-# リポジトリ状態
+cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
 git status
-git log --oneline -5
+git log --oneline -3
+```
 
-# 性能改善状況
-cat docs/performance_improvement_proposals.md | grep -A 10 "実装状況サマリー"
+**期待される出力**:
+```
+On branch tuning7-volume-integral-complete
+Your branch is up to date with 'origin/tuning7-volume-integral-complete'.
+
+4d2ceaf docs: セッション完了、体積積分形式で28倍高速化達成
+c2cff55 fix: 大規模格子での無限ループ問題 - Z方向格子生成の整合性を修正
+6010f7f feat: run_10steps_fullsize_test.jlにソルバー・前処理指定機能を追加
 ```
 
 ---
 
-## 📊 現在の進捗
+## 📋 前セッションの成果（一言サマリー）
 
-### 累積改善実績
-
-| Phase | 改善率 | 状態 |
-|-------|--------|------|
-| Phase 0 | -0.34% | ✅ 完了 |
-| Phase 1-A | -0.15% | ✅ 完了 |
-| Phase 1-B | **-16.26%** | ✅ **完了** |
-| **合計** | **-16.75%** | - |
-
-**目標進捗**: Phase 1目標（30-40%改善）の約半分を達成 🎯
+**無限ループ問題を解決し、Phase 1-Eから28倍高速化を達成！**
+- 実行時間: 841秒 → **29.6秒**（96.5%改善）
+- RMS誤差: 7.744 K → **0.591 K**（92.4%改善）
 
 ---
 
-## 🔑 重要なファイル
+## 🎯 次セッションの最優先タスク
 
-### 必読ドキュメント
-
-1. **セッション管理**:
-   - `docs/workflows/SESSION_STATE.md` ← **最重要**
-   - `docs/workflows/session_management.md`
-
-2. **性能改善**:
-   - `shared/results/phase1b_combined_improvement_report.md` ← **最新結果**
-   - `docs/performance_improvement_proposals.md`
-
-3. **コード**:
-   - `julia/src/solvers/AdjointSolver.jl`（`residual_scale`追加）
-   - `julia/src/solvers/CGMSolver.jl`（`adjoint_residual_scale`追加）
-
----
-
-## ⚠️ 重要な注意事項
-
-### codex連携ワークフロー
-
-- ❌ **Claude CodeはTask toolでcodexエージェントを呼ばない**
-- ✅ **ユーザーに別ターミナルでcodex実行を依頼する**
-- 📖 詳細: `docs/workflows/codex_collaboration_workflow.md`
-
-### テスト実行
+### Task 1: Phase 1-Eとの詳細比較（5分）
 
 ```bash
-# 全テスト（505件、約2-3分）
-julia --project=julia julia/test/runtests.jl
+julia --project=julia -e '
+  using NPZ
+  phase1e = npzread("shared/results/phase1e_adaptive.npz")
+  current = npzread("shared/results/julia_10steps_fullsize.npz")
 
-# ベンチマーク（約15分）
-julia --project=julia julia/scripts/benchmark_combined_improvement.jl
+  println("=== Phase 1-E vs 体積積分形式 ===")
+  println("実行時間: ", phase1e["elapsed_cgm"], " vs ", current["elapsed_cgm"])
+  println("RMS誤差: ", phase1e["rms_error"], " vs ", current["rms_error"])
+  println("最大誤差: ", phase1e["max_error"], " vs ", current["max_error"])
+'
+```
+
+### Task 2: 動作確認テスト（2分）
+
+```bash
+# 小規模格子で動作確認
+julia --project=julia julia/scripts/test_dhcp_convection.jl 10 5
 ```
 
 ---
 
-## 💡 推奨アクション
+## 📝 Claudeへの指示例
 
-### 今すぐ実行可能
+```
+TODO_NEXT_SESSION.mdを確認してください。
 
-1. **Phase 1-C検討**: 前処理改善で30-50%削減を目指す
-2. **テスト実行**: 505件全通過の確認
-3. **ドキュメント精査**: Phase 1-Cの実装計画を立てる
+前セッションで体積積分形式の無限ループ問題を解決し、
+28倍の高速化を達成しました（841秒→29.6秒）。
 
-### 慎重に検討
-
-- **デフォルト設定の変更**: `adjoint_residual_scale`を0.5にするか
-  - メリット: 自動的に5.3%改善
-  - デメリット: ユーザーが意識しない変更
+Phase 1-Eとの詳細比較を行い、なぜこれほど高速化したのかを
+調査してください。まず結果ファイルを読み込んで比較しましょう。
+```
 
 ---
 
-**次回セッションで成功を！** 🚀
+## 🔗 重要なファイル
+
+- **詳細ガイド**: `TODO_NEXT_SESSION.md` ← 必読！
+- **調査レポート**: `INVESTIGATION_RESULTS.md`
+- **実行結果**: `shared/results/julia_10steps_fullsize.npz`
+- **実行ログ**: `run_10steps_gs_fixed.log`
+
+---
+
+**準備完了！次セッションをお楽しみください** 🎉

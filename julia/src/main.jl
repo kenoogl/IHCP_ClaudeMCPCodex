@@ -152,7 +152,7 @@ function run_full_calculation(config::Dict, output_file::String)
         end
 
         # 表面・底面の格子幅（nk要素のベクトル）
-        # dz配列（nk要素、各層の厚さ）からセル中心座標を計算し、dz_b、dz_tを構築
+        # dz配列（nk要素、各層の厚さ）からセル中心座標を計算
         nk = prob["nk"]
 
         # セル境界座標（z_faces）を計算（底面から表面へ）
@@ -163,39 +163,17 @@ function run_full_calculation(config::Dict, output_file::String)
             z_faces[k+1] = z_faces[k] + dz[k]
         end
 
-        # セル中心座標（z_centers）を計算
-        # 底面と表面のセルは境界に重なる（半分のCV）
-        # 中間のセルは通常の中心
-        z_centers = zeros(nk)
-        z_centers[1] = z_faces[1]      # 底面セル中心=底面境界
-        z_centers[end] = z_faces[end]  # 表面セル中心=表面境界
-        for k in 2:(nk-1)
-            z_centers[k] = (z_faces[k] + z_faces[k+1]) / 2.0
-        end
-
-        # dz_t: 上側境界からの距離
-        dz_t = zeros(nk)
-        dz_t[end] = Inf  # 表面境界条件
-        for k in 1:(nk-1)
-            dz_t[k] = z_centers[k+1] - z_centers[k]
-        end
-
-        # dz_b: 下側境界からの距離
-        dz_b = zeros(nk)
-        dz_b[1] = Inf  # 底面境界条件
-        for k in 2:nk
-            dz_b[k] = z_centers[k] - z_centers[k-1]
-        end
+        # ガイドセル込み格子を生成
+        z_centers, ΔZ = generate_guard_cell_grid(nk, dz, z_faces)
 
         @info @sprintf("IHCP Original")
         @info @sprintf("  格子点数: (%d, %d, %d)", prob["ni"], prob["nj"], prob["nk"])
         @info @sprintf("  格子幅: dx=%.2e, dy=%.2e", prob["dx"], prob["dy"])
         @info @sprintf("  z方向格子幅: %d層, 表面=%.2e, 底面=%.2e", length(dz), dz[1], dz[end])
 
-        Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_b, dz_t)
         @info @sprintf("IHCP-Heat3d")
-        #println(Z)
-        #println(ΔZ)
+        #println(z_centers)
+        #println(dz_grid)
 
         # 入力データ読み込み
         @info "\n入力データ読み込み中..."
@@ -278,7 +256,7 @@ function run_full_calculation(config::Dict, output_file::String)
 
         q_global, windows_info = solve_sliding_window_cgm(
             Y_obs, T_init, work,
-            prob["dx"], prob["dy"], Z, ΔZ, prob["dt"],
+            prob["dx"], prob["dy"], z_centers, ΔZ, prob["dt"],
             mat["rho"], mat["cp_coeffs"], mat["k_coeffs"],
             window_size, overlap, q_init_value, max_iter
         )

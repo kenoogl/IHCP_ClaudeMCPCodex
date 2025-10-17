@@ -1,15 +1,15 @@
 #!/usr/bin/env julia
 """
-Phase 1-B 追加ベンチマーク: DHCP二次外挿 + Adjoint残差0.2倍
+Phase 1-B 追加ベンチマーク: DHCP二次外挿 + Adjoint残差0.5倍
 
 設定:
 - DHCP外挿: quadratic
-- Adjoint残差スケール: 0.2
+- Adjoint残差スケール: 0.5 (元の係数2を1に)
 - Sensitivity外挿: none
 - Adjoint初期値戦略: previous (デフォルト)
 
 目的:
-さらなる最適化パラメータの探索
+DHCP二次外挿（11.6%改善）とAdjoint残差スケールの組み合わせ効果を測定
 """
 
 using Dates
@@ -118,7 +118,7 @@ solve_cgm!を呼び出して、各ソルバーの反復数を記録
 function run_cgm_with_logging(grid_params, material_params, Y_obs, T_init)
   ni, nj, nk, nt = grid_params.ni, grid_params.nj, grid_params.nk, grid_params.nt
   dx, dy, dt = grid_params.dx, grid_params.dy, grid_params.dt
-  Z, ΔZ = grid_params.Z, grid_params.ΔZ
+  z_centers, dz = grid_params.z_centers, grid_params.dz
   rho, cp_coeffs, k_coeffs = material_params
 
   # 初期熱流束
@@ -142,7 +142,7 @@ function run_cgm_with_logging(grid_params, material_params, Y_obs, T_init)
     dhcp_extrapolation = :quadratic,
     sensitivity_extrapolation = :none,
     adjoint_initial_strategy = :previous,
-    adjoint_residual_scale = 0.2  # ← 0.2倍
+    adjoint_residual_scale = 0.5  # ← 追加パラメータ
   )
 
   # CGM実行
@@ -153,7 +153,7 @@ function run_cgm_with_logging(grid_params, material_params, Y_obs, T_init)
     q_init,
     work,
     dx, dy,
-    Z, ΔZ,
+    z_centers, dz,
     dt,
     rho,
     cp_coeffs,
@@ -171,7 +171,7 @@ end
 
 function main()
   println("="^80)
-  println("Phase 1-B 追加ベンチマーク: DHCP二次外挿 + Adjoint残差0.2倍")
+  println("Phase 1-B 追加ベンチマーク: DHCP二次外挿 + Adjoint残差0.5倍")
   println("="^80)
   println("Project root: $PROJECT_ROOT")
   ensure_single_thread()
@@ -192,7 +192,9 @@ function main()
   println(@sprintf("  時間ステップ: nt=%d, dt=%.3e s", nt, dt))
 
   dz, dz_bottom, dz_top, z_faces = build_z_grid(nk, Lz, stretch_factor)
-  Z, ΔZ = convert_to_guard_cell_grid(nk, dz, dz_bottom, dz_top)
+
+  # ガイドセル込み格子を生成
+  z_centers, dz_grid = generate_guard_cell_grid(nk, dz, z_faces)
 
   rho, cp_coeffs, k_coeffs = load_material_properties()
 
@@ -213,7 +215,7 @@ function main()
   grid_params = (
     ni = ni, nj = nj, nk = nk, nt = nt,
     dx = dx, dy = dy, dt = dt,
-    Z = Z, ΔZ = ΔZ
+    z_centers = z_centers, dz = dz_grid
   )
   material_params = (rho, cp_coeffs, k_coeffs)
 
@@ -221,10 +223,10 @@ function main()
   println("\n[3/3] ベンチマーク実行")
   println("設定:")
   println("  DHCP外挿: quadratic")
-  println("  Adjoint残差スケール: 0.2")
+  println("  Adjoint残差スケール: 0.5")
   println("  Sensitivity外挿: none")
   println("  Adjoint初期値戦略: previous")
-  println("\n予想実行時間: 約15分")
+  println("\n予想実行時間: 約16分")
 
   # CGM実行（ログ付き）
   q_result, T_result, J_history, cgm_elapsed = run_cgm_with_logging(
@@ -239,12 +241,12 @@ function main()
 
   # 結果サマリー
   results = Dict(
-    "scenario_name" => "dhcp_quadratic_adjoint_0.2",
-    "description" => "DHCP二次外挿 + Adjoint残差0.2倍",
+    "scenario_name" => "dhcp_quadratic_adjoint_half",
+    "description" => "DHCP二次外挿 + Adjoint残差0.5倍",
     "dhcp_extrapolation" => "quadratic",
     "sensitivity_extrapolation" => "none",
     "adjoint_initial_strategy" => "previous",
-    "adjoint_residual_scale" => 0.2,
+    "adjoint_residual_scale" => 0.5,
     "elapsed_time" => cgm_elapsed,
     "rms_error" => rms_error,
     "max_error" => max_error,
@@ -263,7 +265,7 @@ function main()
 
   # 結果保存
   timestamp = Dates.format(now(), "yyyymmdd_HHMMSS")
-  result_file = joinpath(RESULT_DIR, "adjoint_scale_02_$(timestamp).json")
+  result_file = joinpath(RESULT_DIR, "combined_improvement_$(timestamp).json")
   mkpath(dirname(result_file))
 
   # ブランチ情報取得
@@ -304,15 +306,16 @@ function main()
   println("="^80)
   println(@sprintf("総実行時間: %.2f 秒 (%.2f 分)", total_elapsed, total_elapsed / 60))
 
-  # 比較
-  println("\n参考: 既存結果との比較")
+  # Phase 1-Bの結果との比較
+  println("\n参考: Phase 1-B結果との比較")
   println("-"^80)
   println("ベースライン: 1,063.42秒")
-  println("DHCP二次のみ: 940.50秒 (-11.6%)")
-  println("DHCP二次 + Adjoint残差0.5倍: 890.47秒 (-16.3%)")
-  println("本実験（DHCP二次 + Adjoint残差0.2倍）: $(cgm_elapsed)秒")
+  println("DHCP二次外挿のみ: 940.50秒 (-11.6%)")
+  println("本実験（DHCP二次 + Adjoint残差0.5倍）: $(cgm_elapsed)秒")
   improvement_vs_baseline = (1063.42 - cgm_elapsed) / 1063.42 * 100
+  improvement_vs_dhcp_quad = (940.50 - cgm_elapsed) / 940.50 * 100
   println(@sprintf("  vs ベースライン: %.2f%% 改善", improvement_vs_baseline))
+  println(@sprintf("  vs DHCP二次のみ: %.2f%% 改善", improvement_vs_dhcp_quad))
   println("="^80)
 
   return 0

@@ -18,14 +18,18 @@ RHSベクトル計算のコア部分を一元管理する。
 module RHSCore
 
 using FLoops
+using ThreadsX
 
 import ..Commons
-using ..Commons: WorkBuffers, get_backend
+using ..Commons: WorkBuffers, get_backend, HEAT_FLUX, CONVECTION, myfill!
+
+import ..BoundaryConditions
+using ..BoundaryConditions: BoundaryCondition, BoundaryConditionSet
 
 export calRHS_core!
 
 """
-    calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
+    calRHS_core!(wk, HF, dx, dy, Δt, dz, par)
       -> (SZ, dx1, dy1, z_st, z_ed, ddt)
 
 RHSベクトルのコア計算（3ソルバー共通部分）
@@ -34,115 +38,219 @@ RHSベクトルのコア計算（3ソルバー共通部分）
 分布境界条件と最終RHS計算は呼び出し側で実装する。
 
 # 引数
-- `wk::WorkBuffers`: ワーク配列群（出力先: wk.b）
-- `HF::Vector{Float64}`: 6面の一様熱流束 [X-, X+, Y-, Y+, Z-, Z+] [W/m²]
+- `b, θ
 - `dx::Float64`: x方向格子幅 [m]
 - `dy::Float64`: y方向格子幅 [m]
 - `Δt::Float64`: 時間刻み [s]
-- `ΔZ::Vector{Float64}`: z方向格子幅配列 [m]
-- `z_range::Vector{Int64}`: [z_st, z_ed] 計算範囲（ガイドセル座標）
+- `dz::Vector{Float64}`: z方向格子幅配列 [m]
 - `par::String`: 並列化バックエンド（"sequential" or "thread"）
-
-# 戻り値
-- `(SZ, dx1, dy1, z_st, z_ed, ddt)`: 後続処理で使用する計算済み値
-  - `SZ`: wk.bのサイズ (ni+2, nj+2, nk+2)
-  - `dx1`: 1.0 / dx
-  - `dy1`: 1.0 / dy
-  - `z_st`: z方向開始インデックス（ガイドセル座標）
-  - `z_ed`: z方向終了インデックス（ガイドセル座標）
-  - `ddt`: 1.0 / Δt
 
 # 処理内容
 1. wk.bをゼロクリア（全要素を0.0に初期化）
 2. 6面の一様熱流束境界条件を適用:
-   - X_minus (i=2): wk.b += HF[1] / dx
-   - X_plus (i=SZ[1]-1): wk.b -= HF[2] / dx
-   - Y_minus (j=2): wk.b += HF[3] / dy
-   - Y_plus (j=SZ[2]-1): wk.b -= HF[4] / dy
-   - Z_minus (k=z_st): wk.b += HF[5] / ΔZ[z_st]
-   - Z_plus (k=z_ed): wk.b -= HF[6] / ΔZ[z_ed]
 
 # 注意
-- HF[i] == 0.0 の場合、その面の処理はスキップ（性能最適化）
 - ガイドセル（境界外）は処理対象外
-- 戻り値は呼び出し元で分布境界条件・最終RHS計算に使用
 """
 function calRHS_core!(
-  wk::WorkBuffers,
-  HF::Vector{Float64},
-  dx::Float64,
-  dy::Float64,
-  Δt::Float64,
-  ΔZ::Vector{Float64},
-  z_range::Vector{Int64},
-  par::String
-)
-  backend = get_backend(par)
-  SZ = size(wk.b)
-  dx1 = 1.0 / dx
-  dy1 = 1.0 / dy
-  z_st = z_range[1]
-  z_ed = z_range[2]
-  ddt = 1.0 / Δt
+            b::AbstractArray{T,3},
+            θ::AbstractArray{T,3},
+            dx::T,
+            dy::T,
+            dz::AbstractVector{T},
+            bc_set::BoundaryConditionSet,
+            par::String)::Nothing where {T <: AbstractFloat}
 
-  # wk.bをゼロクリア
-  @floop backend for k in 1:SZ[3], j in 1:SZ[2], i in 1:SZ[1]
-    wk.b[i,j,k] = 0.0
-  end
+  # bをゼロクリア
+  myfill!(b, zero(T), par)
 
-  # 6面の一様熱流束境界条件
+  # X軸負方向面 (i=1)
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.x_minus, :x_minus, par)
 
-  # X_minus (i=2面)
-  if HF[1] != 0.0
-    i = 2
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1
-      wk.b[i,j,k] += HF[1] * dx1
-    end
-  end
+  # X軸正方向面 (i=SZ[1])
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.x_plus, :x_plus, par)
 
-  # X_plus (i=SZ[1]-1面)
-  if HF[2] != 0.0
-    i = SZ[1]-1
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1
-      wk.b[i,j,k] -= HF[2] * dx1
-    end
-  end
+  # Y軸負方向面 (j=1)
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.y_minus, :y_minus, par)
 
-  # Y_minus (j=2面)
-  if HF[3] != 0.0
-    j = 2
-    @floop backend for k in z_st:z_ed, i in 2:SZ[1]-1
-      wk.b[i,j,k] += HF[3] * dy1
-    end
-  end
+  # Y軸正方向面 (j=SZ[2])
+   apply_face_bc!(b, θ, dx, dy, dz, bc_set.y_plus, :y_plus, par)
 
-  # Y_plus (j=SZ[2]-1面)
-  if HF[4] != 0.0
-    j = SZ[2]-1
-    @floop backend for k in z_st:z_ed, i in 2:SZ[1]-1
-      wk.b[i,j,k] -= HF[4] * dy1
-    end
-  end
+  # Z軸負方向面 (k=1)
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.z_minus, :z_minus, par)
 
-  # Z_minus (k=z_st面)
-  if HF[5] != 0.0
-    k = z_st
-    a = HF[5] / ΔZ[k]
-    @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-      wk.b[i,j,k] += a
-    end
-  end
+  # Z軸正方向面 (k=SZ[3])
+  apply_face_bc!(b, θ, dx, dy, dz, bc_set.z_plus, :z_plus, par)
 
-  # Z_plus (k=z_ed面)
-  if HF[6] != 0.0
-    k = z_ed
-    a = HF[6] / ΔZ[k]
-    @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-      wk.b[i,j,k] -= a
-    end
-  end
-
-  return (SZ, dx1, dy1, z_st, z_ed, ddt)
+  return nothing
 end
+
+
+"""
+個別の境界面に境界条件を適用
+@param b RHSベクトル
+@param θ 温度（対流境界条件では使用しない、体積積分形式のため）
+@param dx x方向格子幅
+@param dy y方向格子幅
+@param dz z方向格子幅配列
+@param bc 境界条件
+@param face_type 面のタイプ (:x_minus, :x_plus, :y_minus, :y_plus, :z_minus, :z_plus)
+@param par 並列化バックエンド
+"""
+function apply_face_bc!(b::AbstractArray{T,3},
+                        θ::AbstractArray{T,3},
+                        dx::T,
+                        dy::T,
+                        dz::AbstractVector{T},
+                        bc::BoundaryCondition,
+                        face_type::Symbol,
+                        par::String)::Nothing where {T <: AbstractFloat}
+
+    if bc.type == HEAT_FLUX
+        RHS_heat_flux!(b, dx, dy, dz, bc, face_type, par)
+
+    elseif bc.type == CONVECTION
+        RHS_convection!(b, dx, dy, dz, bc, face_type, par)
+    end
+
+    return nothing
+end
+
+
+"""
+熱流束境界条件のRHS項への適用
+"""
+function RHS_heat_flux!(b::AbstractArray{T,3},
+                        dx::T,
+                        dy::T,
+                        dz::AbstractVector{T},
+                        bc::BoundaryCondition,
+                        face_type::Symbol,
+                        par::String)::Nothing where {T <: AbstractFloat}
+    backend = get_backend(par)
+    SZ = size(b)
+
+    if face_type == :x_minus
+      let i=2, q = bc.heat_flux
+        @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
+          area = dy * dz[k]
+          b[i,j,k] += q * area
+        end
+      end
+    elseif face_type == :x_plus
+      let i = SZ[1]-1, q = bc.heat_flux
+        @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
+          area = dy * dz[k]
+          b[i,j,k] -= q * area
+        end
+      end
+    elseif face_type == :y_minus
+      let j = 2, q = bc.heat_flux
+        @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
+          area = dx * dz[k]
+          b[i,j,k] += q * area
+        end
+      end
+    elseif face_type == :y_plus
+      let j = SZ[2]-1, q = bc.heat_flux
+        @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
+          area = dx * dz[k]
+          b[i,j,k] -= q * area
+        end
+      end
+    elseif face_type == :z_minus
+      let k = 2, q = bc.heat_flux, area = dx * dy
+        @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
+          b[i,j,k] += q * area
+        end
+      end
+    elseif face_type == :z_plus
+      let k = SZ[3]-1, q = bc.heat_flux, area = dx * dy
+        @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
+          b[i,j,k] -= q * area
+        end
+      end
+    end
+
+    return nothing
+end
+
+
+"""
+熱伝達境界条件のRHS項への適用
+
+体積積分形式では、対流項 h·A·(θ - T∞) を以下のように分離:
+- 係数行列の対角成分: h·A·θ
+- RHS項: h·A·T∞
+
+離散式: (h·A + λ/dx + ...) * θ - λ/dx * θ_neighbor - ... = -(時間項 + 熱源項 + h·A·T∞)
+calRHS!最終行で RHS = -(... + wk.b) となるため、wk.b に h·A·T∞ を加算する。
+"""
+function RHS_convection!(b::AbstractArray{T,3},
+                        dx::T,
+                        dy::T,
+                        dz::AbstractVector{T},
+                        bc::BoundaryCondition,
+                        face_type::Symbol,
+                        par::String)::Nothing where {T <: AbstractFloat}
+  backend = get_backend(par)
+  SZ = size(b)
+
+  # Z-plus面の例: 離散式は h·A·θ[k] = h·A·T∞
+  # RHS = -(... + h·A·T∞) なので、wk.b に +h·A·T∞ を加算
+  #
+  # ただし、実際にはゴーストセルでθ=T∞, mask=0なので、
+  # 対流項がゴーストセルに掛かる場合は h·A·(θ-T∞) = 0 となるべき
+  #
+  # 現在の実装では、対流項を隣接項から除外しているため、
+  # RHS項には h·A·T∞ を設定する必要がある
+
+  if face_type == :x_minus
+    let i=2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
+      @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
+        area = dy * dz[k]
+        b[i,j,k] -= h * area * ta
+      end
+    end
+  elseif face_type == :x_plus
+    let i = SZ[1]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
+      @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1
+        area = dy * dz[k]
+        b[i,j,k] += h * area * ta
+      end
+    end
+  elseif face_type == :y_minus
+    let j = 2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
+      @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
+        area = dx * dz[k]
+        b[i,j,k] -= h * area * ta
+      end
+    end
+  elseif face_type == :y_plus
+    let j = SZ[2]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature
+      @floop backend for k in 2:SZ[3]-1, i in 2:SZ[1]-1
+        area = dx * dz[k]
+        b[i,j,k] += h * area * ta
+      end
+    end
+  elseif face_type == :z_minus
+    let k = 2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature, area = dx * dy
+      @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
+        b[i,j,k] -= h * area * ta
+      end
+    end
+  elseif face_type == :z_plus
+    let k = SZ[3]-1, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature, area = dx * dy
+      @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
+        b[i,j,k] += h * area * ta
+      end
+    end
+  end
+
+  return nothing
+end
+
+
+
 
 end # module RHSCore

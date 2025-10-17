@@ -34,16 +34,19 @@ import ..RHSCore
 using ..RHSCore: calRHS_core!
 
 import ..CommonSolver
-using ..CommonSolver: PBiCGSTAB!
+using ..CommonSolver: PBiCGSTAB!, PCG!, solve_linear_system!
 
-export solve_dhcp!
+import ..AdaptiveTolerance
+using ..AdaptiveTolerance: AdaptiveToleranceParams, compute_adaptive_tol
+
+export solve_dhcp!, set_dhcp_bc_parameters_convection
 
 """
-順問題の境界条件  
+順問題の境界条件
 Z下面: 断熱、Z上面: 熱流束、側面: 断熱
 """
 
-function set_dhcp_bc_parameters(nk::Int)
+function set_dhcp_bc_parameters()
     x_minus_bc = adiabatic_bc()
     x_plus_bc  = adiabatic_bc()
     y_minus_bc = adiabatic_bc()
@@ -55,54 +58,74 @@ function set_dhcp_bc_parameters(nk::Int)
     return create_boundary_conditions(
                               x_minus_bc, x_plus_bc,
                               y_minus_bc, y_plus_bc,
-                              z_minus_bc, z_plus_bc, nk)
+                              z_minus_bc, z_plus_bc)
+end
+
+"""
+順問題の境界条件（対流境界条件テスト用）
+Z下面: 断熱、Z上面: 対流、側面: 断熱
+"""
+
+function set_dhcp_bc_parameters_convection(h::Float64=10.0, T_amb::Float64=300.0)
+    x_minus_bc = adiabatic_bc()
+    x_plus_bc  = adiabatic_bc()
+    y_minus_bc = adiabatic_bc()
+    y_plus_bc  = adiabatic_bc()
+    z_minus_bc = adiabatic_bc()
+    z_plus_bc  = convection_bc(h, T_amb)  # 対流境界条件
+
+    # 境界条件セットを作成
+    return create_boundary_conditions(
+                              x_minus_bc, x_plus_bc,
+                              y_minus_bc, y_plus_bc,
+                              z_minus_bc, z_plus_bc)
 end
 
 
 """
 @brief 右辺項b
 @param [in,out] wk.b   RHS
-@param [in]     HF  熱流束境界の値
 @param [in]     dx, dy セル幅
 @param [in]     Δt   時間積分幅
-@param [in]     ΔZ   CV幅
-@param [in]     z_range Zループ開始/終了インデクス
+@param [in]     dz   CV幅
 @param [in]     qsrf 熱流束分布
 @param [in]     q_dist 熱流束分布を与える場合true
 
 """
-function calRHS!(wk::WorkBuffers,
-    HF::AbstractVector{T},
+function calRHS!(
+    wk::WorkBuffers,
     dx::T,
     dy::T,
     Δt::T,
-    ΔZ::AbstractVector{T},
-    z_range::AbstractVector{<:Integer},
+    dz::AbstractVector{T},
     qsrf::AbstractArray{T,2},
-    q_dist::Bool,
+    bc_set::BoundaryConditionSet,
+    distribution::Bool,
     ρ::T,
     par::String
     ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
-    SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
+    calRHS_core!(wk.b, wk.θ, dx, dy, dz, bc_set, par)
     backend = get_backend(par)
-    inv_ΔZ_ed = inv(ΔZ[z_ed])
+    SZ = size(wk.b)
 
     # DHCP固有: Z上面の熱流束分布
-    if q_dist == true
-        let k = z_ed, a = inv_ΔZ_ed
+    if distribution == true
+        let k = SZ[3]-1, area = dx * dy
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-                wk.b[i,j,k] -= qsrf[i-1,j-1] * a
+                wk.b[i,j,k] -= qsrf[i-1,j-1] * area
             end
         end
     end
 
     # DHCP固有: 最終RHS計算（内部熱源項含む）
-    ddt_T = T(ddt)
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        wk.b[i,j,k] = -( ddt_T * wk.θ[i,j,k]
-                        + (wk.hsrc[i,j,k] + wk.b[i,j,k]) / (ρ * wk.cp[i,j,k])  )
+    ddt = inv(Δt)
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+      dz_k = dz[k]
+      a_p_0 = ρ * wk.cp[i,j,k] * dx * dy * dz_k * ddt
+      wk.b[i,j,k] = -( a_p_0 * wk.θ[i,j,k]
+                  + wk.hsrc[i,j,k] * dx * dy * dz_k + wk.b[i,j,k] )
     end
 
 end
@@ -121,7 +144,7 @@ nt: 時間ステップ数
 ρ: 密度 [kg/m³]
 cp_coeffs: 比熱多項式係数 [c0, c1, c2, c3]
 k_coeffs: 熱伝導率多項式係数 [k0, k1, k2, k3]
-dx, dy, Z, ΔZ, Δt: 格子・時間パラメータ
+dx, dy, ZC, dz, Δt: 格子・時間パラメータ
 rtol, maxiter: 収束パラメータ
 verbose: 進捗表示フラグ（デフォルト: false）
 par: バックエンド
@@ -173,8 +196,8 @@ function solve_dhcp!(
   k_coeffs::Vector{Float64},
   dx::T,
   dy::T,
-  Z::Vector{Float64},
-  ΔZ::Vector{Float64},
+  ZC::Vector{Float64},
+  dz::Vector{Float64},
   dt::T;
   rtol::T=T(1e-6),
   maxiter::Int=20000,
@@ -184,7 +207,11 @@ function solve_dhcp!(
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   use_previous_solution::Bool=true,
   extrapolation::Symbol=:none,
-  smoother::Symbol=:gs
+  smoother::Symbol=:gs,
+  solver::Symbol=:pbicgstab,
+  adaptive_tol::Bool=false,
+  adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing,
+  bc_set::Union{Nothing,BoundaryConditionSet}=nothing
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
@@ -205,6 +232,12 @@ function solve_dhcp!(
     throw(ArgumentError("iter_buffer length mismatch: expected $(expected_len), got $(length(iter_counts))"))
   end
   fill!(iter_counts, 0)
+
+  # 残差を記録
+  residuals = zeros(T, nt)
+
+  # 反復解法の計算時間を記録
+  solver_times = zeros(T, nt)
 
   if verbose
     println("="^60)
@@ -230,12 +263,13 @@ function solve_dhcp!(
   # 温度場から初期値の熱物性値計算
   set_properties!(T_initial, wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
-  # Boundary condition
-  z_range, bc_set = set_dhcp_bc_parameters(nk)
-  print_boundary_conditions(bc_set)
-  apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
-  HF, HT = set_BC_coef(bc_set) # 時間変化なし
-  
+  # Boundary condition（引数で渡されない場合はデフォルトを使用）
+  bc = isnothing(bc_set) ? set_dhcp_bc_parameters() : bc_set
+  print_boundary_conditions(bc)
+  apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc)
+
+  # HC配列を生成
+  HC = set_BC_coef(bc)
 
 # 時間積分ループ
   for t in 2:nt
@@ -247,18 +281,37 @@ function solve_dhcp!(
     apply_temporal_initial_guess!(wk.θ, T_all, t, use_previous_solution, extrapolation)
 
     # Z+方向のみ時間とともに更新
-    apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_plus, :z_plus)
+    apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc.z_plus, :z_plus)
 
     # work.b (RHS)の計算
-    calRHS!(wk, HF, dx, dy, dt, ΔZ, z_range,
+    calRHS!(wk, dx, dy, dt, dz,
       @view(q_surface[:, :, t-1]),
-      true, ρ, par)
+      bc, true, ρ, par)
 
+    # 適応的収束基準の計算
+    current_tol = rtol
+    if adaptive_tol && !isnothing(adaptive_tol_params)
+      current_tol = compute_adaptive_tol(
+        @view(T_all[:, :, :, t-1]),  # 前ステップ
+        t >= 3 ? @view(T_all[:, :, :, t-2]) : @view(T_all[:, :, :, t-1]),  # 2ステップ前（初期はt-1を再利用）
+        t,
+        rtol,
+        adaptive_tol_params
+      )
+      if verbose
+        println("  [t=$(t)] Adaptive tol: $(current_tol) (default: $(rtol))")
+      end
+    end
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-        tol=rtol, maxItr=maxiter, smoother=smoother, par=par)
+    # 反復解法の計算時間を測定
+    solver_start = time()
+    isconverged, itr, res0 = solve_linear_system!(wk, Δh, dt, ZC, dz, ρ, HC,
+        solver=solver, tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
+    solver_time = time() - solver_start
 
     iter_counts[t] = itr
+    residuals[t] = res0
+    solver_times[t] = solver_time
     step_time = time() - step_start
 
     if verbose
@@ -289,7 +342,7 @@ function solve_dhcp!(
     println("="^60)
   end
 
-  return T_all, iter_counts
+  return T_all, iter_counts, residuals, solver_times
 end
 
 

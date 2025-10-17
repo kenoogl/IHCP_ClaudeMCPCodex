@@ -46,7 +46,10 @@ import ..RHSCore
 using ..RHSCore: calRHS_core!
 
 import ..CommonSolver
-using ..CommonSolver: PBiCGSTAB!
+using ..CommonSolver: PBiCGSTAB!, PCG!, solve_linear_system!
+
+import ..AdaptiveTolerance
+using ..AdaptiveTolerance: AdaptiveToleranceParams, compute_adaptive_tol
 
 export solve_adjoint_mf!
 
@@ -93,7 +96,7 @@ end
 Z下面: 値指定、Z上面: ノイマン、側面: ノイマン
 """
 
-function set_adjoint_bc_parameters(nk::Int)
+function set_adjoint_bc_parameters()
     x_minus_bc = adiabatic_bc()
     x_plus_bc  = adiabatic_bc()
     y_minus_bc = adiabatic_bc()
@@ -105,7 +108,7 @@ function set_adjoint_bc_parameters(nk::Int)
     return create_boundary_conditions(
                               x_minus_bc, x_plus_bc,
                               y_minus_bc, y_plus_bc,
-                              z_minus_bc, z_plus_bc, nk)
+                              z_minus_bc, z_plus_bc)
 end
 
 
@@ -117,8 +120,7 @@ end
 @param [in]     HF  熱流束境界の値
 @param [in]     dx, dy セル幅
 @param [in]     Δt   時間積分幅
-@param [in]     ΔZ   CV幅
-@param [in]     z_range Zループ開始/終了インデクス
+@param [in]     dz   CV幅
 @param [in]     distribution 分布を与える場合true
 
 """
@@ -126,12 +128,11 @@ function calRHS!(
     wk::WorkBuffers,
     Tsrf::AbstractArray{T,2},
     Yobs::AbstractArray{T,2},
-    HF::AbstractVector{T},
     dx::T,
     dy::T,
     Δt::T,
-    ΔZ::AbstractVector{T},
-    z_range::AbstractVector{<:Integer},
+    dz::AbstractVector{T},
+    bc_set::BoundaryConditionSet,
     distribution::Bool,
     ρ::T,
     par::String;
@@ -139,24 +140,26 @@ function calRHS!(
     ) where {T <: AbstractFloat}
 
     # コア処理（共通部分）: 初期化 + 6面一様境界条件
-    SZ, dx1, dy1, z_st, z_ed, ddt = calRHS_core!(wk, HF, dx, dy, Δt, ΔZ, z_range, par)
+    calRHS_core!(wk.b, wk.θ, dx, dy, dz, bc_set, par)
     backend = get_backend(par)
-    inv_ΔZ_st = inv(ΔZ[z_st])
+    SZ = size(wk.b)
 
     # Adjoint固有: Z下面の残差注入（residual_scaleで係数を調整可能、デフォルト=1.0で係数2）
+    # 体積積分形式: 残差 * 係数 * 面積
     if distribution == true
-        let k = z_st, a = T(2) * residual_scale * inv_ΔZ_st
+        let k = 2, area = dx * dy, a = T(2) * residual_scale
             @floop backend for j in 2:SZ[2]-1, i in 2:SZ[1]-1
-                wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i-1,j-1]) * a
+                wk.b[i,j,k] += (Tsrf[i-1,j-1]-Yobs[i-1,j-1]) * a * area
             end
         end
     end
 
     # Adjoint固有: 最終RHS計算（内部熱源項なし）
-    ddt_T = T(ddt)
-    @floop backend for k in z_st:z_ed, j in 2:SZ[2]-1, i in 2:SZ[1]-1
-        wk.b[i,j,k] = -( ddt_T * wk.θ[i,j,k]
-                        + wk.b[i,j,k] / (ρ * wk.cp[i,j,k])  )
+    ddt = inv(Δt)
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+      dz_k = dz[k]
+      a_p_0 = ρ * wk.cp[i,j,k] * dx * dy * dz_k * ddt
+      wk.b[i,j,k] = -( a_p_0 * wk.θ[i,j,k] + wk.b[i,j,k] )
     end
 
 end
@@ -215,8 +218,8 @@ function solve_adjoint_mf!(
   k_coeffs::Vector{Float64},
   dx::T,
   dy::T,
-  Z::Vector{Float64},
-  ΔZ::Vector{Float64},
+  ZC::Vector{Float64},
+  dz::Vector{Float64},
   dt::T;
   rtol::T=T(1e-8),
   maxiter::Int=1000,
@@ -226,7 +229,10 @@ function solve_adjoint_mf!(
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   initial_strategy::Symbol=:residual,
   residual_scale::T=T(1),
-  smoother::Symbol=:gs
+  smoother::Symbol=:gs,
+  solver::Symbol=:pbicgstab,
+  adaptive_tol::Bool=false,
+  adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_cal[:, :, :, 1])
   N = ni * nj * nk
@@ -269,11 +275,12 @@ function solve_adjoint_mf!(
   set_properties!(@view(T_cal[:, :, :, nt]), wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
   # Boundary condition
-  z_range, bc_set = set_adjoint_bc_parameters(nk)
+  bc_set = set_adjoint_bc_parameters()
   print_boundary_conditions(bc_set)
   apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
-  HF, HT = set_BC_coef(bc_set) # 時間変化なし
 
+  # HC配列を生成（随伴問題では対流境界なし → ゼロ配列）
+  HC = set_BC_coef(bc_set)
 
   # 後退時間ループ（Pythonオリジナル1328行: range(nt-2, -1, -1)）
   for t in (nt-1):-1:1
@@ -290,11 +297,28 @@ function solve_adjoint_mf!(
 
     # work.b (RHS)の計算
     # 底面（物理座標 k=1）の温度と観測値を使用
-    calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), HF, dx, dy, dt, ΔZ, z_range,
+    calRHS!(wk, @view(T_cal[:, :, 1, t]), @view(Y_obs[:, :, t]), dx, dy, dt, dz, bc_set,
       true, ρ, par, residual_scale=residual_scale)
 
-    isconverged, itr, res0 = PBiCGSTAB!(wk, Δh, dt, Z, ΔZ, z_range, HT, ρ,
-          tol=rtol, maxItr=maxiter, smoother=smoother, par=par)
+    # 適応的収束基準の計算（後退時間積分）
+    current_tol = rtol
+    if adaptive_tol && !isnothing(adaptive_tol_params)
+      # 後退時間積分: 時間的に後のステップ（既に計算済み）を使用
+      # t: 現在計算中、t+1: 時間的に後（前ステップ）、t+2: さらに後（2ステップ前）
+      current_tol = compute_adaptive_tol(
+        t < nt ? @view(λa_all[:, :, :, t+1]) : @view(λa_all[:, :, :, nt]),  # 前ステップ（時間的に後）
+        t < nt-1 ? @view(λa_all[:, :, :, t+2]) : @view(λa_all[:, :, :, nt]),  # 2ステップ前（初期はnt再利用）
+        nt - t,  # 物理的な時間ステップ番号（前向きカウント）
+        rtol,
+        adaptive_tol_params
+      )
+      if verbose
+        println("  [t=$(t)] Adaptive tol: $(current_tol) (default: $(rtol))")
+      end
+    end
+
+    isconverged, itr, res0 = solve_linear_system!(wk, Δh, dt, ZC, dz, ρ, HC,
+          solver=solver, tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
     cg_iters[t] = itr
     step_time = time() - step_start
 
