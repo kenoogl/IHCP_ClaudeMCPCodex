@@ -231,3 +231,5 @@ archive/
 
 # Julia internal directory
 julia/.juliaup/
+.julia/
+.julia_depot/
