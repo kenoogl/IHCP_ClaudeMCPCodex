@@ -676,21 +676,33 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
           continue
         end
 
-        # 体積積分形式：面積×コンダクタンス + 対流項
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
+        # 熱伝導項（面積×コンダクタンス）
+        cond_xm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+        cond_xp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+        cond_ym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+        cond_yp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+        cond_zm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+        cond_zp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+        # 対流項（対角項のみに追加）
+        conv_xm = HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+        conv_xp = HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+        conv_ym = HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+        conv_yp = HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+        conv_zm = HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+        conv_zp = HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
-        dd = (oneT-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
-        ss = ( axp * scratch[i+1,j  ,k  ] + axm * scratch[i-1,j  ,k  ]
-             + ayp * scratch[i  ,j+1,k  ] + aym * scratch[i  ,j-1,k  ]
-             + azp * scratch[i  ,j  ,k+1] + azm * scratch[i  ,j  ,k-1] )
+        # 対角項: 熱伝導項 + 対流項 + 時間項
+        dd = (oneT-m0) + (cond_xp + cond_xm + cond_yp + cond_ym + cond_zp + cond_zm +
+                          conv_xp + conv_xm + conv_yp + conv_ym + conv_zp + conv_zm + a_p_0)*m0
+
+        # 隣接項: 熱伝導項のみ（対流項は除外）
+        ss = ( cond_xp * scratch[i+1,j  ,k  ] + cond_xm * scratch[i-1,j  ,k  ]
+             + cond_yp * scratch[i  ,j+1,k  ] + cond_ym * scratch[i  ,j-1,k  ]
+             + cond_zp * scratch[i  ,j  ,k+1] + cond_zm * scratch[i  ,j  ,k-1] )
 
         Ax = ss - dd * scratch[i,j,k]
         rhs = bb[i,j,k]
@@ -853,25 +865,37 @@ function resSOR(θ::AbstractArray{T,3},
         λ0 = λ[i,j,k]
         m0 = m[i,j,k]
 
-        # 体積積分形式：面積×コンダクタンス + 対流項
-        axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
-        axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
-        aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
-        ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
-        azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
-        azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
+        # 熱伝導項（面積×コンダクタンス）
+        cond_xm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+        cond_xp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+        cond_ym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+        cond_yp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+        cond_zm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+        cond_zp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+        # 対流項（対角項のみに追加）
+        conv_xm = HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+        conv_xp = HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+        conv_ym = HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+        conv_yp = HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+        conv_zm = HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+        conv_zp = HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
 
         # 時間項（体積積分形式） - 定常解析の場合は0
         a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
-        dd = (oneT-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
-        ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
-             + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
-             + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
+        # 対角項: 熱伝導項 + 対流項 + 時間項
+        dd = (oneT-m0) + (cond_xp + cond_xm + cond_yp + cond_ym + cond_zp + cond_zm +
+                          conv_xp + conv_xm + conv_yp + conv_ym + conv_zp + conv_zm + a_p_0)*m0
+
+        # 隣接項: 熱伝導項のみ（対流項は除外）
+        ss = ( cond_xp * θ[i+1,j  ,k  ] + cond_xm * θ[i-1,j  ,k  ]
+             + cond_yp * θ[i  ,j+1,k  ] + cond_ym * θ[i  ,j-1,k  ]
+             + cond_zp * θ[i  ,j  ,k+1] + cond_zm * θ[i  ,j  ,k-1] )
 
         dp = (((ss-b[i,j,k])/dd - pp)) * m0
         θ[i,j,k] = pp + ω * dp
-        r = (dd + ω*(axm+aym+azm))*dp / ω
+        r = (dd + ω*(cond_xm+cond_ym+cond_zm))*dp / ω
         @reduce(res = zero(T) + r*r)
     end
 
@@ -924,25 +948,37 @@ function rbsor_core!(θ::AbstractArray{T,3},
             λ0 = λ[i,j,k]
             m0 = m[i,j,k]
 
-            # 体積積分形式：面積×コンダクタンス + 対流項
-            axm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx + HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
-            axp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx + HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
-            aym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy + HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
-            ayp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy + HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
-            azm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1]) + HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
-            azp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k]) + HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
+            # 熱伝導項（面積×コンダクタンス）
+            cond_xm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+            cond_xp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+            cond_ym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+            cond_yp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+            cond_zm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+            cond_zp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+            # 対流項（対角項のみに追加）
+            conv_xm = HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+            conv_xp = HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+            conv_ym = HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+            conv_yp = HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+            conv_zm = HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+            conv_zp = HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
 
             # 時間項（体積積分形式） - 定常解析の場合は0
             a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
 
-            dd = (oneT-m0) + (axp + axm + ayp + aym + azp + azm + a_p_0)*m0
-            ss = ( axp * θ[i+1,j  ,k  ] + axm * θ[i-1,j  ,k  ]
-                 + ayp * θ[i  ,j+1,k  ] + aym * θ[i  ,j-1,k  ]
-                 + azp * θ[i  ,j  ,k+1] + azm * θ[i  ,j  ,k-1] )
+            # 対角項: 熱伝導項 + 対流項 + 時間項
+            dd = (oneT-m0) + (cond_xp + cond_xm + cond_yp + cond_ym + cond_zp + cond_zm +
+                              conv_xp + conv_xm + conv_yp + conv_ym + conv_zp + conv_zm + a_p_0)*m0
+
+            # 隣接項: 熱伝導項のみ（対流項は除外）
+            ss = ( cond_xp * θ[i+1,j  ,k  ] + cond_xm * θ[i-1,j  ,k  ]
+                 + cond_yp * θ[i  ,j+1,k  ] + cond_ym * θ[i  ,j-1,k  ]
+                 + cond_zp * θ[i  ,j  ,k+1] + cond_zm * θ[i  ,j  ,k-1] )
 
             dp = (((ss-b[i,j,k])/dd - pp)) * m0
             θ[i,j,k] = pp + ω * dp
-            r = (dd + ω*(axm+aym+azm))*dp / ω
+            r = (dd + ω*(cond_xm+cond_ym+cond_zm))*dp / ω
             @reduce(res = zero(T) + r*r)
         end
     end

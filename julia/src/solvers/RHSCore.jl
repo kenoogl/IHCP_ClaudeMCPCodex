@@ -179,8 +179,12 @@ end
 """
 熱伝達境界条件のRHS項への適用
 
-体積積分形式では、対流項 h·A·θ は係数行列の対角成分に含まれるため、
-RHS項には h·A·T∞ のみを設定する（θ依存項は除外）。
+体積積分形式では、対流項 h·A·(θ - T∞) を以下のように分離:
+- 係数行列の対角成分: h·A·θ
+- RHS項: h·A·T∞
+
+離散式: (h·A + λ/dx + ...) * θ - λ/dx * θ_neighbor - ... = -(時間項 + 熱源項 + h·A·T∞)
+calRHS!最終行で RHS = -(... + wk.b) となるため、wk.b に h·A·T∞ を加算する。
 """
 function RHS_convection!(b::AbstractArray{T,3},
                         dx::T,
@@ -191,6 +195,15 @@ function RHS_convection!(b::AbstractArray{T,3},
                         par::String)::Nothing where {T <: AbstractFloat}
   backend = get_backend(par)
   SZ = size(b)
+
+  # Z-plus面の例: 離散式は h·A·θ[k] = h·A·T∞
+  # RHS = -(... + h·A·T∞) なので、wk.b に +h·A·T∞ を加算
+  #
+  # ただし、実際にはゴーストセルでθ=T∞, mask=0なので、
+  # 対流項がゴーストセルに掛かる場合は h·A·(θ-T∞) = 0 となるべき
+  #
+  # 現在の実装では、対流項を隣接項から除外しているため、
+  # RHS項には h·A·T∞ を設定する必要がある
 
   if face_type == :x_minus
     let i=2, h = bc.heat_transfer_coefficient, ta = bc.ambient_temperature

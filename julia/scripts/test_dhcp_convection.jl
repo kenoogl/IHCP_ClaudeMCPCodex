@@ -50,15 +50,13 @@ function build_z_grid_simple(nk::Int, Lz::Float64, stretch_factor::Float64)
 
   # Step 4: z_centers（ガイドセル込み、nk+2個）
   z_centers = zeros(nk + 2)
+  # ガイドセル（k=1, k=nk+2）
   z_centers[1] = z_faces[1]
   z_centers[nk+2] = z_faces[nk+1]
-  z_centers[2] = z_faces[1]
-  z_centers[nk+1] = z_faces[nk+1]
 
-  if nk > 2
-    for k in 3:nk
-      z_centers[k] = (z_faces[k-1] + z_faces[k]) * 0.5
-    end
+  # 実セル（k=2からk=nk+1）のセンター座標
+  for k in 2:nk+1
+    z_centers[k] = (z_faces[k-1] + z_faces[k]) * 0.5
   end
 
   return z_centers, ΔZ, z_faces, dz
@@ -124,7 +122,7 @@ function test_dhcp_with_convection()
   println("DHCP実行開始")
   println("="^60)
 
-  # 対流境界条件を設定（まずh=1で試す）
+  # 対流境界条件を設定（h=1.0 W/m²·K）
   bc_set = set_dhcp_bc_parameters_convection(1.0, 300.0)
 
   # DHCPソルバー実行
@@ -147,8 +145,8 @@ function test_dhcp_with_convection()
     maxiter=20000,
     verbose=true,
     par="sequential",
-    use_previous_solution=true,
-    extrapolation=:quadratic,
+    use_previous_solution=true,  # 前ステップを初期推定値として使用
+    extrapolation=:linear,  # 線形外挿
     smoother=:gs,
     solver=:pbicgstab,
     bc_set=bc_set
