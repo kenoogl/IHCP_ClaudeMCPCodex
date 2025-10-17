@@ -65,14 +65,14 @@ end
 """
 対流境界条件ありのDHCPテスト
 """
-function test_dhcp_with_convection()
+function test_dhcp_with_convection(h_conv::Float64 = 10.0, nt_steps::Int = 20)
   println("="^60)
   println("DHCP対流境界条件テスト（Phase 6）")
   println("="^60)
 
   # パラメータ設定
   ni, nj, nk = 10, 10, 5
-  nt = 5
+  nt = nt_steps
 
   dx = 0.12e-3
   dy = 0.12e-3 * sin(deg2rad(80.0)) / sin(deg2rad(45.0))
@@ -110,7 +110,7 @@ function test_dhcp_with_convection()
   println("Y-minus面: 断熱")
   println("Y-plus面:  断熱")
   println("Z-minus面: 断熱")
-  println("Z-plus面:  対流 (h=10 W/m²·K, T_∞=300K)")
+  println("Z-plus面:  対流 (h=$(h_conv) W/m²·K, T_∞=300K)")
 
   println("\n【期待される動作】")
   println("1. PBICGSTAB!が収束")
@@ -122,13 +122,13 @@ function test_dhcp_with_convection()
   println("DHCP実行開始")
   println("="^60)
 
-  # 対流境界条件を設定（h=1.0 W/m²·K）
-  bc_set = set_dhcp_bc_parameters_convection(1.0, 300.0)
+  # 対流境界条件を設定
+  bc_set = set_dhcp_bc_parameters_convection(h_conv, 300.0)
 
   # DHCPソルバー実行
   start_time = time()
 
-  T_all, iter_counts = solve_dhcp!(
+  T_all, iter_counts, residuals = solve_dhcp!(
     T_init,
     q_surface,
     work,
@@ -166,17 +166,22 @@ function test_dhcp_with_convection()
 
   # 1. 収束性チェック
   println("\n【1. 収束性チェック】")
-  println("各時間ステップの反復回数:")
+  println("各時間ステップの反復回数と残差:")
   for t in 1:nt
     if t == 1
       println("  t=$(t): 初期条件（反復なし）")
     else
-      println("  t=$(t): $(iter_counts[t])回")
+      @printf("  t=%d: %d回, 残差=%.3e\n", t, iter_counts[t], residuals[t])
     end
   end
 
   max_iter = maximum(iter_counts[2:end])
-  @printf("最大反復回数: %d回\n", max_iter)
+  max_residual = maximum(residuals[2:end])
+  avg_iter = sum(iter_counts[2:end]) / (nt - 1)
+  @printf("\n統計情報:\n")
+  @printf("  最大反復回数: %d回\n", max_iter)
+  @printf("  平均反復回数: %.2f回\n", avg_iter)
+  @printf("  最大残差: %.3e\n", max_residual)
 
   if max_iter < 20000
     println("✓ 全時間ステップで収束")
@@ -274,7 +279,16 @@ end
 # メイン実行
 if abspath(PROGRAM_FILE) == @__FILE__
   try
-    T_all, iter_counts, success = test_dhcp_with_convection()
+    # コマンドライン引数から h値を取得（デフォルト: 10.0）
+    h_value = length(ARGS) >= 1 ? parse(Float64, ARGS[1]) : 10.0
+    nt_steps = length(ARGS) >= 2 ? parse(Int, ARGS[2]) : 20
+
+    println("\n実行パラメータ:")
+    println("  h = $(h_value) W/m²·K")
+    println("  時間ステップ数 = $(nt_steps)")
+    println()
+
+    T_all, iter_counts, success = test_dhcp_with_convection(h_value, nt_steps)
 
     if success
       println("\n✓ テスト完了: 成功")

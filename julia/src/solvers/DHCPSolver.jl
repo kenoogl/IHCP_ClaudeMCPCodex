@@ -233,6 +233,9 @@ function solve_dhcp!(
   end
   fill!(iter_counts, 0)
 
+  # 残差を記録
+  residuals = zeros(T, nt)
+
   if verbose
     println("="^60)
     println("Start DHCP direct solver")
@@ -301,6 +304,7 @@ function solve_dhcp!(
         solver=solver, tol=current_tol, maxItr=maxiter, smoother=smoother, par=par)
 
     iter_counts[t] = itr
+    residuals[t] = res0
     step_time = time() - step_start
 
     if verbose
@@ -331,7 +335,7 @@ function solve_dhcp!(
     println("="^60)
   end
 
-  return T_all, iter_counts
+  return T_all, iter_counts, residuals
 end
 
 
