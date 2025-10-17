@@ -39,10 +39,10 @@ using ..CommonSolver: PBiCGSTAB!, PCG!, solve_linear_system!
 import ..AdaptiveTolerance
 using ..AdaptiveTolerance: AdaptiveToleranceParams, compute_adaptive_tol
 
-export solve_dhcp!
+export solve_dhcp!, set_dhcp_bc_parameters_convection
 
 """
-順問題の境界条件  
+順問題の境界条件
 Z下面: 断熱、Z上面: 熱流束、側面: 断熱
 """
 
@@ -53,6 +53,26 @@ function set_dhcp_bc_parameters()
     y_plus_bc  = adiabatic_bc()
     z_minus_bc = adiabatic_bc()
     z_plus_bc  = heat_flux_bc(0.0, true) # 分布を与える > true, 0.0はダミー
+
+    # 境界条件セットを作成
+    return create_boundary_conditions(
+                              x_minus_bc, x_plus_bc,
+                              y_minus_bc, y_plus_bc,
+                              z_minus_bc, z_plus_bc)
+end
+
+"""
+順問題の境界条件（対流境界条件テスト用）
+Z下面: 断熱、Z上面: 対流、側面: 断熱
+"""
+
+function set_dhcp_bc_parameters_convection(h::Float64=10.0, T_amb::Float64=300.0)
+    x_minus_bc = adiabatic_bc()
+    x_plus_bc  = adiabatic_bc()
+    y_minus_bc = adiabatic_bc()
+    y_plus_bc  = adiabatic_bc()
+    z_minus_bc = adiabatic_bc()
+    z_plus_bc  = convection_bc(h, T_amb)  # 対流境界条件
 
     # 境界条件セットを作成
     return create_boundary_conditions(
@@ -190,7 +210,8 @@ function solve_dhcp!(
   smoother::Symbol=:gs,
   solver::Symbol=:pbicgstab,
   adaptive_tol::Bool=false,
-  adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing
+  adaptive_tol_params::Union{Nothing,AdaptiveToleranceParams{T}}=nothing,
+  bc_set::Union{Nothing,BoundaryConditionSet}=nothing
 ) where {T <: AbstractFloat}
   ni, nj, nk = size(T_initial)
   N = ni * nj * nk
@@ -236,13 +257,13 @@ function solve_dhcp!(
   # 温度場から初期値の熱物性値計算
   set_properties!(T_initial, wk.cp, wk.λ, cp_coeffs, k_coeffs)
 
-  # Boundary condition
-  bc_set = set_dhcp_bc_parameters()
-  print_boundary_conditions(bc_set)
-  apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set)
+  # Boundary condition（引数で渡されない場合はデフォルトを使用）
+  bc = isnothing(bc_set) ? set_dhcp_bc_parameters() : bc_set
+  print_boundary_conditions(bc)
+  apply_boundary_conditions!(wk.θ, wk.λ, wk.cp, wk.mask, bc)
 
   # HC配列を生成
-  HC = set_BC_coef(bc_set)
+  HC = set_BC_coef(bc)
 
 # 時間積分ループ
   for t in 2:nt
@@ -254,12 +275,12 @@ function solve_dhcp!(
     apply_temporal_initial_guess!(wk.θ, T_all, t, use_previous_solution, extrapolation)
 
     # Z+方向のみ時間とともに更新
-    apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc_set.z_plus, :z_plus)
+    apply_face_boundary!(wk.θ, wk.λ, wk.cp, wk.mask, bc.z_plus, :z_plus)
 
     # work.b (RHS)の計算
     calRHS!(wk, dx, dy, dt, dz,
       @view(q_surface[:, :, t-1]),
-      bc_set, true, ρ, par)
+      bc, true, ρ, par)
 
     # 適応的収束基準の計算
     current_tol = rtol
