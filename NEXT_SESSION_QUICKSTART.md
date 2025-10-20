@@ -3,8 +3,8 @@
 ## 📌 現在地
 
 **ブランチ**: `sliding-window-validation`
-**最新コミット**: `f0e7fd4` - 次セッション用TODO作成
-**日時**: 2025年10月21日
+**最新コミット**: `3836f0c` - セッション2サマリー追加
+**日時**: 2025年10月21日 03:30 JST
 
 ---
 
@@ -17,107 +17,112 @@ git status
 git log --oneline -3
 ```
 
-### 2. 問題の核心を確認（10秒）
+### 2. 前セッションの成果確認（5秒）
 ```bash
-# Python版の最初の10ステップ（正常）
-echo "=== Python版 ==="
-grep "^\[t=" shared/results/python_phase1_fixed.log | head -10
+# Python版Phase 1成功確認
+ls -lh shared/results/python_sliding_window_cgm3.npz
+# → 19MB、23ウィンドウ完了
 
-# Julia版は発散のためログなし
-echo ""
-echo "=== Julia版: 発散のため再実行が必要 ==="
+# Julia版小規模テスト成功確認
+ls -lh shared/results/julia_debug_small.log
+# → window=10で成功
 ```
 
-### 3. 小規模テスト実行（30秒）
+### 3. 中規模テスト実行（開始）（5分）
 ```bash
-# 小さなウィンドウで問題を再現
+# Julia版window=40でテスト（二分探索の開始）
 julia --project=julia julia/scripts/run_sliding_window_validation.jl \
-  --cgm-iter 1 --window 10 --nt 20 \
-  > shared/results/julia_debug_10steps.log 2>&1 &
+  --cgm-iter 1 --window 40 --nt 70 \
+  > shared/results/julia_window40.log 2>&1 &
 
 # ログ監視
-tail -f shared/results/julia_debug_10steps.log
+tail -f shared/results/julia_window40.log
 # Ctrl+Cで停止
+
+# 5分後に結果確認
+tail -50 shared/results/julia_window40.log
 ```
 
 ---
 
 ## 🎯 最優先タスク（30分以内）
 
-### タスク1: ウィンドウ1の最初の比較（10分）
+### タスク1: 発散境界の特定（20分）
 
-**目的**: PythonとJuliaで最初のステップから違いがあるかを確認
+**目的**: どのウィンドウサイズから発散するかを二分探索で特定
 
-**実行**:
-```bash
-# Python版: ウィンドウ1の最初の10ステップ
-grep "^\[t=" shared/results/python_phase1_fixed.log | \
-  awk '{print $1, "iters="$4, "Res_0="$7}' | head -10
+**現状**:
+- window=10: ✅ 成功（確認済み）
+- window=71: ❌ t=61から発散（確認済み）
 
-# Julia版: 小規模テスト実行後に同じ形式で出力
-grep "^\[t=" shared/results/julia_debug_10steps.log | \
-  awk '{print $1, "Res_0="$7}' | head -10
-```
+**二分探索手順**:
+1. window=40を試す（中間地点）
+2. 成功なら → window=55を試す
+3. 失敗なら → window=25を試す
+4. 境界が見つかるまで繰り返す
 
-**期待**: 最初のステップで既に残差が違うなら、初期化の問題。同じなら途中からの問題。
+**期待結果**: 例「window=35まで成功、window=40から発散」
 
-### タスク2: インデックス確認（10分）
+### タスク2: ソルバー設定の調整（10分）
 
-**疑いのある箇所**:
+発散境界が見つかったら、以下の設定を試す：
+
+**1. 許容誤差を厳しくする**
 ```julia
-# julia/scripts/run_sliding_window_validation.jl:283
-Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]
+# julia/scripts/run_sliding_window_validation.jl
+# 修正候補:
+rtol_dhcp: 1.0e-6 → 1.0e-8
+rtol_adjoint: 1.0e-8 → 1.0e-10
 ```
 
-**確認**:
-1. `start_idx`の初期値は0（Julia: 0-indexed風に使用）
-2. しかし配列スライスは1-indexedなので `start_idx+1` が必要
-3. Python版との対応を確認
+**2. 前処理を変更**
+```julia
+dhcp_smoother: :jacobi → :ssor
+adjoint_smoother: :jacobi → :ssor
+```
 
-### タスク3: 配列次元の確認（10分）
-
-**Python版**:
-- Y_obs形状: `(nt, ni, nj)`
-- スライス: `Y_obs[start:end+1, :, :]`
-
-**Julia版**:
-- Y_obs形状: `(ni, nj, nt)`
-- スライス: `Y_obs[:, :, start+1:end+1]`
-
-**確認**: 次元の順序が正しく変換されているか
+**3. テスト実行**
+```bash
+# 修正後、発散したウィンドウサイズで再テスト
+julia --project=julia julia/scripts/run_sliding_window_validation.jl \
+  --cgm-iter 1 --window XX --nt YY \
+  > shared/results/julia_windowXX_fixed.log 2>&1
+```
 
 ---
 
 ## 🔍 問題の詳細
 
-### 観察された事実
+### セッション2で判明した事実
 
-1. **Python版は完全に正常**
-   - 反復数: 16-17回/ステップ
-   - 残差: 3.6e-1 → 5.3e-3
-   - 実行時間: 251秒
+1. **Python版は完全成功** ✅
+   - 23ウィンドウ完了、約4分
+   - 残差は安定（5e-3レベル）
+   - 結果: `python_sliding_window_cgm3.npz` (19MB)
 
-2. **Julia版は発散**
-   - t=61: Res_0=51.93（100倍大きい！）
-   - t=64: Res_0=659.49（発散開始）
-   - t=71: Res_0=1.88e21（完全発散）
+2. **Julia版の問題はウィンドウサイズ依存** ❌
+   - window=10: ✅ 成功
+   - window=71: ❌ t=61から発散
+   - 残差がPython版の**9000倍**（51.93 vs 5.63e-3）
 
-3. **シングルウィンドウテストは成功**
-   - Julia版の基本実装は正しい
-   - 問題はスライディングウィンドウ固有
+3. **配列インデックス・データ形状は正しい** ✅
+   - Python版: `(300, 80, 100)` 正しくスライス
+   - Julia版: `(80, 100, 300)` 正しく変換済み
+   - ウィンドウスライスも正しい（両方とも72個の時刻）
 
 ### 推測される原因（優先度順）
 
-1. **配列インデックスのズレ（90%）**
-   - PythonとJuliaで配列次元が逆
-   - スライディングウィンドウのインデックス計算が間違っている
+1. **ウィンドウサイズ依存の数値安定性問題（80%）**
+   - 大きなウィンドウで数値誤差が蓄積
+   - 対策: 許容誤差を厳しく、前処理を改善
 
-2. **ウィンドウ間継承の問題（8%）**
-   - 前のウィンドウの温度場が正しく継承されていない
-   - しかし、ウィンドウ1でも問題があるなら関係ない
+2. **ソルバー実装の微妙な違い（15%）**
+   - PCG前処理の違い（jacobi vs ssor）
+   - 対策: Python版と同じ設定に変更
 
-3. **数値精度の問題（2%）**
-   - 可能性は低い（シングルウィンドウは成功）
+3. **初期化の問題（5%）**
+   - t=61までは正常に動作
+   - 対策: 詳細ログで確認
 
 ---
 
