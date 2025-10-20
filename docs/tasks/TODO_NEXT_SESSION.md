@@ -1,275 +1,271 @@
-# 次セッション作業ガイド - ソルバー最適化完了
+# 次セッション作業ガイド - スライディングウィンドウ検証
 
-**作成日時**: 2025年10月17日 22:30
-**ブランチ**: `main`
-**前回セッション**: ソルバー・前処理の組み合わせ比較完了
-
----
-
-## 🎉 本セッションの大きな成果
-
-### ✅ 最適なソルバー設定を発見！
-
-**実行内容**: 2つのソルバー（PBICGSTAB, PCG）× 3つの前処理（none, jacobi, gs）の組み合わせを比較
-
-**結果**: 🏆 **PCG + none が最速**（24.05秒）
-
-| ソルバー | 前処理 | CGM実行時間 | DHCP平均反復 | Adjoint平均反復 | Sensitivity平均反復 |
-|---------|--------|------------|-------------|----------------|-------------------|
-| **PCG** | **none** | **24.05秒** 🏆 | 96.7 | 94.6 | 79.6 |
-| PCG | gs | 27.69秒 | 19.0 | 17.4 | 23.3 |
-| PBICGSTAB | none | 29.33秒 | 62.0 | 59.9 | 54.2 |
-| PBICGSTAB | gs | 29.48秒 | 11.7 | 10.1 | 10.7 |
-| PBICGSTAB | jacobi | 37.50秒 | 15.0 | 12.4 | 12.4 |
-| PCG | jacobi | 異常終了 ❌ | - | - | - |
+**作成日**: 2025年10月21日
+**ブランチ**: `sliding-window-validation`
+**最終コミット**: `6d4e5cb` - Julia診断機能とスライディングウィンドウ検証スクリプト作成
 
 ---
 
-## 📊 重要な発見：前処理の効果が逆転
+## 現在の状況
 
-### 従来の常識
-- 前処理あり → 反復回数減少 → 高速化
+### 完了した作業 ✅
 
-### 体積積分形式での実態
-- **前処理なし → 1反復が軽量 → 高速化**
-- PCG + none: 1反復あたり約**8ms**
-- PBICGSTAB + gs: 1反復あたり約**84ms**（10倍遅い！）
+1. **計画書作成** (b4a8e59)
+   - `docs/plans/sliding_window_validation_plan.md` (詳細計画、9章構成)
+   - `docs/plans/sliding_window_validation_plan_summary.md` (クイックサマリー)
 
-### なぜPCG + noneが速いのか？
+2. **Python側実装** (27c040d)
+   - `python/validation/solvers_with_diagnostics.py` (450行)
+     - 診断機能付きソルバー（DHCP/Adjoint）
+     - 反復回数・残差・実行時間を記録
+   - `python/validation/run_sliding_window_validation.py` (380行)
+     - スライディングウィンドウ検証スクリプト
+     - コマンドライン引数対応
 
-1. **行列フリー実装の軽量性**
-   - 前処理のオーバーヘッドがない
-   - メモリアクセスパターンが単純
+3. **Julia側実装** (6d4e5cb)
+   - `julia/src/solvers/SolverDiagnostics.jl` (110行)
+     - 診断情報構造体（Python互換）
+   - `julia/scripts/run_sliding_window_validation.jl` (570行)
+     - スライディングウィンドウ検証スクリプト
+     - Python版と同等の機能
+   - `julia/src/IHCP_CGM.jl` (SolverDiagnostics統合)
 
-2. **体積積分形式の対角優位性**
-   - 前処理なしでも収束性が十分良い
-   - 反復回数が多くても総実行時間で有利
+### 残りの作業 ⏳
 
-3. **キャッシュ効率**
-   - シンプルな演算パターンでCPUキャッシュが効く
+#### 1. 比較スクリプト作成 🔥 **次の最優先タスク**
+- [ ] `python/validation/compare_sliding_window_results.py` 作成
+  - Python/Julia両方の結果を読み込み
+  - ウィンドウごとの詳細比較
+  - Markdownレポート生成
+
+#### 2. Phase 1実行（CGM 3回）
+- [ ] Python実行: `python python/validation/run_sliding_window_validation.py --cgm-iter 3`
+- [ ] Julia実行: `julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 3`
+- [ ] 比較実行: `python python/validation/compare_sliding_window_results.py --phase 1`
+- [ ] 結果確認・問題修正
+
+#### 3. Phase 2実行（CGM 20000回）
+- [ ] Python実行: `python python/validation/run_sliding_window_validation.py --cgm-iter 20000`
+- [ ] Julia実行: `julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 20000`
+- [ ] 比較実行: `python python/validation/compare_sliding_window_results.py --phase 2`
+- [ ] 詳細分析
 
 ---
 
-## 🔧 本セッションで完了した作業
+## 次セッション開始手順
 
-### 1. npzwriteエラーの修正（完了）
-- [x] 文字列保存エラーを修正
-- [x] ソルバー情報を別ファイル（`_metadata.txt`）に保存
-- [x] `run_10steps_fullsize_test.jl`の353-360行を修正
+### 1. 環境確認
 
-### 2. 5つのソルバー組み合わせを実行（完了）
-- [x] PBICGSTAB + none（29.33秒）
-- [x] PBICGSTAB + jacobi（37.50秒）
-- [x] PBICGSTAB + gs（29.48秒）
-- [x] PCG + none（24.05秒）🏆
-- [x] PCG + jacobi（異常終了、スキップ）
-- [x] PCG + gs（27.69秒）
-
-### 3. 結果のドキュメント化（完了）
-- [x] `shared/results/solver_comparison/summary.md`作成
-- [x] 各実行のログファイル保存（5ファイル）
-- [x] 比較表と詳細分析を記載
-
----
-
-## 🚀 次セッションの作業内容
-
-### 優先度1: PCG + none の詳細プロファイリング（高優先度）
-
-#### Task 1.1: PCG + none でPhase 1-Eと同条件での比較
 ```bash
-# 現在のベースライン（Phase 1-E）: 841.20秒（PBICGSTAB + GS）
-# PCG + none の結果: 24.05秒
-
-# Phase 1-Eの条件で再実行（100ステップ推奨）
-julia --project=julia julia/scripts/run_10steps_fullsize_test.jl \
-  --solver pcg --precond none
+cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
+git status
+git branch
+# 確認: sliding-window-validation ブランチにいること
 ```
 
-**期待結果**:
-- 10ステップ: 24秒 → 100ステップ: 240秒程度
-- Phase 1-E（841秒）から**71%高速化**を達成
+### 2. 最新状態の取得
 
-#### Task 1.2: プロファイリングで詳細分析
 ```bash
-# どの部分が速いのかを特定
-julia --project=julia --track-allocation=user \
-  julia/scripts/run_10steps_fullsize_test.jl \
-  --solver pcg --precond none
+git pull origin sliding-window-validation
+git log --oneline -5
+# 確認: 6d4e5cb が最新コミット
 ```
 
-**調査ポイント**:
-- PCGの内部ループはどこで時間を使っているか？
-- メモリアロケーションはどの程度？
-- さらなる最適化の余地はあるか？
+### 3. 計画書の確認
 
----
-
-### 優先度2: 長時間ステップでの安定性検証（中優先度）
-
-#### Task 2.1: 100ステップでのフルテスト
 ```bash
-# 長時間実行での安定性確認
-julia --project=julia julia/scripts/run_100steps_fullsize_test.jl \
-  --solver pcg --precond none
+# クイックサマリー確認
+cat docs/plans/sliding_window_validation_plan_summary.md
+
+# 詳細計画確認（必要に応じて）
+cat docs/plans/sliding_window_validation_plan.md
 ```
 
-**確認事項**:
-- 収束性は維持されるか？
-- 精度劣化はないか？
-- 実行時間は線形にスケールするか？
+### 4. 比較スクリプト作成（最優先）
 
-#### Task 2.2: 他のテストケースでの検証
+**作成ファイル**: `python/validation/compare_sliding_window_results.py`
+
+**必要機能**:
+```python
+# 引数パース
+--phase 1 or 2
+--python-result shared/results/python_sliding_window_cgm{N}.npz
+--julia-result shared/results/julia_sliding_window_cgm{N}.npz
+--output-report shared/results/sliding_window_comparison_cgm{N}.md
+
+# 比較項目
+1. 性能比較
+   - 総実行時間
+   - ウィンドウあたりの平均時間
+   - 各ソルバーの累積実行時間（将来拡張）
+
+2. 精度比較
+   - 熱流束誤差: 絶対誤差、相対誤差、RMS誤差
+   - 温度場誤差（最終状態）
+   - ウィンドウごとの目的関数値比較
+
+3. 収束性比較
+   - 各ウィンドウのCGM反復回数
+   - J_history比較（目的関数推移）
+```
+
+**出力レポート例**:
+```markdown
+# Python-Julia スライディングウィンドウ比較レポート
+
+## 1. 実行環境
+- CGM反復数: 3
+- 時間ステップ数: 300
+- ウィンドウサイズ: 71, オーバーラップ: 17
+
+## 2. 性能比較
+| 項目 | Python | Julia | Julia/Python比 |
+|------|--------|-------|----------------|
+| 総実行時間 | 123.45s | 67.89s | 54.9% |
+| 平均ウィンドウ時間 | 20.58s | 11.32s | 55.0% |
+
+## 3. 精度比較
+### 3.1 熱流束誤差
+- 絶対誤差: max=1.23e-3, mean=4.56e-5, RMS=7.89e-5
+- 相対誤差: max=2.34%, mean=0.12%, RMS=0.45%
+
+### 3.2 ウィンドウ別比較
+...
+```
+
+---
+
+## 実行パラメータ（計画書より）
+
+### 共通パラメータ
+```
+格子: 80 × 100 × 20 (フルサイズ)
+時間ステップ: 300
+dt: 1.0e-3 s
+ウィンドウサイズ: 71
+オーバーラップ: 17
+予想ウィンドウ数: 約6
+```
+
+### Phase 1（短時間確認）
+```
+CGM反復数: 3回固定
+目的: スクリプト動作確認、基本一致性検証
+推定実行時間: Python約15分、Julia約5分
+```
+
+### Phase 2（本格検証）
+```
+CGM反復数: 20000回（早期停止あり）
+目的: オリジナルと同じ設定での完全比較
+推定実行時間: 状況により変動
+```
+
+---
+
+## 成功基準
+
+### Phase 1（必須）
+- [ ] 両スクリプトがエラーなく完走
+- [ ] 熱流束相対誤差 < 5%
+- [ ] ウィンドウ数の一致
+- [ ] 各ウィンドウの目的関数値が近い（相対誤差<10%）
+
+### Phase 2（目標）
+- [ ] 温度場相対誤差 < 2%
+- [ ] 熱流束相対誤差 < 1%
+- [ ] CGM収束挙動の一致（反復回数の差<20%）
+- [ ] Julia実行時間がPythonの50%以下
+
+---
+
+## 既知の課題・注意事項
+
+### 1. データファイルの確認
+- `shared/data/T_measure_700um_1ms.npy` (1.1GB) が必要
+- 存在しない場合は別途取得
+
+### 2. メモリ使用量
+- フルサイズ計算: 8GB以上推奨
+- メモリ不足時はウィンドウサイズを縮小（71→50）
+
+### 3. Pythonスクリプトの依存関係
+- scipy.sparse.linalg.cg使用
+- オリジナルコードの関数をインポート
+  - thermal_properties_calculator
+  - coeffs_and_rhs_building_DHCP
+  - assemble_A_DHCP
+  - coeffs_and_rhs_building_Adjoint
+  - assemble_A_Adjoint
+
+### 4. Juliaスクリプトの依存関係
+- ArgParse.jl（コマンドライン引数解析）
+- NPZ.jl（Python互換npz形式保存）
+- 既存のIHCP_CGM.jlモジュール
+
+---
+
+## 関連ドキュメント
+
+### 必読
+- **計画書**: `docs/plans/sliding_window_validation_plan.md`
+- **サマリー**: `docs/plans/sliding_window_validation_plan_summary.md`
+
+### 参考
+- オリジナルPythonコード: `python/original/IHCP_CGM_Sliding_Window_Calculation_ver2.py`
+- シングルウィンドウテスト: `julia/scripts/run_10steps_fullsize_test.jl`
+- 過去の検証結果: `shared/results/python_julia_10steps_baseline_comparison.md`
+
+---
+
+## クイックスタートコマンド
+
+### 比較スクリプト作成後
+
 ```bash
-# 小規模格子での精度確認
-julia --project=julia julia/scripts/test_dhcp_convection.jl 10 10
+# Phase 1: 動作確認（CGM 3回）
+python python/validation/run_sliding_window_validation.py --cgm-iter 3
+julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 3
+python python/validation/compare_sliding_window_results.py --phase 1
 
-# 全テストスイートの実行
-julia --project=julia julia/test/runtests.jl
-```
-
-**期待結果**:
-- 179 passed, 2 broken（既知の課題）
-- ソルバー変更による影響なし
-
----
-
-### 優先度3: ドキュメント整理と次の最適化方針（低優先度）
-
-#### Task 3.1: プロジェクトドキュメントの更新
-- [ ] `docs/reports/SOLVER_OPTIMIZATION_FINAL.md`の作成
-- [ ] `.claude/CLAUDE.md`にPCG + none を標準設定として記載
-- [ ] `docs/tasks/TODO_NEXT_SESSION.md`の更新（本ファイル）
-
-#### Task 3.2: 次の最適化ターゲットの検討
-- [ ] PCGの内部実装のチューニング可能性
-- [ ] 並列化の検討（Threads.@threadsの活用）
-- [ ] メモリアロケーション削減の余地
-
----
-
-## 📝 重要なファイル
-
-### 新規作成ファイル
-- `shared/results/solver_comparison/summary.md`: ソルバー比較結果サマリー
-- `shared/results/solver_comparison/pbicgstab_none.log`: PBICGSTAB + none 実行ログ
-- `shared/results/solver_comparison/pbicgstab_jacobi.log`: PBICGSTAB + jacobi 実行ログ
-- `shared/results/solver_comparison/pbicgstab_gs.log`: PBICGSTAB + gs 実行ログ
-- `shared/results/solver_comparison/pcg_none.log`: PCG + none 実行ログ
-- `shared/results/solver_comparison/pcg_gs.log`: PCG + gs 実行ログ
-
-### 変更されたファイル
-- `julia/scripts/run_10steps_fullsize_test.jl`:
-  - npzwrite順序の修正（行353-360）
-  - ソルバー情報を別ファイルに保存
-
-### 実行結果ファイル
-- `shared/results/julia_10steps_fullsize.npz`: 最新結果（PCG + gs、27.69秒）
-- `shared/results/julia_10steps_fullsize_metadata.txt`: ソルバー設定情報
-
----
-
-## 🔍 次セッション開始時のチェックリスト
-
-1. **ブランチ確認**
-   ```bash
-   git status
-   git log --oneline -5
-   ```
-   - 期待: 直近のコミットにソルバー比較結果が反映
-
-2. **結果ファイルの存在確認**
-   ```bash
-   ls -lh shared/results/solver_comparison/
-   ```
-   - 期待: `summary.md` と 5つのログファイルが存在
-
-3. **PCG + none で動作確認**
-   ```bash
-   # クイックテスト（30秒以内）
-   julia --project=julia julia/scripts/run_10steps_fullsize_test.jl \
-     --solver pcg --precond none 2>&1 | head -50
-   ```
-
----
-
-## 🎯 成果の要約
-
-### 技術的な成果
-1. **最適なソルバー設定を発見**: PCG + none（24.05秒）
-2. **Phase 1-Eから97.1%高速化**: 841秒 → 24.05秒
-3. **前処理の効果が逆転**: 体積積分形式では前処理なしが最速
-4. **1反復コストを10倍削減**: PBICGSTAB + gs（84ms）→ PCG + none（8ms）
-
-### プロジェクトへの影響
-- ✅ 体積積分形式 + PCG + none で最終形態が確定
-- ✅ Phase 1-Eの性能目標（50-60%改善）を大幅に上回る
-- ✅ 実用レベルの実行時間を達成
-- 🎯 **プロジェクトの主要目標（性能改善）を完全達成！**
-
----
-
-## 💡 次セッションでのClaude指示例
-
-```
-TODO_NEXT_SESSION.mdを確認してください。
-
-本セッションでソルバー・前処理の組み合わせ比較を完了し、
-PCG + none が最速（24.05秒）であることを発見しました。
-Phase 1-E（841秒）から97.1%の高速化を達成しています。
-
-次は、PCG + none の詳細プロファイリングを行い、
-さらなる最適化の可能性を探りましょう。
-
-まず、100ステップでのフルテストを実行してください。
+# Phase 2: 本格検証（CGM 20000回） - Phase 1成功後
+python python/validation/run_sliding_window_validation.py --cgm-iter 20000
+julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 20000
+python python/validation/compare_sliding_window_results.py --phase 2
 ```
 
 ---
 
-## 📚 参照ドキュメント
+## Todoリスト（優先順位順）
 
-- **ソルバー比較結果**: `shared/results/solver_comparison/summary.md`
-- **実行ログ**: `shared/results/solver_comparison/*.log`
-- **性能ベースライン**: `shared/results/performance_phase1e_adaptive_tolerance.md`
-- **プロジェクト設定**: `.claude/CLAUDE.md`
-
----
-
-## ⚠️ 注意事項
-
-### 既知の課題
-1. **PCG + jacobi が異常終了**
-   - Adjoint求解で時間がかかりすぎる
-   - PCGとJacobi前処理の相性問題の可能性
-   - 今後の調査対象（低優先度）
-
-2. **100ステップでの長時間安定性は未検証**
-   - 10ステップでは正常動作
-   - 長時間実行での数値安定性確認が必要
-
-3. **並列化は未実装**
-   - 現在はシングルスレッド実行
-   - マルチスレッド化でさらなる高速化の余地
-
-### 今後の検討事項
-- PCGの内部実装の最適化
-- メモリアロケーション削減
-- 並列化（Threads.@threads）の検討
-- GPU実装の可能性（将来課題）
+1. 🔥 **比較スクリプト作成** - 最優先
+2. Phase 1実行（CGM 3回）
+3. Phase 1結果確認・問題修正
+4. Phase 2実行（CGM 20000回）
+5. Phase 2詳細分析
+6. 最終レポート作成
+7. プルリクエスト作成（mainブランチへマージ）
 
 ---
 
-## 📈 性能改善の歴史
+## 連絡先・リソース
 
-| マイルストーン | 実行時間 | 改善率 | 手法 |
-|--------------|---------|--------|------|
-| Phase 1-E (ベースライン) | 841.20秒 | - | PBICGSTAB + GS |
-| 体積積分形式 | 29.48秒 | 96.5% | PBICGSTAB + GS |
-| **PCG + none（現在）** | **24.05秒** | **97.1%** | **PCG + none** |
-| 目標（100ステップ換算） | 240秒 | 71% | PCG + none |
+- **プロジェクトルート**: `/Users/Daily/Development/IHCP/TrialClaudeMCPCodex`
+- **ブランチ**: `sliding-window-validation`
+- **リモート**: `origin/sliding-window-validation`
 
 ---
 
-**End of Document**
+**次セッションの目標**: 比較スクリプトを作成し、Phase 1（CGM 3回）を実行して基本動作を確認する。
 
-次セッションでの成功を祈ります！🚀
+**推定所要時間**:
+- 比較スクリプト作成: 30-60分
+- Phase 1実行: 20-30分（Python 15分 + Julia 5分 + 比較）
+- 問題修正（必要に応じて）: 30-60分
+
+**合計**: 約2-3時間
+
+---
+
+**作成者**: Claude Code
+**最終更新**: 2025年10月21日
