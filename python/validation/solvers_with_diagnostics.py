@@ -103,7 +103,8 @@ def cg_with_counter(A, b, M=None, x0=None, rtol=1e-5, maxiter=None):
 def multiple_time_step_solver_DHCP_with_diagnostics(
     T_initial, q_surface, nt, rho, cp_coeffs, k_coeffs,
     dx, dy, dz, dz_b, dz_t, dt, rtol, maxiter,
-    thermal_properties_calculator, coeffs_and_rhs_building_DHCP, assemble_A_DHCP
+    thermal_properties_calculator, coeffs_and_rhs_building_DHCP, assemble_A_DHCP,
+    verbose=False
 ):
     """
     診断機能付きDHCPソルバー
@@ -155,6 +156,10 @@ def multiple_time_step_solver_DHCP_with_diagnostics(
 
         # 診断情報追加
         diagnostics.add_timestep(iters, init_resid, final_resid, info)
+
+        # Julia版と同じ形式で詳細ログ出力
+        if verbose:
+            print(f"[t={t}/{nt-1}] converged: Iteration= {iters:2d} : Res_0= {init_resid:.15e} : time={time.time()-start_time:.4f}")
 
         if info != 0:
             if info > 0:
@@ -306,7 +311,8 @@ def global_CGM_time_with_diagnostics(
             rtol=1e-6, maxiter=20000,
             thermal_properties_calculator=thermal_properties_calculator,
             coeffs_and_rhs_building_DHCP=coeffs_and_rhs_building_DHCP,
-            assemble_A_DHCP=assemble_A_DHCP
+            assemble_A_DHCP=assemble_A_DHCP,
+            verbose=verbose
         )
         iter_diagnostics['dhcp'] = dhcp_diag.summary()
 
