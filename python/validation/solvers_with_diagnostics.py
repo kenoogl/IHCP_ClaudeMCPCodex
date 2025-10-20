@@ -185,11 +185,12 @@ def multiple_time_step_solver_Adjoint_with_diagnostics(
         assemble_A_Adjoint: 行列組み立て関数（随伴）
 
     Returns:
-        lambda_all: 随伴場 (nt-1, ni, nj, nk)
+        lambda_all: 随伴場 (nt, ni, nj, nk) ※最後はゼロ
         diagnostics: SolverDiagnosticsオブジェクト
     """
     ni, nj, nk = T_cal.shape[1:4]
-    lambda_all = np.empty((nt - 1, ni, nj, nk))
+    lambda_all = np.zeros((nt, ni, nj, nk))  # nt個確保、最後はゼロ初期化
+    lambda_all[-1] = 0  # 最終ステップはゼロ
 
     diagnostics = SolverDiagnostics()
     start_time = time.time()
@@ -199,8 +200,10 @@ def multiple_time_step_solver_Adjoint_with_diagnostics(
     for n in range(nt - 2, -1, -1):
         cp, k = thermal_properties_calculator(T_cal[n], cp_coeffs, k_coeffs)
 
+        lambda_initial = lambda_all[n + 1]
+
         a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = coeffs_and_rhs_building_Adjoint(
-            lambda_field[n + 1], T_cal[n], Y_obs[n + 1], rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
+            lambda_initial, T_cal[n], Y_obs[n + 1], rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
         )
 
         A_csr = assemble_A_Adjoint(ni, nj, nk, a_w, a_e, a_s, a_n, a_b, a_t, a_p)
