@@ -10,10 +10,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ Phase A-D完了（マトリクスフリーPBICGSTAB!実装）
 - ✅ Python版と同等の結果達成（温度場誤差1.06%、CGM反復1回）
 - ✅ 性能ベースライン取得（22fde2d: 1072.43秒、80×100×20格子、10ステップ）
-- 🎯 **現在のミッション**: 性能改善（目標: 50-60%高速化 → 400-500秒）
+- ✅ 性能改善完了（PCG + none前処理で最速達成）
+- 🎯 **現在のミッション**: スライディングウィンドウ計算のPython-Julia完全比較検証
 
-**現在のブランチ**: tuning3
-**最終更新**: 2025年10月11日
+**現在のブランチ**: main
+**最終更新**: 2025年10月21日
+
+**進行中のタスク**:
+- スライディングウィンドウ計算の比較検証（Phase 1: CGM 3回、Phase 2: CGM 20000回）
+- 詳細: `docs/plans/sliding_window_validation_plan.md`
 
 ## 実行方法
 
@@ -126,10 +131,14 @@ julia --project=julia julia/test/runtests.jl  # 全テスト再実行
 
 ## 重要な参照ドキュメント
 
-- **性能改善提案書**: `docs/performance_improvement_proposals.md`（現在のミッション）
+### 現在進行中
+- **スライディングウィンドウ検証計画**: `docs/plans/sliding_window_validation_plan.md` ⭐ 最優先
+
+### 過去の成果
+- **性能改善提案書**: `docs/plans/performance_improvement_proposals.md`
 - **性能ベースライン**: `shared/results/performance_22fde2d.md`
-- **完成度チェックリスト**: `docs/FINAL_CHECKLIST.md`
-- **プロジェクト完成報告**: `docs/PROJECT_COMPLETION.md`
+- **完成度チェックリスト**: `docs/tasks/FINAL_CHECKLIST.md`
+- **プロジェクト完成報告**: `docs/reports/PROJECT_COMPLETION.md`
 
 ## Python-Julia精度検証結果
 
