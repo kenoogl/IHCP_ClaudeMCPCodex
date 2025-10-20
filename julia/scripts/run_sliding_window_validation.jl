@@ -174,6 +174,7 @@ function solve_cgm_with_diagnostics!(
     cgm_diagnostics = CGMIterDiag[]
 
     # CGMパラメータ設定
+    # 注: 前処理にGauss-Seidelを使用（性能最適化）
     cgm_params = (
         max_iter = cgm_max_iter,
         sigma = 1.8,
@@ -190,11 +191,11 @@ function solve_cgm_with_diagnostics!(
         dhcp_extrapolation = :quadratic,
         adjoint_residual_scale = 0.5,
         dhcp_solver = :pcg,
-        dhcp_smoother = :none,
+        dhcp_smoother = :gs,  # Gauss-Seidel前処理
         adjoint_solver = :pcg,
-        adjoint_smoother = :none,
-        sensitivity_solver = :pcg,
-        sensitivity_smoother = :none
+        adjoint_smoother = :gs,  # Gauss-Seidel前処理
+        sensitivity_solver = :pbicgstab,
+        sensitivity_smoother = :gs
     )
 
     # 既存のsolve_cgm!を呼び出し
