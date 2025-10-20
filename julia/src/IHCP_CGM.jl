@@ -36,6 +36,7 @@ include("ThermalProperties.jl")
 include("DataLoaders.jl")
 
 # Phase 2-5モジュールのインクルード
+include("solvers/SolverDiagnostics.jl")
 include("solvers/RHSCore.jl")
 include("solvers/CommonSolver.jl")
 include("solvers/AdaptiveTolerance.jl")
@@ -54,6 +55,7 @@ include("utils/data_loaders.jl")
 using .Commons
 using .ThermalProperties
 using .DataLoaders
+using .SolverDiagnostics
 using .RHSCore
 using .CommonSolver
 using .AdaptiveTolerance
@@ -83,6 +85,7 @@ export extract_sorted_mat_files, load_region_temperature
 export WorkBuffers, λf
 export AdaptiveToleranceParams, compute_adaptive_tol, compute_relative_change
 export generate_guard_cell_grid
+export SolverDiag, TimeStepDiag, CGMIterDiag, add_timestep!, summary
 
 # バージョン情報
 const VERSION = v"0.6.0"
