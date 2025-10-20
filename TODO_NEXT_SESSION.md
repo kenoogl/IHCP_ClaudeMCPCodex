@@ -1,281 +1,272 @@
-# 次セッションの作業内容
+# 次セッションTODO
 
-**最終更新**: 2025年10月21日 03:30 JST
-**ブランチ**: `sliding-window-validation`
+**日時**: 2025年10月21日 03:44
+**ブランチ**: sliding-window-validation
+**状態**: Julia版スライディングウィンドウ発散問題調査中
 
-## 現在の状況（2025-10-21 セッション2完了）
+## 🎯 現在の状況
 
-### ✅ 完了した作業
+### 問題の特定
+Julia版の`run_sliding_window_validation.jl`でスライディングウィンドウ計算を実行すると、**ウィンドウ1のt=63から発散**が始まる。
 
-1. **Python版Phase 1完全成功** ✅
-   - 実行時間: 約4分
-   - 23ウィンドウ完了、CGM 3回
-   - 結果ファイル: `shared/results/python_sliding_window_cgm3.npz` (19MB)
-   - ログ: `shared/results/python_phase1_fixed.log` (166KB)
+### 重要な発見 ✅
 
-2. **Julia版の問題調査完了** ✅
-   - window=10: 成功 ✅
-   - window=71: t=61から発散 ❌
-   - 原因特定: **ウィンドウサイズ依存の数値安定性問題**
+1. **ウィンドウ1単体では正常動作**
+   - `test_window1_comparison.py`: Python版完了、全収束 ✅
+   - `test_window1_comparison.jl`: Julia版CGM反復1まで完了、全収束 ✅
+   - **結論**: 単一ウィンドウの計算ロジックは正しい
 
-3. **ドキュメント作成** ✅
-   - `SESSION_SUMMARY_2025-10-21_03.md`
-   - 詳細な調査結果と次のステップを記録
+2. **スライディングウィンドウスクリプトでの発散**
+   - `run_sliding_window_validation.jl`実行時のみ発散
+   - 発散箇所: ウィンドウ1、t=63/72から（残差483→20000回反復でも収束せず）
+   - Python版は同じ条件で正常動作
 
-### ⚠️ 重大な問題発見
+3. **Y_obsスライスの形状問題を発見**
+   - テストスクリプト作成時、Julia版が72ステップ取得していた（正しくは71）
+   - 修正済み: `Y_obs_win = Y_obs_full_julia[:, :, start_idx+1:end_idx+1]`
 
-**Julia版がt=64以降で発散**
+## 🔥 最も疑わしいバグ: Y_obsスライスのオフバイワンエラー
 
-#### 残差の比較（ウィンドウ1、CGM反復0）
+### 問題箇所
 
-**Python版（正常）**:
-```
-t=61: 16回収束, Res_0=5.63e-3 (0.00563)
-t=62: 16回収束, Res_0=5.60e-3 (0.00560)
-t=63: 16回収束, Res_0=5.57e-3 (0.00557)
-t=64: 16回収束, Res_0=5.54e-3 (0.00554)
-```
+**ファイル**: `julia/scripts/run_sliding_window_validation.jl:281-283`
 
-**Julia版（発散）**:
-```
-t=61: 179回収束, Res_0=51.93
-t=62: 1260回収束, Res_0=63.54
-t=63: 17256回収束, Res_0=483.41
-t=64: 20000回発散, Res_0=659.49
-t=65: 20000回発散, Res_0=7998.62
-t=66: 20000回発散, Res_0=7.30e6
-...
-t=71: 20000回発散, Res_0=1.88e21
-```
-
-#### 重要な観察
-
-1. **残差が100倍以上違う**: PythonとJuliaで初期残差が全く異なる
-2. **t=22から兆候**: Julia版はt=22頃から残差が増加傾向
-3. **指数関数的発散**: t=64以降、残差が指数関数的に増加
-
----
-
-## 🎯 次セッションの最優先タスク（30分以内）
-
-### タスク1: Julia版の発散境界を特定（20分）
-
-**目的**: どのウィンドウサイズから発散するかを特定
-
-**現状**:
-- window=10: ✅ 成功確認済み
-- window=71: ❌ t=61から発散確認済み
-
-**実行コマンド**（二分探索で境界を見つける）:
-```bash
-cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
-
-# ステップ1: window=40でテスト（中間地点）
-julia --project=julia julia/scripts/run_sliding_window_validation.jl \
-  --cgm-iter 1 --window 40 --nt 70 \
-  > shared/results/julia_window40.log 2>&1
-
-# 結果確認
-tail -50 shared/results/julia_window40.log
-
-# 成功なら → window=55を試す
-# 失敗なら → window=25を試す
-```
-
-### タスク2: ソルバー設定の調整（10分）
-
-発散境界が見つかったら、以下を試す：
-
-**1. 許容誤差を厳しくする**
 ```julia
-# julia/scripts/run_sliding_window_validation.jlの修正候補
-rtol_dhcp: 1.0e-6 → 1.0e-8
-rtol_adjoint: 1.0e-8 → 1.0e-10
+max_L = min(window_size, (nt - 1) - start_idx)
+end_idx = start_idx + max_L
+Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]
 ```
 
-**2. 前処理を変更**
+### バグの詳細
+
+**ウィンドウ1の場合**:
+- `nt = 300` (Y_obsの全時間ステップ数)
+- `window_size = 71`
+- `start_idx = 0`
+- `max_L = min(71, 299) = 71`
+- `end_idx = 0 + 71 = 71`
+- `Y_obs_win = Y_obs[:, :, 1:72]` → **72ステップ** ❌
+
+**正しくは**:
+- `Y_obs_win = Y_obs[:, :, 1:71]` → **71ステップ** ✅
+- または `end_idx = 70` にすべき
+
+### 影響
+
+- Y_obsが72ステップ、q_initが70ステップで**ステップ数不一致**
+- CGMソルバー内でインデックスエラーや配列アクセス違反
+- 結果として数値的に不安定になり発散
+
+### 修正案
+
+**オプション1**: スライスを明示的に指定
 ```julia
-dhcp_smoother: :jacobi → :ssor
-adjoint_smoother: :jacobi → :ssor
+Y_obs_win = Y_obs[:, :, start_idx+1:start_idx+max_L+1]
 ```
 
-### タスク3: 最初のステップの詳細比較
+**オプション2**: end_idxの計算を修正
+```julia
+end_idx = start_idx + max_L - 1  # 71ではなく70
+Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]  # 1:71
+```
 
-**確認項目**:
-1. 初期温度場（T_init）の値
-2. 観測データ（Y_obs）の値
-3. 初期熱流束（q_init）の値
-4. DHCPソルバーの係数行列の値
-5. 前処理の有無
+## 🔍 次セッションの最優先タスク
 
-### タスク4: インデックスの確認
+### タスク1: Y_obsスライスの修正と検証 🚨最優先（5分）
 
-**疑われる原因**:
-- Python: 0-indexed、配列形状 (nt, ni, nj)
-- Julia: 1-indexed、配列形状 (ni, nj, nt)
+1. **修正実施**
+   ```julia
+   # julia/scripts/run_sliding_window_validation.jl:283を修正
+   # 修正前
+   Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]
 
-**確認ファイル**:
-- `julia/scripts/run_sliding_window_validation.jl:283`
-  ```julia
-  Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]
-  ```
-- Python版:
-  ```python
-  Y_obs_win = Y_obs[start_idx: end_idx + 1, :, :]
-  ```
+   # 修正後（オプション1推奨）
+   Y_obs_win = Y_obs[:, :, start_idx+1:start_idx+max_L+1]
+   ```
 
----
+2. **デバッグ出力追加**
+   ```julia
+   if verbose
+       println("\n=== ウィンドウ $window_id デバッグ ===")
+       println("start_idx=$start_idx, end_idx=$end_idx, max_L=$max_L")
+       println("Y_obs_win形状: $(size(Y_obs_win))")
+       println("期待: (ni=$ni, nj=$nj, nt=$(max_L+1))")
+       println("q_init_win形状: $(size(q_init_win))")
+       println("期待: (ni=$ni, nj=$nj, nt=$max_L)")
+   end
+   ```
 
-## 📁 重要なファイル
+3. **再実行**
+   ```bash
+   julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 3
+   ```
 
-### 実装ファイル
-- **Python診断ソルバー**: `python/validation/solvers_with_diagnostics.py`
-- **Python検証スクリプト**: `python/validation/run_sliding_window_validation.py`
-- **Julia検証スクリプト**: `julia/scripts/run_sliding_window_validation.jl`
+### タスク2: 修正確認後、完全比較（10分）
+
+修正が成功したら：
+
+1. **Julia版ウィンドウ1テストを完走させる**
+   ```bash
+   timeout 900 julia --project=julia test_window1_comparison.jl
+   ```
+
+2. **Python版と比較**
+   ```bash
+   python compare_window1_results.py
+   ```
+
+3. **スライディングウィンドウ全体を実行**
+   ```bash
+   julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 3
+   ```
+
+### タスク3: 結果検証（5分）
+
+- 発散が解消されたか確認
+- Python版との結果比較
+- 最終レポート作成
+
+## 📁 作成済みファイル
+
+### テストスクリプト
+1. `test_window1_comparison.py` - Python版ウィンドウ1単体テスト ✅
+2. `test_window1_comparison.jl` - Julia版ウィンドウ1単体テスト ✅
+3. `compare_window1_results.py` - 結果比較スクリプト ✅
 
 ### 結果ファイル
-- **Python結果**: `shared/results/python_sliding_window_cgm3.npz` (19MB)
-- **Pythonログ**: `shared/results/python_phase1_fixed.log` (2801行)
-- **Julia結果**: なし（発散のため未完成）
+- `shared/results/window1_python_test.npz` - Python版ウィンドウ1結果 ✅
+- `shared/results/julia_window1_test.log` - Julia版実行ログ（途中まで） ✅
+- `shared/results/python_sliding_window_cgm3.npz` - Python版全体結果 ✅
 
-### ドキュメント
-- **検証計画**: `docs/plans/sliding_window_validation_plan.md`
-- **前回のサマリー**: `docs/tasks/SESSION_SUMMARY_2025-10-21.md`
+## 🔬 技術的詳細
 
----
-
-## 💡 調査結果と推測される原因
-
-### 確認済みの事実
-
-1. **データ読み込みは正しい** ✅
-   - Python版: `(300, 80, 100)` 正しくスライス
-   - Julia版: `(80, 100, 300)` 正しく変換（permutedims済み）
-
-2. **ウィンドウサイズは正しい** ✅
-   - 両方とも72個の時刻（t=0から71）を使用
-   - 表示方法が異なるだけ（Python: `[t=1/71]`, Julia: `[t=1/72]`）
-
-3. **小規模テストは成功** ✅
-   - Julia版window=10: 成功
-   - 基本実装は正しい
-
-### 推測される原因（優先順）
-
-### 仮説1: ウィンドウサイズ依存の数値安定性問題（80%）
-- window=10: 成功
-- window=71: t=61から発散
-- **可能性**: 大きなウィンドウで数値誤差が蓄積
-- **対策**: 許容誤差を厳しくする、前処理を改善
-
-### 仮説2: ソルバー実装の微妙な違い（15%）
-- PCG前処理の違い（jacobi vs ssor）
-- 残差計算の方法
-- **対策**: Python版と同じ設定に変更
-
-### 仮説3: 初期化の問題（5%）
-- t=61までは正常に動作
-- **対策**: 詳細ログで初期値を確認
-
----
-
-## 🔧 デバッグ戦略
-
-### ステップ1: 最小限のテストケース
-```bash
-# ウィンドウ1つ、ステップ10で実行
-julia --project=julia julia/scripts/run_sliding_window_validation.jl \
-  --cgm-iter 1 --window 10 --nt 10 > test_10steps.log 2>&1
+### 発散パターン（修正前のJulia版）
+```
+[t=62/72] converged: Iteration= 1260 : Res_0= 63.54
+[t=63/72] converged: Iteration= 17256 : Res_0= 483.41
+[t=64/72] not converged: Iteration=20000 : Res_0= 659.49
 ```
 
-### ステップ2: 詳細ログ出力
-- Julia版のDHCPソルバーに初期残差のログを追加
-- Python版と同じ形式で出力
+### 正常パターン（期待される動作）
+```
+[t=62/71] converged: Iteration= 16 : Res_0= 0.00560
+[t=63/71] converged: Iteration= 16 : Res_0= 0.00557
+[t=64/71] converged: Iteration= 16 : Res_0= 0.00554
+```
 
-### ステップ3: 中間データ保存
-- 各ウィンドウの終了時に温度場を保存
-- 次のウィンドウの開始時と比較
+## 📊 比較データ
 
----
+### Python版（正常）
+- ウィンドウ1: J = [190008, 178540, 168294]
+- q範囲: [-2.12e+04, 2.94e+02] W/m²
+- Y_obs_win形状: (71, 80, 100) → 71ステップ ✅
+- q_init形状: (70, 80, 100) → 70ステップ ✅
 
-## 📊 統計データ
+### Julia版（修正前・異常）
+- ウィンドウ1 CGM反復0: J = 1.88059e+05
+- **Y_obs_win形状: (80, 100, 72)** → 72ステップ ❌
+- q_init形状: (80, 100, 70) → 70ステップ ✅
+- **ステップ数不一致！**
 
-### Python版（成功）
-- 総実行時間: 251.38秒
-- ウィンドウ数: 23個
-- 平均DHCP反復数: 16-17回/ステップ
-- 残差範囲: 3.6e-1 → 5.3e-3
+## 🚀 実行コマンド
 
-### Julia版（失敗）
-- 実行時間: タイムアウト
-- ウィンドウ数: 1個未完成
-- DHCP反復数: t=64で発散（20000回）
-- 残差: t=64で659.49 → t=71で1.88e21
+### デバッグ実行（修正後）
+```bash
+# 修正を反映して実行
+julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 3 2>&1 | tee shared/results/julia_fixed.log
+```
 
----
+### ウィンドウ1単体テスト（修正確認用）
+```bash
+# Julia版（タイムアウト延長）
+timeout 900 julia --project=julia test_window1_comparison.jl
 
-## 🚀 次セッション開始手順
+# 比較実行
+python compare_window1_results.py
+```
 
-1. **環境確認**
+## 🎓 学び
+
+1. **配列インデックスの落とし穴**
+   - `end_idx = start_idx + max_L` は `max_L+1`個の要素を含む
+   - Julia: `arr[1:71]` = 71要素
+   - 常に `length(start:end)` = `end - start + 1` を確認すること
+
+2. **ステップ数の一貫性**
+   - 温度観測: `nt`ステップ (t=0, t=1, ..., t=nt-1)
+   - 熱流束: `nt-1`ステップ (時間ステップ間の量)
+   - Y_obsとq_initのステップ数は必ず整合性を確認
+
+3. **テスト駆動デバッグの有効性**
+   - 単体テストで問題を切り分け
+   - 小さなテストケースで動作確認してから全体を実行
+
+## 🔄 次回セッション開始手順
+
+1. **git状態確認**
    ```bash
    cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
    git status
    git log --oneline -5
    ```
 
-2. **ブランチ確認**
+2. **このファイルを読む**
    ```bash
-   git branch  # → sliding-window-validation
+   cat TODO_NEXT_SESSION.md
    ```
 
-3. **最新コミット**
+3. **最優先修正実施**
+   - `julia/scripts/run_sliding_window_validation.jl:283`のバグ修正
+   - デバッグ出力追加
+
+4. **テスト実行**
    ```bash
-   git log -1 --stat
-   # → 70dbf92: Python版Adjoint修正、test_single_window.jl追加
+   julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 3
    ```
 
-4. **バックグラウンドプロセス確認**
-   ```bash
-   ps aux | grep "python\|julia" | grep validation
-   # 必要に応じてkill
-   ```
+5. **問題解消確認**
+   - 発散が起きないか確認
+   - Python版との結果比較
 
-5. **小規模テスト実行**
-   ```bash
-   julia --project=julia julia/scripts/run_sliding_window_validation.jl \
-     --cgm-iter 1 --window 10 --nt 20 \
-     > shared/results/julia_debug_small.log 2>&1 &
+## 📝 Gitコミット準備
 
-   tail -f shared/results/julia_debug_small.log
-   ```
+修正後、以下をコミット：
+
+```bash
+# 修正ファイル
+git add julia/scripts/run_sliding_window_validation.jl
+
+# テストスクリプト
+git add test_window1_comparison.py
+git add test_window1_comparison.jl
+git add compare_window1_results.py
+
+# ドキュメント
+git add TODO_NEXT_SESSION.md
+
+# コミット
+git commit -m "fix: Julia版スライディングウィンドウのY_obsスライス修正
+
+**問題**:
+Y_obs_winが72ステップ取得していた（正しくは71ステップ）
+→ q_init（70ステップ）とステップ数不一致
+→ t=63以降で発散
+
+**修正内容**:
+- run_sliding_window_validation.jl:283を修正
+- Y_obs_winスライスを明示的に指定
+- デバッグ出力を追加
+
+**検証**:
+- 単体テスト（test_window1_comparison.jl）で正常動作確認
+- Python版との比較で整合性確認
+
+fixes #Julia版発散問題
+"
+```
 
 ---
-
-## 📝 重要なメモ
-
-### セッション2で判明したこと
-
-1. **Python版は完全に成功** ✅
-   - 23ウィンドウ、約4分で完了
-   - 残差は安定（5e-3レベル）
-
-2. **Julia版の問題はウィンドウサイズ依存**
-   - window=10: 成功 ✅
-   - window=71: t=61から発散 ❌
-   - **配列インデックスやデータ形状の問題ではない**
-
-3. **発散の特徴**
-   - t=61: Res_0 = 51.93（Python版は5.63e-3、**9000倍**）
-   - t=64: Res_0 = 659.49（発散開始）
-   - t=71: Res_0 = 1.88e21（完全発散）
-
-4. **次のステップ**
-   - 中規模テストで発散境界を特定
-   - ソルバー設定を調整
-   - Python版との詳細比較
-
----
-
-**最終更新**: 2025年10月21日 03:30 JST
-**ブランチ**: sliding-window-validation
-**次回予想時間**: 30分-1時間（問題特定と修正）
+**作成日時**: 2025-10-21 03:44
+**作成者**: Claude Code
+**セッション**: sliding-window-validation
+**推定修正時間**: 5-10分
