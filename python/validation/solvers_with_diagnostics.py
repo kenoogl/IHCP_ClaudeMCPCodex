@@ -208,7 +208,7 @@ def multiple_time_step_solver_Adjoint_with_diagnostics(
         lambda_initial = lambda_all[n + 1]
 
         a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = coeffs_and_rhs_building_Adjoint(
-            lambda_initial, T_cal[n][:,:,0], Y_obs[n + 1], rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
+            lambda_initial, T_cal[n][:,:,0], Y_obs[n], rho, cp, k, dx, dy, dz, dz_b, dz_t, dt
         )
 
         A_csr = assemble_A_Adjoint(ni, nj, nk, a_w, a_e, a_s, a_n, a_b, a_t, a_p)
