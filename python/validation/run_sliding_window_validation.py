@@ -149,6 +149,19 @@ def sliding_window_CGM_with_diagnostics(
 
         elapsed_win = time.time() - start_time_win
 
+        # CGM反復ごとの詳細ログ
+        if verbose:
+            for iter_idx, diag in enumerate(cgm_diag):
+                print(f"\n@ ___ Iter {iter_idx:3d} ___ @")
+                if diag['dhcp'] is not None:
+                    dhcp_total = diag['dhcp']['total_iters']
+                    dhcp_time = diag['dhcp']['elapsed_time']
+                    print(f"DHCP:    {dhcp_total:4d} iters, {dhcp_time:.2f}s")
+                if diag['adjoint'] is not None:
+                    adj_total = diag['adjoint']['total_iters']
+                    adj_time = diag['adjoint']['elapsed_time']
+                    print(f"Adjoint: {adj_total:4d} iters, {adj_time:.2f}s")
+
         # ウィンドウ診断情報を保存
         win_info = {
             'window_id': window_id,
