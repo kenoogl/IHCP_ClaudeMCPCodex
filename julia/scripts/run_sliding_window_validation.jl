@@ -192,11 +192,11 @@ function solve_cgm_with_diagnostics!(
         dhcp_extrapolation = :quadratic,
         adjoint_residual_scale = 0.5,
         dhcp_solver = :pcg,
-        dhcp_smoother = :none,  # 前処理なし（軽量化）
+        dhcp_smoother = :none,  # 前処理なし（PCG+noneが最速）
         adjoint_solver = :pcg,
-        adjoint_smoother = :none,  # 前処理なし（軽量化）
-        sensitivity_solver = :pbicgstab,
-        sensitivity_smoother = :none  # 前処理なし（軽量化）
+        adjoint_smoother = :none,  # 前処理なし（PCG+noneが最速）
+        sensitivity_solver = :pcg,  # PCGに統一（対称正定値問題）
+        sensitivity_smoother = :none  # 前処理なし（PCG+noneが最速）
     )
 
     # 既存のsolve_cgm!を呼び出し
@@ -280,7 +280,8 @@ function sliding_window_cgm_with_diagnostics(
         # 現在のウィンドウ長
         max_L = min(window_size, (nt - 1) - start_idx)
         end_idx = start_idx + max_L
-        Y_obs_win = Y_obs[:, :, start_idx+1:start_idx+max_L]
+        # Python版: Y_obs[start_idx:end_idx+1] と同等 (Juliaは1-origin)
+        Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]
 
         window_id = length(windows_info) + 1
 
