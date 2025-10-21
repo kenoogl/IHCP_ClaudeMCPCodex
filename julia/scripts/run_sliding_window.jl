@@ -255,7 +255,7 @@ function run_sliding_window!(
   total_flux_steps = nt - 1
 
   q_global = zeros(Float64, ni, nj, total_flux_steps)
-  prev_flux_end = 0
+  prev_flux_end = 0  # 熱流束ステッチング用
   prev_q_win = nothing
   current_T_start = copy(T_init)
   final_T = similar(T_init)
@@ -283,20 +283,19 @@ function run_sliding_window!(
   println(@sprintf("  overlap: %d", overlap))
   flush(stdout)
 
-  while prev_flux_end < total_flux_steps
-    start_idx = if window_id == 1
-      0
-    else
-      # mirror Python advance: next start = previous start + (length - overlap)
-      last_start = window_starts[end]
-      last_length = window_lengths[end]
-      last_start + max(1, last_length - overlap)
-    end
+  # Python版に合わせた修正: start_idxベースのループ (IHCP_CGM_Sliding_Window_Calculation_ver2.py 1603行)
+  start_idx = 0
+  safety_counter = 0
+  safety_limit = nt * 5  # 無限ループ防止
 
-    if start_idx >= total_flux_steps
+  while start_idx < total_flux_steps
+    safety_counter += 1
+    if safety_counter > safety_limit
+      @warn "Safety break: too many iterations, check overlap/window settings."
       break
     end
 
+    # Python版 (1610行): max_L = min(window_size, (nt - 1) - start_idx)
     max_L = min(window_size, total_flux_steps - start_idx)
     end_idx = start_idx + max_L
     obs_start = start_idx + 1
@@ -395,14 +394,13 @@ function run_sliding_window!(
     push!(window_q_max, q_max)
     push!(window_histories, collect(J_hist))
 
+    # Python版 (1652-1653行): step = max(1, max_L - overlap); start_idx += step
+    step = max(1, max_L - overlap)
+    start_idx += step
     window_id += 1
   end
 
   total_elapsed = time() - total_start
-
-  if prev_flux_end < total_flux_steps
-    @warn "Sliding-window loop ended before covering all flux steps" covered = prev_flux_end total = total_flux_steps
-  end
 
   summary = (
     window_ids = window_ids,

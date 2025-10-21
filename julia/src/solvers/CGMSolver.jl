@@ -26,6 +26,7 @@ module CGMSolver
 
 using LinearAlgebra: dot
 using Printf
+using NPZ  # 中間データ保存用
 
 # 共通モジュール
 import ..Commons
@@ -492,7 +493,6 @@ function solve_cgm!(
 
     # 中間データ保存（シナリオ3診断用）
     if save_intermediate && it <= 3
-      using NPZ
       mkpath(output_dir)
       save_path = joinpath(output_dir, "julia_cgm$(it)_data.npz")
 
