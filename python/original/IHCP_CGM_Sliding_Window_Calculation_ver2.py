@@ -1272,7 +1272,8 @@ def coeffs_and_rhs_building_Adjoint(lambda_initial, T_cal, Y_obs, rho, cp, k, dx
         rhs = a_p_0 * lambda_initial[i, j, k_ijk]
         
         if k_ijk == 0:
-            rhs += 2 * (T_cal[i, j] - Y_obs[i, j]) * dx * dy
+            residual_scale = 0.5  # Julia版と同じ（adjoint_residual_scale）
+            rhs += 2 * residual_scale * (T_cal[i, j] - Y_obs[i, j]) * dx * dy
         b[p] = rhs
         
     return a_w, a_e, a_s, a_n, a_b, a_t, a_p, b
