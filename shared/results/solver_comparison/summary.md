@@ -1,11 +1,25 @@
 # DHCPソルバー・前処理組み合わせベンチマーク結果
 
 **実行日時**: 2025年 10月21日 火曜日 09時49分28秒 JST
+
+**使用スクリプト**:
+- ベンチマーク実行: `julia/scripts/run_solver_comparison.sh`
+- 単体テストスクリプト: `julia/scripts/test_dhcp_solver.jl`
+
 **テスト条件**:
 - 格子: 80×100×20 (N=160,000)
 - 時間ステップ: 10
 - 収束条件: rtol=1.0e-6, maxiter=20000
 - 熱流束: ゼロ（簡易テスト）
+
+**実行方法**:
+```bash
+# 全6パターン自動実行
+bash julia/scripts/run_solver_comparison.sh
+
+# 個別実行例
+julia --project=julia julia/scripts/test_dhcp_solver.jl --solver pcg --precond none --nt 10
+```
 
 ## 結果一覧
 
