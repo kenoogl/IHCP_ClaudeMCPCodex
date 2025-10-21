@@ -32,7 +32,7 @@ export PBiCGSTAB!, PCG!, solve_linear_system!
 # キーワード引数
 @param [in]     tol      反復閾値
 @param [in]     maxItr   最大反復数
-@param [in]     smoother [:none, :gs, :jacobi]
+@param [in]     smoother [:none, :diagonal, :gs, :jacobi]
 @param [in]     par      バックエンド（"sequential", "thread"）
 @param [in]     verbose  詳細出力フラグ
 
@@ -153,14 +153,15 @@ Symbol型から型パラメータVal{S}に変換することで、コンパイ�
 
 対応smoother:
   - :none   → 前処理なし（恒等変換）
-  - :gs     → Gauss-Seidel法（RB-SOR、5回反復）
-  - :jacobi → Jacobi法（加重Jacobi、ω=0.8、5回反復）
+  - :diagonal → 対角前処理（Jacobi 1回適用）
+  - :gs       → Gauss-Seidel法（RB-SOR、5回反復）
+  - :jacobi   → Jacobi法（加重Jacobi、ω=0.8、5回反復）
 
-@param [in] s  Smoother種別（:none, :gs, :jacobi）
+@param [in] s  Smoother種別（:none, :diagonal, :gs, :jacobi）
 @ret           Val型（コンパイル時ディスパッチ用）
 """
 @inline function smoother_selector(s::Symbol)
-  if s === :none || s === :gs || s === :jacobi
+  if s === :none || s === :diagonal || s === :gs || s === :jacobi
     return Val(s)
   end
   throw(ArgumentError("Unsupported smoother: $s"))
@@ -185,7 +186,7 @@ const JACOBI_RELAXATION = 0.8
 # キーワード引数
 @param [in]     tol    反復閾値
 @param [in]     maxItr 最大反復数
-@param [in]     smoother [:none, :gs, :jacobi]
+@param [in]     smoother [:none, :diagonal, :gs, :jacobi]
 @param [in]     par    バックエンド（"sequential", "thread"）
 
 収束判定： 相対残差ノルム (||r_k|| / ||r_0||) < tol
@@ -460,9 +461,10 @@ BiCGSTAB法の収束を加速するための前処理を適用する。
 【処理フロー】
   Preconditioner!(smoother::Val{S})
     → _Preconditioner!(smoother::Val{S})  ← Juliaの多重ディスパッチ
-       ├─ Val{:none}   → mycopy!（恒等変換）
-       ├─ Val{:gs}     → rbsor!（RB-SOR法、5回反復）
-       └─ Val{:jacobi} → jacobi_preconditioner!（加重Jacobi法、5回反復）
+       ├─ Val{:none}     → mycopy!（恒等変換）
+       ├─ Val{:diagonal} → diagonal_preconditioner!（対角スケーリング）
+       ├─ Val{:gs}       → rbsor!（RB-SOR法、5回反復）
+       └─ Val{:jacobi}   → jacobi_preconditioner!（加重Jacobi法、5回反復）
 
 【Val型の利点】
   - コンパイル時に分岐解決（if文なし）
@@ -477,7 +479,7 @@ BiCGSTAB法の収束を加速するための前処理を適用する。
 @param [in]     ρ        密度
 @param [in]     Δh       セル幅
 @param [in]     Δt       時間積分幅
-@param [in]     smoother Val{:none}, Val{:gs}, Val{:jacobi}
+@param [in]     smoother Val{:none}, Val{:diagonal}, Val{:gs}, Val{:jacobi}
 @param [in]     ZC   CVセンター座標
 @param [in]     ΔZ       CV幅
 @param [in]     par      バックエンド（"sequential", "thread"）
@@ -520,6 +522,26 @@ xx = bb
 end
 
 """
+@brief 前処理実装: :diagonal（対角前処理）
+
+係数行列の対角成分のみを用いたJacobi型の前処理を1回適用する。
+xx ≈ D^{-1} bb （D: 対角行列）
+
+【特徴】
+  - Python版ソルバーと同じスキームを再現（比較検証用）
+  - 有限体積係数の対角項を再構築してスケーリング
+  - 対角ゼロをFloatMinで制限し、ゼロ除算やInf/NaNを防止
+
+【用途】
+  - 軽量な対角前処理
+  - Jacobiの多重反復を行わず、オーバーヘッドを最小化
+"""
+function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:diagonal}, ZC, ΔZ, HC, par, _)
+    diagonal_preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ZC, ΔZ, HC, par)
+    return nothing
+end
+
+"""
 @brief 前処理実装: :gs（Gauss-Seidel法）
 
 Red-Black SOR法を5回反復して前処理を行う。
@@ -540,6 +562,82 @@ function _Preconditioner!(xx, bb, λ, cp, mask, ρ, Δh, Δt, ::Val{:gs}, ZC, Δ
     for _ in 1:PRECONDITIONER_SWEEPS
         rbsor!(xx, λ, cp, bb, mask, ρ, Δh, Δt, one(ρ), ZC, ΔZ, HC, par)
     end
+    return nothing
+end
+
+"""
+@brief 対角前処理の実装（Jacobi1回適用）
+
+有限体積法の係数行列に相当する対角項を再構築し、右辺ベクトルをスケーリングする。
+ガイドセルの値はそのまま維持し、内部セルのみ対角スケーリングを適用する。
+
+数値安定性のため、対角項はFloatMinとの最大値を取ってゼロ除算を防ぐ。
+"""
+function diagonal_preconditioner!(xx::AbstractArray{T,3},
+                                  bb::AbstractArray{T,3},
+                                  λ::AbstractArray{T,3},
+                                  cp::AbstractArray{T,3},
+                                  m::AbstractArray{T,3},
+                                  ρ::T,
+                                  Δh::NTuple{3,T},
+                                  Δt::T,
+                                  ZC::AbstractVector{T},
+                                  ΔZ::AbstractVector{T},
+                                  HC::AbstractVector{T},
+                                  par::String) where {T <: AbstractFloat}
+    backend = get_backend(par)
+    SZ = size(xx)
+    dx0 = Δh[1]
+    dy0 = Δh[2]
+    ddt = inv(Δt)
+    ddx = inv(dx0)
+    ddy = inv(dy0)
+    float_min_T = T(FloatMin)
+    zeroT = zero(T)
+    oneT = one(T)
+
+    # ガイドセルは右辺をコピーして維持
+    mycopy!(xx, bb, par)
+
+    @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
+        dz_k = ΔZ[k]
+        m0 = m[i,j,k]
+
+        # 境界セルはそのまま
+        if m0 == zeroT
+            continue
+        end
+
+        λ0 = λ[i,j,k]
+
+        # 熱伝導項（面積×コンダクタンス）
+        cond_xm = λf(λ[i-1,j,k], λ0, m[i-1,j,k], m0) * dy0 * dz_k * ddx
+        cond_xp = λf(λ[i+1,j,k], λ0, m[i+1,j,k], m0) * dy0 * dz_k * ddx
+        cond_ym = λf(λ[i,j-1,k], λ0, m[i,j-1,k], m0) * dx0 * dz_k * ddy
+        cond_yp = λf(λ[i,j+1,k], λ0, m[i,j+1,k], m0) * dx0 * dz_k * ddy
+        cond_zm = λf(λ[i,j,k-1], λ0, m[i,j,k-1], m0) * dx0 * dy0 / (ZC[k]-ZC[k-1])
+        cond_zp = λf(λ[i,j,k+1], λ0, m[i,j,k+1], m0) * dx0 * dy0 / (ZC[k+1]-ZC[k])
+
+        # 対流項（対角項のみに追加）
+        conv_xm = HC[1] * dy0 * dz_k * (oneT - m[i-1,j,k])
+        conv_xp = HC[2] * dy0 * dz_k * (oneT - m[i+1,j,k])
+        conv_ym = HC[3] * dx0 * dz_k * (oneT - m[i,j-1,k])
+        conv_yp = HC[4] * dx0 * dz_k * (oneT - m[i,j+1,k])
+        conv_zm = HC[5] * dx0 * dy0 * (oneT - m[i,j,k-1])
+        conv_zp = HC[6] * dx0 * dy0 * (oneT - m[i,j,k+1])
+
+        # 時間項（体積積分形式） - 定常解析の場合は0
+        a_p_0 = ρ * cp[i,j,k] * dx0 * dy0 * dz_k * ddt
+
+        # 対角項: 熱伝導項 + 対流項 + 時間項
+        dd = (oneT - m0) +
+             (cond_xp + cond_xm + cond_yp + cond_ym + cond_zp + cond_zm +
+              conv_xp + conv_xm + conv_yp + conv_ym + conv_zp + conv_zm + a_p_0) * m0
+
+        diag = max(dd, float_min_T)
+        xx[i,j,k] = bb[i,j,k] / diag
+    end
+
     return nothing
 end
 
@@ -1111,7 +1209,7 @@ isconverged, itr, res0 = solve_linear_system!(
 @param [in]     solver   ソルバー種別 [:pbicgstab, :pcg]
 @param [in]     tol      反復閾値
 @param [in]     maxItr   最大反復数
-@param [in]     smoother [:none, :gs, :jacobi]
+@param [in]     smoother [:none, :diagonal, :gs, :jacobi]
 @param [in]     par      バックエンド（"sequential", "thread"）
 @param [in]     verbose  詳細出力フラグ
 
