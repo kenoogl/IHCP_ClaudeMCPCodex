@@ -1,141 +1,175 @@
-# 次セッション クイックスタート
+# 次セッション クイックスタートガイド
 
-**📌 5分で状況把握 + 調査開始**
+## ⚡ 即座に実行するコマンド
 
----
-
-## 🔥 現在の状況（重要）
-
-### 問題
-Julia版スライディングウィンドウ計算で**初期ステップから発散**
-→ Python版と比較して反復数が3-5倍、残差が10倍以上
-
-### 既に完了した作業
-- ✅ Y_obsスライス修正（71ステップ）
-- ✅ Python版完全動作確認（23ウィンドウ完了）
-- ✅ 詳細ログ比較完了
-
-### 未解決の問題
-❌ **Julia版はDHCPソルバーの最初のステップから収束が悪い**
-
----
-
-## 📊 決定的な証拠
-
-### Python版（正常）
-```
-[t=2/71] Iteration= 32  Res_0= 0.169
-[t=10/71] Iteration= 17 Res_0= 0.013  ← 順調に減少
-```
-
-### Julia版（異常）
-```
-[t=2/71] Iteration= 96  Res_0= 0.365  ← 反復3倍、残差2倍
-[t=10/71] Iteration= 96 Res_0= 0.162  ← 残差13倍！
-[t=62/71] Iteration= 1260 Res_0= 63.5 ← 完全発散
-```
-
----
-
-## 🎯 次の調査ステップ（優先順）
-
-### ステップ1: 時間ステップインデックス確認（最優先）
-
-**仮説**: 時間ループのインデックスが1つずれている
-
-**確認コマンド**:
-```bash
-# Python版
-grep -A 20 "def solve_dhcp" python/validation/run_sliding_window_validation.py
-
-# Julia版
-grep -A 20 "function solve_dhcp!" julia/src/solvers/DHCPSolver.jl
-```
-
-**チェックポイント**:
-- [ ] 時間ループ: `for t in range(1, nt)` vs `for t in 2:nt`
-- [ ] T_oldの初期化タイミング
-- [ ] 境界条件適用タイミング（t=1 or t=2から）
-
----
-
-### ステップ2: q_init配列形状確認
-
-**仮説**: q_initの次元順序が逆（Python: (nt,ni,nj) vs Julia: (ni,nj,nt)）
-
-**確認コマンド**:
-```bash
-# Python版
-grep -B 3 -A 3 "q_init.*zeros\|q_init.*shape" python/validation/run_sliding_window_validation.py
-
-# Julia版
-grep -B 3 -A 3 "q_init.*zeros" julia/scripts/run_sliding_window_validation.jl
-```
-
-**チェックポイント**:
-- [ ] Python: `q_init = np.zeros((nt-1, ni, nj))` → (70, 80, 100)
-- [ ] Julia: `q_init = zeros(ni, nj, nt-1)` → (80, 100, 70)
-- [ ] **次元順序の違いが問題か？**
-
----
-
-### ステップ3: 初期温度場T_initの値確認
-
-**確認コマンド**:
-```bash
-# Python版とJulia版でT_initの値が一致するか
-python -c "import numpy as np; T=np.load('shared/data/T_measure_700um_1ms.npy'); print(T[0,:5,:5,0])"
-
-julia --project=julia -e 'using NPZ; T=npzread("shared/data/T_measure_700um_1ms.npy"); println(T[1:5,1:5,1])'
-```
-
----
-
-## 📂 重要ファイル
-
-### 必読ドキュメント
-1. **SESSION_SUMMARY_SLIDING_WINDOW.md** ← 詳細な調査結果
-2. このファイル（クイックスタート）
-
-### ログファイル
-- `shared/results/python_phase1_fixed.log` - Python版成功ログ
-- `shared/results/julia_phase1_FINAL.log` - Julia版失敗ログ
-
-### 修正済みコード
-- `julia/scripts/run_sliding_window_validation.jl:283` - Y_obsスライス
-
----
-
-## 🚀 作業開始手順
-
-### 1. 状況確認（30秒）
 ```bash
 cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
+
+# 1. 実態確認（最優先）
+ps aux | grep -E "(python|julia)" | grep -v grep
+
+# 2. git状態確認
 git status
-cat SESSION_SUMMARY_SLIDING_WINDOW.md | head -50
+git log --oneline -5
+
+# 3. 最新セッションのサマリー確認
+ls -t SESSION_SUMMARY*.md | head -1 | xargs cat
 ```
 
-### 2. ステップ1実行（2分）
-時間ステップインデックスの比較確認
+## 🎯 最新セッションの成果（2025-10-21）
 
-### 3. ステップ2実行（2分）
-q_init配列形状の確認
+✅ **バグのあるスクリプト削除完了**:
+   - `julia/scripts/test_single_window.jl` (UndefVarError)
+   - `test_window1_comparison.jl` (API不一致)
+   - `julia/scripts/run_sliding_window_validation.jl` (重複)
 
-### 4. 問題箇所特定後、修正実施
+✅ **関連ログファイル6個削除**
+
+✅ **現在の動作確認済みスクリプト**:
+   - `julia/scripts/run_sliding_window.jl` ⭐ メイン実行スクリプト
+   - `julia/scripts/parse_sliding_window_log.py` ⭐ 統計抽出ツール
+
+## 📋 次セッションのタスク
+
+### 🔍 現状把握（必須）
+
+```bash
+# 削除されたファイルの確認
+git status --short
+
+# 残っているスクリプト確認
+ls -1 julia/scripts/*.jl
+
+# 未追跡ファイルの確認
+git status | grep "^??"
+```
+
+### Phase 1: クリーンアップとコミット
+
+```bash
+# 削除をステージング
+git add -u
+
+# 未追跡の新規ファイルを確認してから追加
+git add julia/scripts/run_sliding_window.jl
+git add julia/scripts/parse_sliding_window_log.py
+git add python/scripts/
+
+# コミット
+git commit -m "chore: バグのあるスクリプト削除、動作確認済みスクリプトのみ保持
+
+削除:
+- julia/scripts/test_single_window.jl (UndefVarError)
+- test_window1_comparison.jl (API不一致)
+- julia/scripts/run_sliding_window_validation.jl (run_sliding_window.jlで代替)
+- 関連ログファイル6個
+
+追加:
+- julia/scripts/run_sliding_window.jl (動作確認済み)
+- julia/scripts/parse_sliding_window_log.py (統計抽出ツール)
+- python/scripts/ (Python版補助スクリプト)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>"
+```
+
+### Phase 2: 小規模テスト（所要時間: 5分）
+
+```bash
+# PCG + none で10ステップ実行
+julia --project=julia julia/scripts/run_sliding_window.jl \
+  --solver pcg --precond none --cgm-iter 3 --nt 10 \
+  2>&1 | tee shared/results/julia_sw_10steps_pcg_none_CLEAN.log
+
+# 統計抽出
+python julia/scripts/parse_sliding_window_log.py \
+  shared/results/julia_sw_10steps_pcg_none_CLEAN.log
+```
+
+### Phase 3: フルスケールテスト（所要時間: 5分）
+
+```bash
+# PCG + none で300ステップ実行（必要に応じて）
+julia --project=julia julia/scripts/run_sliding_window.jl \
+  --solver pcg --precond none --cgm-iter 3 --nt 300 \
+  2>&1 | tee shared/results/julia_sw_300steps_pcg_none_CLEAN.log
+
+# 統計抽出
+python julia/scripts/parse_sliding_window_log.py \
+  shared/results/julia_sw_300steps_pcg_none_CLEAN.log
+```
+
+## 📊 期待される結果
+
+| 項目 | Python版 | Julia版（PCG+none） |
+|------|----------|---------------------|
+| 実行時間 | ~250秒 | ~200秒（予想） |
+| ウィンドウ数 | 4-5 | 4-5 |
+| DHCP反復数 | 16-36回/step | 同等 |
+
+## 🚨 重要な注意事項
+
+1. **system-reminderは無視する**
+   - 古い履歴情報（実際には動いていない）
+   - 必ず `ps aux` で実態確認
+
+2. **実行前にプロセス確認**
+   ```bash
+   ps aux | grep -E "(python|julia)" | grep -v grep
+   ```
+
+3. **削除されたスクリプトを参照しない**
+   - ❌ `julia/scripts/run_sliding_window_validation.jl`
+   - ❌ `julia/scripts/test_single_window.jl`
+   - ❌ `test_window1_comparison.jl`
+   - ✅ `julia/scripts/run_sliding_window.jl` のみ使用
+
+4. **ログファイルは必ず tee で保存**
+   - 統計抽出に必要
+   - 後から分析可能
+
+## 📁 重要ファイル
+
+**動作確認済みスクリプト**:
+- `julia/scripts/run_sliding_window.jl` - メイン実行スクリプト ⭐
+- `julia/scripts/parse_sliding_window_log.py` - 統計抽出ツール ⭐
+
+**セッションサマリー**:
+- `SESSION_SUMMARY_2025-10-21_BUGFIX.md` - 最新（バグ修正）
+- `SESSION_SUMMARY_2025-10-21_CODEX_SUCCESS.md` - スクリプト作成成功
+- その他のサマリー複数
+
+**分析レポート**:
+- `PYTHON_JULIA_10STEPS_CGM3_COMPARISON.md` - Python-Julia比較
+- `SOLVER_PRECOND_COMPARISON_REPORT_10steps.md` - ソルバー・前処理比較
+
+## ✅ 実行チェックリスト
+
+- [ ] 実態確認（ps aux）
+- [ ] git status確認（削除ファイル3個、新規ファイル多数）
+- [ ] Phase 1: クリーンアップとコミット
+- [ ] Phase 2: 10ステップテスト実行
+- [ ] Phase 2: 統計抽出
+- [ ] Phase 3: 300ステップテスト実行（任意）
+- [ ] Phase 3: 統計抽出
+- [ ] 結果分析・ドキュメント更新
+
+## 🗂️ 現在のgit状態
+
+```
+M  NEXT_SESSION_QUICKSTART.md
+D  julia/scripts/run_sliding_window_validation.jl
+D  julia/scripts/test_single_window.jl
+D  test_window1_comparison.jl
+?? PYTHON_JULIA_10STEPS_CGM3_COMPARISON.md
+?? SESSION_SUMMARY_2025-10-21_*.md (複数)
+?? SOLVER_PRECOND_COMPARISON_REPORT_10steps.md
+?? julia/scripts/parse_sliding_window_log.py
+?? julia/scripts/run_sliding_window.jl
+?? python/scripts/
+```
 
 ---
 
-## 💡 重要な気づき
-
-**t=3の異常パターン**:
-```
-Julia版のt=3だけ残差が0.0688（他のステップは0.09-0.19）
-→ インデックスエラーまたは境界条件適用ミスの可能性大
-```
-
-この異常を手がかりに調査を進めてください！
-
----
-
-**最終更新**: 2025-10-21 08:00
-**推定作業時間**: 30分～1時間
+**準備完了！** 次セッションではgitクリーンアップ後、クリーンな環境でテスト実行を行います。
