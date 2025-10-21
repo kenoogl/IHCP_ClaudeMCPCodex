@@ -262,9 +262,14 @@ function main()
   flush(stdout)
   solve_start = time()
 
+  # CGM反復数（デフォルトは1、診断時は3）
+  cgm_max_iter = get(ENV, "CGM_ITER", "1") |> x -> parse(Int, x)
+  save_intermediate = get(ENV, "SAVE_INTERMEDIATE", "false") == "true"
+  output_dir = joinpath(PROJECT_ROOT, "shared", "results")
+
   # Phase 1-B最適パラメータを適用（16.96%改善達成）
   cgm_params = (
-    max_iter = 1,
+    max_iter = cgm_max_iter,
     sigma = 1.8,
     rtol_dhcp = 1.0e-6,
     rtol_adjoint = 1.0e-8,
@@ -301,7 +306,9 @@ function main()
     rho,
     cp_coeffs,
     k_coeffs;
-    params = cgm_params
+    params = cgm_params,
+    save_intermediate = save_intermediate,
+    output_dir = output_dir
   )
 
   cgm_elapsed = time() - solve_start

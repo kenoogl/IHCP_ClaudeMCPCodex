@@ -256,7 +256,9 @@ function solve_cgm!(
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64};
   params::NamedTuple=(;),
-  par::String="sequential"
+  par::String="sequential",
+  save_intermediate::Bool=false,
+  output_dir::String="shared/results"
 ) where {T <: AbstractFloat}
   # パラメータ展開（デフォルト値付き）
   max_iter = get(params, :max_iter, 20000)
@@ -487,6 +489,32 @@ function solve_cgm!(
     # Step 8: 勾配更新
     @. grad_last = grad
     @. p_n_last = p_n
+
+    # 中間データ保存（シナリオ3診断用）
+    if save_intermediate && it <= 3
+      using NPZ
+      mkpath(output_dir)
+      save_path = joinpath(output_dir, "julia_cgm$(it)_data.npz")
+
+      # Python形状に転置: (ni, nj, nk, nt) -> (nt, ni, nj, nk)
+      T_cal_py = permutedims(T_cal, (4, 1, 2, 3))
+      adjoint_py = permutedims(adjoint_buffer, (4, 1, 2, 3))
+      dT_py = permutedims(dT, (4, 1, 2, 3))
+      # 熱流束: (ni, nj, nt-1) -> (nt-1, ni, nj)
+      q_py = permutedims(q, (3, 1, 2))
+      grad_py = permutedims(grad, (3, 1, 2))
+
+      NPZ.npzwrite(save_path, Dict(
+        "T_cal" => T_cal_py,
+        "lambda_field" => adjoint_py,
+        "q" => q_py,
+        "grad" => grad_py,
+        "dT" => dT_py,
+        "J" => J,
+        "iteration" => it
+      ))
+      println("  [中間データ保存] CGM反復$(it): $(save_path)")
+    end
 
     # 詳細ログ出力（Python版との比較用）
     if verbose

@@ -1383,14 +1383,15 @@ def multiple_time_step_solver_Adjoint(T_cal, Y_obs, nt, rho, cp_coeffs, k_coeffs
 Prediction of the surface heat flux by using the Conjugate gradient method: CGM
 '''
 
-def global_CGM_time(T_init, Y_obs, q_init, dx, dy, dz, dz_b, dz_t, dt, 
-                        rho, cp_coeffs, k_coeffs, CGM_iteration = 20000
+def global_CGM_time(T_init, Y_obs, q_init, dx, dy, dz, dz_b, dz_t, dt,
+                        rho, cp_coeffs, k_coeffs, CGM_iteration = 20000,
+                        save_intermediate = False, output_dir = "shared/results"
                         ):
-    
+
     nt = Y_obs.shape[0]                             # Y_obs shape(nt, ni, nj) Observation Temperature array for whole time domain
     ni, nj, nk = T_init.shape                       # T_init shape(ni, nj, nk) Initial temperature distribution
     q = q_init.copy()                               # (nt-1, ni, nj) Initial surface heat flux guess
-    
+
     J_hist = []                                     # J_list J saving for every iteration
     
     M = ni * nj
@@ -1523,6 +1524,21 @@ def global_CGM_time(T_init, Y_obs, q_init, dx, dy, dz, dz_b, dz_t, dt,
         if not is_dT_valid:
             print(f"[CGM警告][反復{it}] 感度場dT異常: {dT_status}")
 
+        # 中間データ保存（シナリオ3診断用）
+        if save_intermediate and it <= 3:
+            import os
+            os.makedirs(output_dir, exist_ok=True)
+            save_path = os.path.join(output_dir, f"python_cgm{it}_data.npz")
+            np.savez(save_path,
+                     T_cal=T_cal,      # (nt, ni, nj, nk)
+                     lambda_field=lambda_field,  # (nt, ni, nj, nk)
+                     q=q,              # (nt-1, ni, nj)
+                     grad=grad,        # (nt-1, ni, nj)
+                     dT=dT,            # (nt, ni, nj, nk)
+                     J=J,
+                     iteration=it)
+            print(f"  [中間データ保存] CGM反復{it}: {save_path}")
+
         # Step 7: search step size
         Sp = dT[1:, :, :, bottom_idx]
         assert res_T.shape == Sp.shape, (res_T.shape, Sp.shape)
@@ -1570,7 +1586,8 @@ def global_CGM_time(T_init, Y_obs, q_init, dx, dy, dz, dz_b, dz_t, dt,
 
 def sliding_window_CGM_q_saving(
     Y_obs, T0, dx, dy, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
-    window_size, overlap, q_init_value, filename, CGM_iteration=20000
+    window_size, overlap, q_init_value, filename, CGM_iteration=20000,
+    save_intermediate=False, output_dir="shared/results"
 ):
     nt = Y_obs.shape[0]
     T_init = T0.copy()
@@ -1609,7 +1626,8 @@ def sliding_window_CGM_q_saving(
         start_time_one_window = time.time()
         q_win, T_win_last, J_hist = global_CGM_time(
             T_init, Y_obs_win, q_init_win, dx, dy, dz, dz_b, dz_t, dt,
-            rho, cp_coeffs, k_coeffs, CGM_iteration=CGM_iteration
+            rho, cp_coeffs, k_coeffs, CGM_iteration=CGM_iteration,
+            save_intermediate=save_intermediate, output_dir=output_dir
         )
         end_time_one_window = time.time()
 

@@ -89,6 +89,9 @@ def main():
         # ファイル名は一時的なものを使用（結果は保存しない）
         temp_filename = str(project_root / "shared" / "results" / "temp_python_10steps")
 
+        # 中間データ保存を有効化（シナリオ3診断用）
+        output_dir = str(project_root / "shared" / "results")
+
         q_result = sliding_window_CGM_q_saving(
             Y_obs=Y_obs,
             T0=T0,
@@ -105,7 +108,9 @@ def main():
             overlap=overlap,
             q_init_value=0.0,
             filename=temp_filename,
-            CGM_iteration=cgm_max_iter
+            CGM_iteration=cgm_max_iter,
+            save_intermediate=True,
+            output_dir=output_dir
         )
 
         elapsed_time = time.time() - start_time
