@@ -488,6 +488,21 @@ function solve_cgm!(
     @. grad_last = grad
     @. p_n_last = p_n
 
+    # 詳細ログ出力（Python版との比較用）
+    if verbose
+      @printf("@ ___ Iter %3d ___ @\n", it)
+      @printf("J = %.5e, beta = %.4e, gamma = %.4e\n", Float64(J), Float64(beta), Float64(gamma))
+      grad_min, grad_max = extrema(grad)
+      @printf("grad: min=%.4e, max=%.4e, mean=%.4e\n",
+              Float64(grad_min), Float64(grad_max), Float64(sum(grad)/length(grad)))
+      dT_min, dT_max = extrema(dT)
+      @printf("dT:   min=%.4e, max=%.4e, mean=%.4e\n",
+              Float64(dT_min), Float64(dT_max), Float64(sum(dT)/length(dT)))
+      q_min, q_max = extrema(q)
+      @printf("q:    min=%.4e, max=%.4e, mean=%.4e\n",
+              Float64(q_min), Float64(q_max), Float64(sum(q)/length(q)))
+    end
+
     # Step 9: 停止判定（更新後にチェック）
     status = check_stopping_criteria(J, J_hist, res_T, it, stop_params)
     if status.should_stop

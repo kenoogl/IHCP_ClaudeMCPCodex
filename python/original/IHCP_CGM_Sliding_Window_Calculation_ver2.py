@@ -1196,11 +1196,19 @@ def multiple_time_step_solver_DHCP(T_initial, q_surface, nt, rho, cp_coeffs, k_c
             return inv_diag * z
         
         M = LinearOperator(A_csr.shape, matvec = Mv)
-        
-        x, info = cg(A_csr, b, M = M, rtol = rtol, maxiter = maxiter, x0 = x0)
+
+        # 反復数カウンター（codex診断用）
+        iter_count = [0]
+        def callback(xk):
+            iter_count[0] += 1
+
+        x, info = cg(A_csr, b, M = M, rtol = rtol, maxiter = maxiter, x0 = x0, callback=callback)
+
+        # 各時刻ステップの反復数を表示（codex診断用）
+        print(f"  [DHCP][t={t}] CG iterations: {iter_count[0]}, info={info}")
 
         if info > 0:
-            print(f"[警告][t={t}] Krylov法が収束しませんでした (info={info})")
+            print(f"[警告][t={t}] Krylov法が収束しませんでした (info={info}, iters={iter_count[0]})")
         elif info < 0:
             print(f"[エラー][t={t}] Krylov法の入力が不正です (info={info})")
 
@@ -1343,12 +1351,19 @@ def multiple_time_step_solver_Adjoint(T_cal, Y_obs, nt, rho, cp_coeffs, k_coeffs
             return inv_diag * z
         
         M = LinearOperator(A_csr.shape, matvec = Mv)
-        
-        x, info = cg(A_csr, b, M = M, rtol = rtol, maxiter = maxiter, x0 = x0)
 
+        # 反復数カウンター（codex診断用）
+        iter_count = [0]
+        def callback(xk):
+            iter_count[0] += 1
+
+        x, info = cg(A_csr, b, M = M, rtol = rtol, maxiter = maxiter, x0 = x0, callback=callback)
+
+        # 各時刻ステップの反復数を表示（codex診断用）
+        print(f"  [Adjoint][t={t}] CG iterations: {iter_count[0]}, info={info}")
 
         if info > 0:
-            print(f"[警告][t={t}] Krylov法が収束しませんでした (info={info})")
+            print(f"[警告][t={t}] Krylov法が収束しませんでした (info={info}, iters={iter_count[0]})")
         elif info < 0:
             print(f"[エラー][t={t}] Krylov法の入力が不正です (info={info})")
 
