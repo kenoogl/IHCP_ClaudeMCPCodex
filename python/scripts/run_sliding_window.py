@@ -112,9 +112,9 @@ def main():
         print("=" * 80)
         return 0
 
-    # 出力ファイル名
+    # 出力ファイル名（パスを含まない、ファイル名のみ）
     output_dir = project_root / "shared" / "results"
-    temp_filename = str(output_dir / args.output)
+    temp_filename = args.output  # パスを含まないファイル名のみ
 
     # 実行
     print(f"\n[3/4] Running sliding-window CGM")

@@ -2,165 +2,160 @@
 
 **日付**: 2025年10月21日
 **ブランチ**: `sliding-window-validation`
-**最終更新**: ウィンドウ分割ロジック3者完全一致確認完了
+**最終更新**: Python版とJulia版の3者比較実行完了
 
 ---
 
-## 📋 本セッションで完了した作業
+## 🚨 重大な問題発見
+
+### Python版の熱流束が異常に小さい
+
+**症状**:
+- Python版の熱流束: -5.49e-06 ~ 7.79e-07 W/m²（異常に小さい）
+- Julia版の熱流束: -4.28e+04 ~ 1.38e+05 W/m²（正常範囲）
+- **差**: 約10^10倍の違い 🔴
+
+**実行結果ファイル**:
+```
+shared/results/python_numba8_cgm3.npz       (Python版 8並列)
+shared/results/python_numba2_cgm3.npz       (Python版 2並列)
+shared/results/julia_sliding_window_cgm3.npz (Julia版)
+```
+
+---
+
+## 📋 前セッションで完了した作業
 
 ### ✅ 完了事項
 
-1. **ウィンドウ分割パラメータテスト（3ケース）**
-   - テストケース1: nt=10, window=5, overlap=2 → 5ウィンドウ一致 ✅
-   - テストケース2: nt=300, window=71, overlap=17 → 23ウィンドウ一致 ✅
-   - テストケース3: nt=10, window=10, overlap=0 → 1ウィンドウ一致 ✅
+1. **run_sliding_window.pyの修正**
+   - パス問題を修正（`temp_filename`をファイル名のみに変更）
+   - `python/scripts/run_sliding_window.py`
 
-2. **Julia版スクリプト修正**
-   - `julia/scripts/run_sliding_window.jl:581`
-   - ドライランモード時の`return 0`修正完了
+2. **Python版実行（2ケース）**
+   - Numba 8並列: 11.52秒 ✅
+   - Numba 2並列: 11.80秒 ✅
+   - **数値的に完全一致（誤差=0）**
 
-3. **オリジナルコードへのドライラン機能追加**
-   - `python/original/IHCP_CGM_Sliding_Window_Calculation_ver2.py`
-   - `sliding_window_CGM_q_saving()`に`dry_run`パラメータ追加
-   - ウィンドウ分割のみ表示して早期終了する機能
+3. **Julia版実行**
+   - pcg+diagonal: 165.71秒 ✅
+   - Python版の14.4倍遅い
 
-4. **検証スクリプト作成**
-   - `python/scripts/test_original_dryrun.py` - オリジナルコードのドライランテスト
-   - `python/scripts/compare_window_splitting.py` - 3者自動比較スクリプト（4テストケース）
-   - `python/scripts/run_sliding_window.py` - Python統一実行スクリプト
-
-5. **3者完全一致確認（追加検証4ケース）**
-   - テストケース1: nt=10, window=5, overlap=2 → 5ウィンドウ ✅
-   - テストケース2: nt=300, window=71, overlap=17 → 23ウィンドウ ✅
-   - テストケース3: nt=10, window=10, overlap=0 → 1ウィンドウ ✅
-   - テストケース4: nt=20, window=10, overlap=5 → 8ウィンドウ ✅
-
-6. **検証レポート作成・更新**
-   - `shared/results/window_splitting_validation_report.md`
-   - オリジナル・Python・Julia版の3者比較を中心に簡潔化
-   - 検証スクリプトの使用方法を追加
-
-7. **不要ファイル削除**
-   - ❌ `python/scripts/run_python_option2.py` (不正確、ウィンドウ分割がJulia版と異なる)
-   - ❌ `python/scripts/compare_results_10steps_cgm3.py` (10ステップ専用、今回不要)
-   - ❌ `python/scripts/run_python_10steps_cgm3.py` (10ステップ専用、今回不要)
-
-8. **保持した重要ファイル**
-   - ✅ `python/scripts/run_python_10steps_cgm3_with_iters.py` (反復数記録ガイド、将来の差異分析用)
+4. **並列性能分析**
+   - 2並列と8並列でほぼ同じ時間（差0.27秒）
+   - **理由**: CG法の逐次性、小規模問題、メモリボトルネック
+   - 並列化効率: わずか0.8%
 
 ---
 
-## 🎯 重要な発見
+## 🔍 次セッションの優先タスク
 
-### ウィンドウ分割ロジックの3者完全一致
-**オリジナルコード、Python版（run_sliding_window.py）、Julia版の3者すべてが同一のウィンドウ分割ロジックを使用していることを確認**
+### Task 1: Python版の熱流束異常値の原因調査 🔴 最優先
 
-| 要素 | 実装 | 一致 |
-|------|------|------|
-| ループ条件 | `start_idx < (nt - 1)` | ✅ |
-| max_L計算 | `min(window_size, (nt-1) - start_idx)` | ✅ |
-| step計算 | `max(1, max_L - overlap)` | ✅ |
+**仮説**:
+1. **CGM反復数不足**: 3回では収束していない可能性
+2. **初期値の問題**: `q_init_value=0.0`が不適切
+3. **単位変換の問題**: 結果を保存する際の単位ミス
+4. **スライディングウィンドウの実装差異**: ウィンドウ結合時のバグ
+5. **境界条件の設定ミス**: 熱流束境界条件が正しく設定されていない
 
-### Python版の実装構造
-- `run_sliding_window.py`はラッパースクリプト
-- 実際の計算はオリジナルコードの`sliding_window_CGM_q_saving()`を呼び出し
-- ドライラン表示と実際の計算で同じロジックが使用される
+**調査手順**:
+
+#### Step 1: CGM収束状況の確認
+```bash
+# ログから目的関数（J）の値を確認
+grep "J = " shared/results/python_numba8_cgm3.log | head -20
+grep "J = " shared/results/julia_sliding_window_cgm3.log | head -20
+
+# Jの値が減少しているか確認
+# Python版: J = 2.85404e+03 → 大きい（未収束の可能性）
+# Julia版: J = 5.753417e+03 → さらに大きい
+```
+
+#### Step 2: 中間データの比較
+```python
+# Python版の中間データを確認
+import numpy as np
+py_data = np.load('shared/results/python_numba8_cgm3.npz')
+print("Python版の全キー:", list(py_data.keys()))
+print("T0 range:", py_data['T0'].min(), "~", py_data['T0'].max())
+print("Y_obs range:", py_data['Y_obs'].min(), "~", py_data['Y_obs'].max())
+
+# Julia版と比較
+jul_data = np.load('shared/results/julia_sliding_window_cgm3.npz')
+print("\nJulia版の全キー:", list(jul_data.keys()))
+print("T_final range:", jul_data['T_final'].min(), "~", jul_data['T_final'].max())
+```
+
+#### Step 3: オリジナルコードの確認
+```bash
+# 保存処理を確認
+grep -A10 "np.save.*filename" python/original/IHCP_CGM_Sliding_Window_Calculation_ver2.py
+
+# 単位変換の有無を確認
+grep -i "unit\|scale\|convert" python/original/IHCP_CGM_Sliding_Window_Calculation_ver2.py
+```
+
+#### Step 4: CGM反復数を増やして再実行
+```bash
+# CGM反復数を20に増やして再実行
+python python/scripts/run_sliding_window.py \
+  --nt 10 --cgm-iter 20 --window 5 --overlap 2 \
+  --output python_numba8_cgm20 \
+  | tee shared/results/python_numba8_cgm20.log
+
+# 結果を確認
+python -c "
+import numpy as np
+data = np.load('shared/results/python_numba8_cgm20.npz')
+q = data['q_result']
+print(f'Heat-flux range: [{q.min():.6e}, {q.max():.6e}] W/m²')
+"
+```
+
+#### Step 5: Julia版との詳細比較
+```python
+# ウィンドウごとの結果を比較
+import numpy as np
+
+py_data = np.load('shared/results/python_numba8_cgm3.npz')
+jul_data = np.load('shared/results/julia_sliding_window_cgm3.npz')
+
+# Juliaのウィンドウ情報
+print("Julia版ウィンドウ情報:")
+print("  window_q_min:", jul_data['window_q_min'])
+print("  window_q_max:", jul_data['window_q_max'])
+print("  window_J_final:", jul_data['window_J_final'])
+```
 
 ---
 
 ## 📁 重要ファイル
 
-### 新規作成
-- `python/scripts/run_sliding_window.py` ⭐ Python統一実行スクリプト
-- `python/scripts/test_original_dryrun.py` - ドライランテスト
-- `python/scripts/compare_window_splitting.py` - 3者自動比較
-- `shared/results/window_splitting_validation_report.md` ⭐ 検証レポート
-
 ### 修正済み
-- `julia/scripts/run_sliding_window.jl` - ドライラン機能のバグ修正
-- `python/original/IHCP_CGM_Sliding_Window_Calculation_ver2.py` - ドライラン機能追加
+- `python/scripts/run_sliding_window.py` ⭐ パス問題修正済み
 
-### 既存の有効データ
-- `shared/results/julia_sliding_window_cgm3.npz` - Julia版結果（nt=10, window=5, overlap=2, cgm_iter=3）
-- `shared/results/julia_sliding_window_cgm3_metadata.txt` - メタデータ
+### 実行結果
+- `shared/results/python_numba8_cgm3.npz` - Python 8並列（11.52秒）
+- `shared/results/python_numba2_cgm3.npz` - Python 2並列（11.80秒）
+- `shared/results/julia_sliding_window_cgm3.npz` - Julia版（165.71秒）
+- `shared/results/python_numba8_cgm3.log` ⭐ デバッグ用ログ
+- `shared/results/julia_sliding_window_cgm3.log` ⭐ デバッグ用ログ
+
+### オリジナルコード
+- `python/original/IHCP_CGM_Sliding_Window_Calculation_ver2.py` ⭐ バグ調査対象
 
 ---
 
-## 🚀 次セッションの優先タスク
-
-### Task 2: Python版オプション2実行（正しいスクリプト使用）
-
-**重要**: 前セッションの`run_python_option2.py`は削除済み。正しいスクリプト`run_sliding_window.py`を使用すること。
+## 🔧 未コミットの変更
 
 ```bash
-# Python版実行
-python python/scripts/run_sliding_window.py \
-  --nt 10 \
-  --cgm-iter 3 \
-  --window 5 \
-  --overlap 2 \
-  --output python_option2_correct \
-  | tee shared/results/python_option2_correct.log
-```
+# 修正したファイル
+modified:   python/scripts/run_sliding_window.py
 
-**パラメータ**:
-- nt=10 (時間ステップ)
-- cgm_iter=3 (CGM最大反復数)
-- window=5 (ウィンドウサイズ)
-- overlap=2 (オーバーラップ)
-
-**期待される出力**:
-- `shared/results/python_option2_correct.npz`
-- `shared/results/python_option2_correct_metadata.txt`
-- `shared/results/python_option2_correct.log`
-
-**Julia版は既存データ使用可能**:
-- `shared/results/julia_sliding_window_cgm3.npz`
-- パラメータ: nt=10, window=5, overlap=2, cgm_iter=3, solver=pcg, precond=diagonal
-
----
-
-### Task 3: Python-Julia結果比較
-
-**比較スクリプト作成が必要**:
-- `python/scripts/compare_sliding_window_results.py`
-
-**比較項目**:
-1. 熱流束（q_result）の数値誤差
-   - 絶対誤差（最大、平均、RMS）
-   - 相対誤差（最大、平均）
-2. 実行時間の差
-3. 各ウィンドウの収束状況
-4. メモリ使用量（ログから抽出）
-
-**期待される分析結果**:
-- CGM反復数の差（2-3倍）の原因特定
-- 数値精度の比較
-- 性能差の分析
-
----
-
-## 🔍 データ品質保証ルール（必須）
-
-**⚠️ 絶対厳守**: レポート・ドキュメント作成時のデータ品質要件
-
-### 禁止事項
-1. **推定値・仮定値の使用禁止**
-   - 実測データが不完全な場合はレポート作成を中断
-2. **不完全データでのレポート作成禁止**
-   - 実行が完了していない（"Total runtime:"未記録）
-   - 収束していない（発散、エラー終了）
-   - データが欠損している
-3. **未検証データの公開禁止**
-   - ファイルの存在確認必須
-   - ファイルサイズ・内容の妥当性確認必須
-
-### 必須手順
-```bash
-# 実行完了確認
-grep "Total runtime:" <logfile>
-ls -lh <result_file>
-tail -20 <logfile>
+# 新規ファイル（.npyは中間ファイル、不要）
+python/python_numba2_cgm3.npy
+python/python_numba8_cgm3.npy
 ```
 
 ---
@@ -171,45 +166,34 @@ tail -20 <logfile>
 ```bash
 cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
 git status
-git log --oneline -5
+git log --oneline -3
 cat TODO_NEXT_SESSION.md
 ```
 
-2. **検証レポート確認**
-```bash
-cat shared/results/window_splitting_validation_report.md
-```
+2. **Task 1実行: Python版バグ調査**
+   - 上記のStep 1~5を順次実行
+   - 各ステップで結果を記録
 
-3. **Task 2実行（Python版）**
-```bash
-python python/scripts/run_sliding_window.py \
-  --nt 10 --cgm-iter 3 --window 5 --overlap 2 \
-  --output python_option2_correct \
-  | tee shared/results/python_option2_correct.log
-```
+3. **修正とテスト**
+   - バグを特定したら修正
+   - 再実行して結果を確認
+   - Julia版と数値比較
 
-4. **実行完了確認**
-```bash
-grep "Total runtime:" shared/results/python_option2_correct.log
-ls -lh shared/results/python_option2_correct.npz
-```
-
-5. **Task 3準備（比較スクリプト作成）**
+4. **コミット**
+   - バグ修正をコミット
+   - 検証レポート作成
 
 ---
 
 ## 📚 参照ドキュメント
 
-### 作成済み
-- `shared/results/window_splitting_validation_report.md` ⭐ ウィンドウ分割検証レポート
-- `docs/plans/sliding_window_validation_plan.md` - 検証計画
-
 ### 既存の重要資料
 - `.claude/CLAUDE.md` - プロジェクト全体のガイドライン
-- `docs/reports/PROJECT_COMPLETION.md` - Phase 1-6完成報告
+- `docs/plans/sliding_window_validation_plan.md` - 検証計画
+- `shared/results/window_splitting_validation_report.md` - ウィンドウ分割検証
 
 ---
 
 **次セッションでの成功を祈ります！**
 
-**重要**: ウィンドウ分割ロジックの完全一致が確認済みのため、本実行・結果比較に安心して進めます。
+**重要**: Python版の熱流束が異常に小さい原因を特定し、修正することが最優先課題です。
