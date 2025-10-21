@@ -1,216 +1,205 @@
 # 次セッション作業ガイド
 
-**作成日時**: 2025年10月21日 11:30
+**作成日時**: 2025年10月21日 14:30
 **ブランチ**: sliding-window-validation
-**最終コミット**: `9ef443a` - "docs: CGMソルバー比較レポート追加（PCG vs PBICGSTAB!、前処理効果分析）"
+**最新コミット**: `d292900` - "fix: Julia版スライディングウィンドウの配列インデックスバグ修正"
 
 ## ✅ 完了した作業（このセッション）
 
-### CGMソルバー性能比較完了 ✅
+### 🐛 Julia版スライディングウィンドウ発散問題の解決
 
-**実行スクリプト**: `julia/scripts/run_10steps_fullsize_test.jl`
-**比較レポート**:
-- `shared/results/solver_comparison/pbicgstab_vs_pcg_none.md` (17KB)
-- `shared/results/solver_comparison/solver_comparison_3way.md` (15KB)
+**問題症状**:
+- t=1～62: 正常収束
+- t=62: 異常（1260反復）
+- t=63以降: 爆発的発散（17256反復→20000打ち切り）
 
-#### 性能ランキング結果
+**根本原因**:
+1. **配列インデックスのオフバイワンエラー**
+   - `Y_obs_win = Y_obs[:, :, start_idx+1:start_idx+max_L]`
+   - 71要素のみ（本来72必要）
+   - 熱流束71ステップ計算には温度データ72ステップ必要
 
-格子: 80×100×20、時間ステップ: 10、CGM反復: 1回
+2. **Sensitivity Solver非最適設定**
+   - PBICGSTAB!使用（非対称問題用）
+   - PCGが17.4%高速（対称正定値問題）
 
-| 順位 | ソルバー | 前処理 | CGM時間 | 総実行時間 | PCG+none比 | 推奨度 |
-|-----|---------|--------|---------|----------|-----------|-------|
-| 🥇 | **PCG** | **none** | **24.43秒** | **27.30秒** | **基準** | ⭐⭐⭐ **最推奨** |
-| 🥈 | PBICGSTAB! | none | 29.23秒 | 32.06秒 | -17.4% | ⭐⭐ |
-| 🥉 | PBICGSTAB! | GS | 29.75秒 | 33.62秒 | -23.2% | ⭐ |
-
-#### 重要な発見
-
-1. **PCG+noneが圧倒的最速**（17.4%～23.2%高速）
-2. **PCGの1反復が最速**:
-   - PBICGSTAB!より47.3%高速（0.0087秒 vs 0.0165秒）
-   - PBICGSTAB!+GSより90.4%高速
-3. **Gauss-Seidel前処理は効果なし**:
-   - 反復回数88%削減（2437→292回）
-   - しかし1反復コスト10.5倍増加
-   - 結果的に総実行時間では最遅
-4. **3つとも同等の精度**（RMS残差、熱流束、コスト関数すべて一致）
-
-#### 確定した推奨設定
-
+**修正内容**:
 ```julia
-cgm_params = (
-  dhcp_solver = :pcg,              # PCG推奨
-  dhcp_smoother = :none,           # 前処理無し推奨
-  adjoint_solver = :pcg,
-  adjoint_smoother = :none,
-  sensitivity_solver = :pcg,
-  sensitivity_smoother = :none,
-  rtol_dhcp = 1.0e-6,
-  rtol_adjoint = 1.0e-8,
-  maxiter_cg = 20000,
-)
+# 修正1: 配列スライス (行283-284)
+Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]  # 72要素
+
+# 修正2: PCGに統一 (行198)
+sensitivity_solver = :pcg  # PCGに統一
 ```
+
+**テスト結果**:
+- ✅ 10ステップテスト: 21秒で完了、全収束
+- ⚠️ 300ステップテスト: プロセス異常（9分以上データ読み込み中で停止）
+
+**詳細レポート**: `SLIDING_WINDOW_BUG_FIX.md`
+
+### 📊 Python版成功データ
+
+**実行完了**: `shared/results/current/sliding_window/python_phase1_fixed.log` (166KB)
+- 総ウィンドウ数: 23
+- 総実行時間: 251.38秒
+- 全ウィンドウで正常収束 ✅
+- q範囲: [-5.611e+04, 2.843e+02] W/m²
 
 ## 🚧 次セッションで実施すべきタスク
 
-### 1. バックグラウンドプロセスの整理（優先度: 最高）
+### 1. Julia版実行異常の調査（優先度: 最高）
 
-**現状**: 11個のバックグラウンドジョブが実行中
+**現象**:
+- PID 19060が9分以上データ読み込み中で停止
+- ログ: "データ読み込み中..." 以降進まず
 
+**調査項目**:
 ```bash
-# プロセス状態確認
-ps aux | grep -E "(python|julia)" | grep -v grep
+# プロセス確認
+ps aux | grep julia | grep sliding
 
-# 個別確認
-BashOutput d6a757  # Python版 (nohup)
-BashOutput dd67ac  # Julia版 (tail)
-BashOutput bde492  # シングルウィンドウテスト
-BashOutput 51eb26  # Python版 (tee)
-BashOutput e26e5e  # ウィンドウ1比較テスト
-BashOutput c427cd  # Julia版 (head)
-BashOutput 4e5fbf  # Julia版 (tee)
-BashOutput d13cd5  # Julia版 FINAL
-BashOutput 9f8d8a  # ソルバー比較
-BashOutput e6cad9  # run_all_solver_tests.sh
-BashOutput 640ce7  # run_solver_comparison.sh
+# ログ確認
+tail -100 shared/results/julia_phase1_FIXED.log
+
+# 小規模テスト再実行
+julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 3 --nt 72 --window 71
 ```
 
-**アクション**:
-1. 各ジョブの状態確認（完了/実行中/エラー）
-2. 完了したジョブの結果収集
-3. 不要なプロセスのkill
-4. 結果をまとめてレポート作成
+**可能性**:
+1. NPZ読み込みの問題（大容量ファイル1.1GB）
+2. メモリ不足
+3. Julia環境の問題
+4. 別のバグ
 
-### 2. スライディングウィンドウ検証結果の収集（優先度: 高）
+### 2. 修正版の動作確認
 
-**Phase 1（CGM 3回）の状況**:
-- Python版: 複数ジョブ実行中（d6a757, 51eb26）
-- Julia版: 複数ジョブ実行中（dd67ac, c427cd, 4e5fbf, d13cd5）
+**ステップバイステップ**:
 
-**次のアクション**:
-1. 完了したジョブの結果収集
-2. Python-Julia比較分析
-3. Phase 1レポート作成
-4. Phase 2（CGM 20000回）の準備
+#### Step 1: 最小テスト（10ステップ、overlap無し）
+```bash
+julia --project=julia julia/scripts/run_sliding_window_validation.jl \
+  --cgm-iter 1 --nt 10 --window 10 --overlap 0
+```
+- 期待: 20秒程度で完了
+- 確認: 全収束、発散なし
 
-### 3. 最終推奨設定の反映（優先度: 中）
+#### Step 2: ウィンドウ1テスト（72ステップ）
+```bash
+julia --project=julia julia/scripts/run_sliding_window_validation.jl \
+  --cgm-iter 3 --nt 72 --window 71 --overlap 0
+```
+- 期待: 60秒程度で完了
+- 確認: `[t=1/71]`から`[t=71/71]`まで正常
 
-**更新対象**:
-- `julia/scripts/run_sliding_window_validation.jl` - PCG+none設定に変更
-- `julia/scripts/run_10steps_fullsize_test.jl` - デフォルトをPCG+noneに
-- `docs/plans/sliding_window_validation_plan.md` - 進捗と推奨設定を更新
+#### Step 3: フルテスト（300ステップ）
+```bash
+julia --project=julia julia/scripts/run_sliding_window_validation.jl --cgm-iter 3
+```
+- 期待: 250秒程度で完了（Python版と同等）
+- 確認: 23ウィンドウ、全収束
 
-### 4. ドキュメント統合（優先度: 低）
+### 3. Python版との比較分析
 
-既存の`shared/results/solver_comparison/summary.md`を更新:
-- 今回のベンチマーク結果を統合
-- 各ソルバー・前処理の特徴と推奨設定を記載
-- 前処理効果の分析結果を追加
+**比較項目**:
+- 実行時間
+- ウィンドウ数
+- 各ウィンドウの収束状況
+- 熱流束範囲
+- CGM反復回数
+
+**Python版データ**: `shared/results/current/sliding_window/python_phase1_fixed.log`
+
+### 4. NPZ保存エラーの修正（低優先度）
+
+**エラーメッセージ**:
+```
+❌ Error: ArgumentError("cannot reinterpret `Any` as `UInt8`, type `Any` is not a bits type")
+```
+
+**原因**: `windows_info`のDict型がNPZ保存と互換性なし
+
+**修正方針**:
+- Dictを保存可能な形式に変換
+- または別ファイル（JSON）に保存
 
 ## 📁 重要なファイル
 
 ### 新規作成（このセッション）
-- `shared/results/solver_comparison/pbicgstab_vs_pcg_none.md` - 2方向比較レポート（17KB）
-- `shared/results/solver_comparison/solver_comparison_3way.md` - 3方向比較レポート（15KB）
-- `SESSION_SUMMARY_2025-10-21_03.md` - セッションサマリー（更新）
+- `SLIDING_WINDOW_BUG_FIX.md` - バグ修正詳細レポート
 
-### 更新対象（次セッション）
-- `docs/plans/sliding_window_validation_plan.md` - 検証計画（進捗更新）
-- `julia/scripts/run_sliding_window_validation.jl` - PCG+none設定反映
-- `shared/results/solver_comparison/summary.md` - 統合サマリー（要更新）
+### 修正済み
+- `julia/scripts/run_sliding_window_validation.jl` - 配列スライス修正、PCG統一
 
-### ログファイル（gitignore対象）
-- `shared/results/solver_comparison_pcg_none.log` (5.7KB)
-- `shared/results/solver_comparison_pbicgstab_none.log` (6.2KB)
-- `shared/results/solver_comparison_pbicgstab_gs.log` (5.7KB)
+### 参照ログ
+- `shared/results/current/sliding_window/python_phase1_fixed.log` (166KB) - Python成功例
+- `shared/results/current/sliding_window/julia_phase1_FINAL.log` (7.3KB) - Julia発散例
+- `shared/results/julia_phase1_FIXED.log` - 修正版（異常終了）
+
+### ベンチマーク
+- `shared/results/solver_comparison/solver_comparison_3way.md` - PCG+noneが最速
 
 ## 🔬 技術メモ
 
-### CGMソルバー比較の主要結論
+### 配列インデックスの正しい理解
 
-1. **対称正定値問題ではPCGが最適**
-   - 熱伝導方程式は対称正定値行列を生成
-   - PCGは対称性を活用した最も効率的なアルゴリズム
-   - PBICGSTAB!は非対称問題用（本問題では過剰）
-
-2. **前処理無しが最速**
-   - 前処理オーバーヘッドが大きすぎる
-   - Gauss-Seidel: 反復88%削減も1反復コスト10.5倍で相殺
-   - Jacobi前処理も検討価値あり（軽量で並列化可能）
-
-3. **1反復コストが決定的**
-   - PCG: 0.0087秒/回（最速）
-   - PBICGSTAB!: 0.0165秒/回（1.9倍遅い）
-   - PBICGSTAB!+GS: 0.0910秒/回（10.5倍遅い）
-
-### run_10steps_fullsize_test.jlの使用方法
-
-```bash
-# 基本実行（PCG + none推奨）
-julia --project=julia julia/scripts/run_10steps_fullsize_test.jl \
-  --solver pcg \
-  --precond none
-
-# その他の組み合わせ
-julia --project=julia julia/scripts/run_10steps_fullsize_test.jl \
-  --solver pbicgstab \
-  --precond gs
-
-# 利用可能なオプション
-# --solver: pbicgstab, pcg
-# --precond: none, jacobi, gs
-# -h, --help: ヘルプ表示
+**Python** (0-origin):
+```python
+# nt=300, window_size=71
+start_idx = 0
+end_idx = start_idx + max_L = 71
+Y_obs_win = Y_obs[0:72, :, :]  # [start:end+1] → 72要素
 ```
 
-## 📊 バックグラウンドジョブ一覧
+**Julia** (1-origin):
+```julia
+# nt=300, window_size=71
+start_idx = 0
+end_idx = start_idx + max_L = 71
+Y_obs_win = Y_obs[:, :, 1:72]  # [start+1:end+1] → 72要素
+```
 
-| ID | コマンド | 目的 | 推定状態 |
-|----|---------|------|---------|
-| d6a757 | Python nohup | Phase 1検証 | 実行中 |
-| dd67ac | Julia tail | Phase 1検証 | 発散エラー？ |
-| bde492 | Julia単一ウィンドウ | デバッグ | タイムアウト？ |
-| 51eb26 | Python tee | Phase 1検証 | 実行中 |
-| e26e5e | Julia window1比較 | デバッグ | タイムアウト？ |
-| c427cd | Julia head | Phase 1検証 | 実行中 |
-| 4e5fbf | Julia tee | Phase 1検証 | タイムアウト？ |
-| d13cd5 | Julia FINAL | Phase 1検証 | タイムアウト？ |
-| 9f8d8a | ソルバー比較 | ベンチマーク | 完了？ |
-| e6cad9 | run_all_solver_tests | ベンチマーク | 完了？ |
-| 640ce7 | run_solver_comparison | ベンチマーク | 実行中？ |
+**なぜ72要素必要か**:
+```
+熱流束 q: [t=0, t=1, ..., t=70]  → 71ステップ
+温度 T:   [t=0, t=1, ..., t=71]  → 72ステップ
 
-## 🎯 今後の最適化方向
+熱伝導方程式: T[t+1] = f(T[t], q[t])
+∴ q[0:70]を計算するにはT[0:71]が必要
+```
 
-### 優先度高
-1. **PCG + Jacobi前処理のテスト**
-   - Gauss-Seidelより軽量
-   - 並列化可能
-   - 反復回数削減と前処理コストのバランス期待
+### PCG vs PBICGSTAB!
 
-### 優先度中
-2. **適応的許容誤差**
-   - 初期ステップ: rtol=1e-4
-   - 後期ステップ: rtol=1e-8
-   - 総反復回数削減の可能性
+**ベンチマーク結果** (10ステップ、80×100×20格子):
+- PCG+none: 27.30秒 ⭐ **最速**
+- PBICGSTAB!+none: 32.06秒（17.4%遅い）
+- PBICGSTAB!+GS: 33.62秒（23.2%遅い）
 
-3. **GPU並列化の検討**
-   - PCGの単純な演算パターンはGPU化に有利
-   - 大規模問題での更なる高速化
+**理由**:
+- 熱伝導方程式 → 対称正定値行列
+- PCG → 対称正定値問題専用（最適）
+- PBICGSTAB! → 非対称問題用（過剰）
 
 ## 🐛 既知の問題
 
-1. **バックグラウンドプロセス多数**: 整理が必要
-2. **Julia版スライディングウィンドウの発散**: 大きなウィンドウで問題発生（要調査）
-3. **古いsummary.md**: 10月17日の古いデータが含まれている（要更新）
+1. **Julia版300ステップ実行が異常に遅い**
+   - データ読み込みで9分以上停止
+   - 要調査・修正
+
+2. **NPZ保存エラー**
+   - windows_info (Dict型)が保存不可
+   - 低優先度（計算自体は成功）
 
 ## 🔄 推奨作業順序
 
-1. ✅ バックグラウンドプロセス状態確認・整理
-2. ✅ 完了したジョブの結果収集
-3. ✅ Python-Julia比較分析
-4. ✅ Phase 1レポート作成
-5. ✅ 最終推奨設定を各スクリプトに反映
-6. ✅ ドキュメント更新
-7. ✅ gitコミット・プッシュ
+1. ✅ Julia版実行異常の原因調査
+2. ✅ 最小テスト（10ステップ）実行
+3. ✅ ウィンドウ1テスト（72ステップ）実行
+4. ✅ 成功したらフルテスト（300ステップ）実行
+5. ✅ Python版との詳細比較
+6. ✅ 比較レポート作成
+7. ✅ NPZ保存エラー修正（時間があれば）
+8. ✅ gitコミット・プッシュ
 
 ---
 
@@ -221,13 +210,19 @@ cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
 git status
 git log --oneline -5
 cat TODO_NEXT_SESSION.md
-cat SESSION_SUMMARY_2025-10-21_03.md
+cat SLIDING_WINDOW_BUG_FIX.md
 
-# バックグラウンドジョブ確認
-ps aux | grep -E "(python|julia)" | grep -v grep | wc -l
+# 実行異常の調査
+ps aux | grep julia | grep sliding
+tail -100 shared/results/julia_phase1_FIXED.log
+
+# 最小テスト実行
+julia --project=julia julia/scripts/run_sliding_window_validation.jl \
+  --cgm-iter 1 --nt 10 --window 10 --overlap 0 2>&1 | head -200
 ```
 
 **期待される次のマイルストーン**:
-- [ ] Phase 1（CGM 3回）完了・レポート作成
-- [ ] PCG+none設定の全スクリプトへの反映
-- [ ] Phase 2（CGM 20000回）開始
+- [ ] Julia版300ステップ正常完了
+- [ ] Python版と同等の結果（±5%以内）
+- [ ] 発散なし、全ウィンドウ収束
+- [ ] 実行時間250秒前後
