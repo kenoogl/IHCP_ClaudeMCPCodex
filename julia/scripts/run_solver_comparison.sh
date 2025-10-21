@@ -54,8 +54,9 @@ for solver in "${solvers[@]}"; do
       # 結果を抽出
       elapsed=$(grep "DHCP elapsed time:" "$log_file" | awk '{print $4}')
       iterations=$(grep "converged:" "$log_file" | tail -1 | awk -F'Iteration=' '{print $2}' | awk '{print $1}')
+      final_res0=$(grep "converged:" "$log_file" | tail -1 | awk -F'Res_0=' '{print $2}' | awk '{print $1}')
 
-      results+=("| $solver | $precond | $elapsed s | $iterations |")
+      results+=("| $solver | $precond | $elapsed s | $iterations | $final_res0 |")
     else
       echo "❌ エラー: $solver + $precond"
       results+=("| $solver | $precond | ERROR | - |")
@@ -80,8 +81,8 @@ cat > "$summary_file" <<EOF
 
 ## 結果一覧
 
-| ソルバー | 前処理 | 実行時間 | 最終反復数 |
-|----------|--------|----------|------------|
+| ソルバー | 前処理 | 実行時間 | 最終反復数 | 最終ステップ初期残差 |
+|----------|--------|----------|------------|---------------------|
 EOF
 
 # 結果を追加
