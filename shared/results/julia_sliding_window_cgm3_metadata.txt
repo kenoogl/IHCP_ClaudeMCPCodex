@@ -1,0 +1,12 @@
+solver_type: pcg
+precond_type: diagonal
+cgm_max_iter: 3
+nt: 10
+window_size: 5
+overlap: 2
+dt: 1.000000e-03
+q_init: 0.000000e+00
+q_min: -4.275711e+04
+q_max: 1.377994e+05
+cgm_elapsed: 165.71
+total_elapsed: 165.76

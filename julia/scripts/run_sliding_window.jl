@@ -52,6 +52,7 @@ function parse_command_line_args()
   overlap = DEFAULT_OVERLAP
   dt = DEFAULT_DT
   q_init_value = DEFAULT_Q_INIT
+  dry_run = false
 
   i = 1
   while i <= length(ARGS)
@@ -69,6 +70,7 @@ function parse_command_line_args()
         --overlap N            Overlap between windows (steps)        [default: 17]
         --dt VALUE             Time step size in seconds              [default: 0.001]
         --q-init VALUE         Initial heat-flux guess (W/m^2)        [default: 0.0]
+        --dry-run              Show window configuration and exit (no computation)
         -h, --help             Show this help message and exit
 
       Examples:
@@ -126,6 +128,8 @@ function parse_command_line_args()
       i += 1
       i > length(ARGS) && error("--q-init requires an argument")
       q_init_value = parse(Float64, ARGS[i])
+    elseif arg == "--dry-run"
+      dry_run = true
     else
       error("Unknown argument: $arg")
     end
@@ -153,6 +157,7 @@ function parse_command_line_args()
     precond_type = precond_type,
     cgm_iter = cgm_iter,
     nt = nt,
+    dry_run = dry_run,
     window_size = window_size,
     overlap = overlap,
     dt = dt,
@@ -248,7 +253,8 @@ function run_sliding_window!(
   window_size::Int,
   overlap::Int,
   q_init_value::Float64,
-  cgm_params::NamedTuple
+  cgm_params::NamedTuple,
+  dry_run::Bool = false
 )
   ni, nj, nt = size(Y_obs)
   nk = size(T_init, 3)
@@ -282,6 +288,45 @@ function run_sliding_window!(
   println(@sprintf("  window size: %d", window_size))
   println(@sprintf("  overlap: %d", overlap))
   flush(stdout)
+
+  # Dry-run mode: ウィンドウ分割を表示して終了
+  if dry_run
+    println("\n[Dry-run mode] Calculating window configuration...")
+    start_idx = 0
+    window_id = 1
+    while start_idx < total_flux_steps
+      max_L = min(window_size, total_flux_steps - start_idx)
+      end_idx = start_idx + max_L
+      println(@sprintf("  [Window %d] range=[%d,%d] length=%d", window_id, start_idx, end_idx, max_L))
+      step = max(1, max_L - overlap)
+      start_idx += step
+      window_id += 1
+      if window_id > nt * 5  # safety
+        @warn "Safety break in dry-run"
+        break
+      end
+    end
+    println(@sprintf("\n  Total windows: %d", window_id - 1))
+    println("\n[Dry-run mode] Window configuration complete. No computation performed.")
+    println("=" ^ 80)
+    # ドライランモードではダミー値を返す
+    dummy_q = zeros(Float64, ni, nj, total_flux_steps)
+    dummy_T = copy(T_init)
+    dummy_summary = (
+      total_elapsed = 0.0,
+      window_count = window_id - 1,
+      total_cgm_iterations = 0,
+      window_starts = Int[],
+      window_ends = Int[],
+      window_iterations = Int[],
+      window_J_final = Float64[],
+      window_elapsed = Float64[],
+      window_q_min = Float64[],
+      window_q_max = Float64[],
+      window_histories = Vector{Float64}[]
+    )
+    return (dummy_q, dummy_T, dummy_summary)
+  end
 
   # Python版に合わせた修正: start_idxベースのループ (IHCP_CGM_Sliding_Window_Calculation_ver2.py 1603行)
   start_idx = 0
@@ -527,8 +572,14 @@ function main()
     cfg.window_size,
     cfg.overlap,
     cfg.q_init_value,
-    cgm_params
+    cgm_params,
+    cfg.dry_run
   )
+
+  # ドライランモードの場合は保存をスキップ
+  if cfg.dry_run
+    return 0
+  end
 
   q_range = extrema(q_global)
   println("\n[5/5] Saving outputs")

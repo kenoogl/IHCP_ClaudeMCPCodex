@@ -1587,7 +1587,7 @@ def global_CGM_time(T_init, Y_obs, q_init, dx, dy, dz, dz_b, dz_t, dt,
 def sliding_window_CGM_q_saving(
     Y_obs, T0, dx, dy, dz, dz_b, dz_t, dt, rho, cp_coeffs, k_coeffs,
     window_size, overlap, q_init_value, filename, CGM_iteration=20000,
-    save_intermediate=False, output_dir="shared/results"
+    save_intermediate=False, output_dir="shared/results", dry_run=False
 ):
     nt = Y_obs.shape[0]
     T_init = T0.copy()
@@ -1599,6 +1599,21 @@ def sliding_window_CGM_q_saving(
 
     safety_counter = 0
     safety_limit = nt * 5  # 经验值
+
+    # ドライランモード: ウィンドウ分割のみ表示
+    if dry_run:
+        print("\n[Dry-run mode] Calculating window configuration...")
+        window_id = 1
+        while start_idx < nt - 1:
+            max_L = min(window_size, (nt - 1) - start_idx)
+            end_idx = start_idx + max_L
+            print(f"  [Window {window_id}] range=[{start_idx},{end_idx}] length={max_L}")
+            step = max(1, max_L - overlap)
+            start_idx += step
+            window_id += 1
+        print(f"\n  Total windows: {window_id - 1}")
+        print("\n[Dry-run mode] Window configuration complete. No computation performed.")
+        return None
 
     while start_idx < nt - 1:
         safety_counter += 1

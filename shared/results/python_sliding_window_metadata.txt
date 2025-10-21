@@ -1,0 +1,8 @@
+cgm_max_iter: 1
+nt: 10
+window_size: 71
+overlap: 17
+dt: 1.000000e-03
+q_min: -5.307007e-04
+q_max: 7.219456e-05
+total_elapsed: 10.66
