@@ -280,7 +280,7 @@ function sliding_window_cgm_with_diagnostics(
         # 現在のウィンドウ長
         max_L = min(window_size, (nt - 1) - start_idx)
         end_idx = start_idx + max_L
-        Y_obs_win = Y_obs[:, :, start_idx+1:end_idx+1]
+        Y_obs_win = Y_obs[:, :, start_idx+1:start_idx+max_L]
 
         window_id = length(windows_info) + 1
 
