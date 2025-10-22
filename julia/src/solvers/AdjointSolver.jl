@@ -224,7 +224,7 @@ function solve_adjoint_mf!(
   rtol::T=T(1e-8),
   maxiter::Int=1000,
   verbose::Bool=false,
-  par::String="sequential",
+  par::String="thread",
   lambda_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   initial_strategy::Symbol=:residual,

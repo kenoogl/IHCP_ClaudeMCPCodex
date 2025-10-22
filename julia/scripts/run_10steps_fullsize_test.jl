@@ -46,7 +46,7 @@ Returns:
 function parse_command_line_args()
   solver_type = :pbicgstab  # デフォルト
   precond_type = :jacobi    # デフォルト
-  par = "sequential"        # デフォルト
+  par = "thread"            # デフォルト
 
   i = 1
   while i <= length(ARGS)
@@ -59,7 +59,7 @@ function parse_command_line_args()
                               Available: pbicgstab, pcg
         --precond PRECOND     Preconditioner type (default: jacobi)
                               Available: jacobi, gs, none
-        --par MODE            Parallelization mode (sequential | thread) [default: sequential]
+        --par MODE            Parallelization mode (sequential | thread) [default: thread]
         -h, --help            Show this help message and exit
 
       Examples:

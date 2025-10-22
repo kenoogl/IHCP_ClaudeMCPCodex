@@ -118,7 +118,7 @@ function compute_gradient!(
   rtol::T=T(1e-8),
   maxiter::Int=20000,
   verbose::Bool=false,
-  par::String="sequential",
+  par::String="thread",
   gradient_buffer::Union{Nothing,Array{T,3}}=nothing,
   adjoint_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
@@ -257,7 +257,7 @@ function solve_cgm!(
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64};
   params::NamedTuple=(;),
-  par::String="sequential",
+  par::String="thread",
   save_intermediate::Bool=false,
   output_dir::String="shared/results"
 ) where {T <: AbstractFloat}

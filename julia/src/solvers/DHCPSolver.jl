@@ -202,7 +202,7 @@ function solve_dhcp!(
   rtol::T=T(1e-6),
   maxiter::Int=20000,
   verbose::Bool=false,
-  par::String="sequential",
+  par::String="thread",
   T_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
   use_previous_solution::Bool=true,

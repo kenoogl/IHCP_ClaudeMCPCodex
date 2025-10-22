@@ -53,7 +53,7 @@ function parse_command_line_args()
   dt = DEFAULT_DT
   q_init_value = DEFAULT_Q_INIT
   dry_run = false
-  par = "sequential"
+  par = "thread"
 
   i = 1
   while i <= length(ARGS)
@@ -71,7 +71,7 @@ function parse_command_line_args()
         --overlap N            Overlap between windows (steps)        [default: 17]
         --dt VALUE             Time step size in seconds              [default: 0.001]
         --q-init VALUE         Initial heat-flux guess (W/m^2)        [default: 0.0]
-        --par MODE             Parallelization mode (sequential | thread) [default: sequential]
+        --par MODE             Parallelization mode (sequential | thread) [default: thread]
         --dry-run              Show window configuration and exit (no computation)
         -h, --help             Show this help message and exit
 
