@@ -1,9 +1,9 @@
 # 次のセッション開始ガイド
 
-**作成日時**: 2025年10月23日
-**セッション状態**: Phase 1-4完了（全前処理器検証完了）
+**作成日時**: 2025年10月23日（最終更新: セッション継続時）
+**セッション状態**: Phase 1-4完了（全前処理器検証完了）、次はPhase 5推奨
 **現在のブランチ**: parallelization
-**最新コミット**: 34a115e
+**最新コミット**: c8fb4a4
 
 ---
 
@@ -348,6 +348,40 @@ none/diagonal前処理器の精度問題の詳細調査
 
 ---
 
+## 📋 このセッションでの確認事項
+
+### セッション継続時の作業（2025年10月23日）
+
+1. **Phase 4完了状態の確認** ✅
+   - `docs/reports/phase4_preconditioner_validation_report.md` を確認
+   - 全4前処理器の検証が完了していることを確認
+   - jacobi/gs前処理器が推奨されることを確認
+
+2. **次の作業方針の整理** ✅
+   - Phase 5（性能ベンチマーク）を推奨
+   - 理由: スケーラビリティの定量評価が有用
+   - 代替案: 本番適用準備（Phase 5スキップ可）
+
+3. **未コミット変更の確認** ✅
+   - ログファイル（log_*.txt）: gitignore対象、未追跡
+   - データファイル（*.npz）: gitignore対象、未追跡
+   - 重要ドキュメントは全てコミット済み
+
+---
+
 **次のセッション開始時**: 必ずこのファイルを読んでから作業を開始してください。
 
-**最重要タスク**: Phase 4完了、次はPhase 5（性能ベンチマーク）または本番適用準備
+**最重要タスク**: Phase 5（性能ベンチマーク）の実施を推奨
+
+**Phase 5実施コマンド例**:
+```bash
+# jacobi前処理器でのスレッド数スケーリング測定
+cd /Users/Daily/Development/IHCP/TrialClaudeMCPCodex
+for threads in 1 2 4 8; do
+  echo "=== $threads threads ==="
+  JULIA_NUM_THREADS=$threads julia --project=julia \
+    julia/scripts/run_sliding_window.jl \
+    --nt 10 --window 5 --overlap 2 --cgm-iter 2 --precond jacobi \
+    2>&1 | tee "shared/results/bench_jacobi_${threads}threads.log"
+done
+```
