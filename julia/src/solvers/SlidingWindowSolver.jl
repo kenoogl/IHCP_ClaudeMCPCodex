@@ -102,7 +102,8 @@ function solve_sliding_window_cgm(
   maxiter_dhcp::Int=20000,
   rtol_adjoint::Float64=1e-8,
   maxiter_adjoint::Int=20000,
-  use_window_continuation::Bool=true
+  use_window_continuation::Bool=true,
+  par::String="thread"
 )
 
   ni, nj, nt = size(Y_obs)  # メモリレイアウト最適化: Phase 2.2
@@ -185,7 +186,8 @@ function solve_sliding_window_cgm(
       rtol_dhcp=rtol_dhcp,
       maxiter_dhcp=maxiter_dhcp,
       rtol_adjoint=rtol_adjoint,
-      maxiter_adjoint=maxiter_adjoint
+      maxiter_adjoint=maxiter_adjoint,
+      par=par
     )
     q_win, T_cal_win, J_hist = solve_cgm!(
       T_init_window, Y_obs_win, q_init_win, work,
