@@ -1,0 +1,52 @@
+================================================================================
+並列化実装の数値精度検証
+================================================================================
+
+  1-thread file: shared/results/julia_sliding_window_cgm2_1thread_diagonal.npz
+  8-thread file: shared/results/julia_sliding_window_cgm2_8threads_diagonal.npz
+
+[1/4] Loading results...
+✅ Files loaded successfully
+
+[2/4] Checking data structure...
+  1-thread data keys: ["q_min", "cp_coeffs", "window_J_final", "dy", "dt", "z_faces", "q_global", "nt", "dx", "overlap", "window_ids", "cgm_elapsed", "dz", "k_coeffs", "cgm_max_iter", "window_iterations", "window_q_min", "total_elapsed", "q_init_value", "window_end_idxs", "rho", "T_final", "window_lengths", "window_q_max", "q_max", "window_size", "window_overlaps", "ΔZ", "window_start_idxs", "window_elapsed", "z_centers"]
+  8-thread data keys: ["q_min", "cp_coeffs", "window_J_final", "dy", "dt", "z_faces", "q_global", "nt", "dx", "overlap", "window_ids", "cgm_elapsed", "dz", "k_coeffs", "cgm_max_iter", "window_iterations", "window_q_min", "total_elapsed", "q_init_value", "window_end_idxs", "rho", "T_final", "window_lengths", "window_q_max", "q_max", "window_size", "window_overlaps", "ΔZ", "window_start_idxs", "window_elapsed", "z_centers"]
+  q1 size: (80, 100, 9)
+  q8 size: (80, 100, 9)
+✅ Data structure validated
+
+[3/4] Computing errors...
+  Absolute error:
+    Maximum: 0.11199022467189934 W/m²
+    Mean   : 0.0094492736275431 W/m²
+
+  Relative error:
+    Maximum: 0.06680387026090101
+    Mean   : 1.7413714593942773e-5
+
+  Heat flux statistics (1-thread):
+    Min: -33668.07339572219 W/m²
+    Max: 110335.11461798871 W/m²
+    Mean: 1394.2089754419385 W/m²
+
+  Heat flux statistics (8-threads):
+    Min: -33668.0100510787 W/m²
+    Max: 110335.057586765 W/m²
+    Mean: 1394.2120506874849 W/m²
+
+  Performance:
+    1-thread runtime: 145.4140648841858 s
+    8-thread runtime: 48.80123805999756 s
+    Speedup: 2.98x
+    Parallel efficiency: 37.2%
+
+[4/4] Validation...
+❌ FAIL: Numerical precision degradation detected!
+   Maximum relative error (0.06680387026090101) >= practical threshold (1.0e-6)
+
+Detailed analysis:
+  Worst point index: CartesianIndex(8, 60, 7)
+  1-thread value: 0.542305830145537 W/m²
+  8-thread value: 0.5785339584643765 W/m²
+  Absolute difference: 0.03622812831883948 W/m²
+  Relative difference: 0.06680387026090101

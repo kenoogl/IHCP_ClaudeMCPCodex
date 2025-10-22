@@ -1,0 +1,46 @@
+================================================================================
+並列化実装の数値精度検証
+================================================================================
+
+  1-thread file: shared/results/julia_sliding_window_cgm2_1thread_gs.npz
+  8-thread file: shared/results/julia_sliding_window_cgm2_8threads_gs.npz
+
+[1/4] Loading results...
+✅ Files loaded successfully
+
+[2/4] Checking data structure...
+  1-thread data keys: ["q_min", "cp_coeffs", "window_J_final", "dy", "dt", "z_faces", "q_global", "nt", "dx", "overlap", "window_ids", "cgm_elapsed", "dz", "k_coeffs", "cgm_max_iter", "window_iterations", "window_q_min", "total_elapsed", "q_init_value", "window_end_idxs", "rho", "T_final", "window_lengths", "window_q_max", "q_max", "window_size", "window_overlaps", "ΔZ", "window_start_idxs", "window_elapsed", "z_centers"]
+  8-thread data keys: ["q_min", "cp_coeffs", "window_J_final", "dy", "dt", "z_faces", "q_global", "nt", "dx", "overlap", "window_ids", "cgm_elapsed", "dz", "k_coeffs", "cgm_max_iter", "window_iterations", "window_q_min", "total_elapsed", "q_init_value", "window_end_idxs", "rho", "T_final", "window_lengths", "window_q_max", "q_max", "window_size", "window_overlaps", "ΔZ", "window_start_idxs", "window_elapsed", "z_centers"]
+  q1 size: (80, 100, 9)
+  q8 size: (80, 100, 9)
+✅ Data structure validated
+
+[3/4] Computing errors...
+  Absolute error:
+    Maximum: 1.2249074643477798e-7 W/m²
+    Mean   : 7.45442434245094e-9 W/m²
+
+  Relative error:
+    Maximum: 1.1179277167137453e-7
+    Mean   : 1.5610494786980015e-11
+
+  Heat flux statistics (1-thread):
+    Min: -33668.09620199017 W/m²
+    Max: 110335.17175824482 W/m²
+    Mean: 1394.2118092726523 W/m²
+
+  Heat flux statistics (8-threads):
+    Min: -33668.09620202217 W/m²
+    Max: 110335.1717582832 W/m²
+    Mean: 1394.2118092730473 W/m²
+
+  Performance:
+    1-thread runtime: 94.70914006233215 s
+    8-thread runtime: 32.19262909889221 s
+    Speedup: 2.94x
+    Parallel efficiency: 36.8%
+
+[4/4] Validation...
+✅ PASS: Practical precision preserved!
+   Maximum relative error (1.1179277167137453e-7) < practical threshold (1.0e-6)
+   Note: Small differences due to floating-point rounding in parallel execution

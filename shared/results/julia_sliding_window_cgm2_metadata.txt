@@ -1,0 +1,12 @@
+solver_type: pbicgstab
+precond_type: gs
+cgm_max_iter: 2
+nt: 10
+window_size: 5
+overlap: 2
+dt: 1.000000e-03
+q_init: 0.000000e+00
+q_min: -3.366810e+04
+q_max: 1.103352e+05
+cgm_elapsed: 32.14
+total_elapsed: 32.19
