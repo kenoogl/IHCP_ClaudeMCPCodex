@@ -46,6 +46,7 @@ Returns:
 function parse_command_line_args()
   solver_type = :pbicgstab  # デフォルト
   precond_type = :jacobi    # デフォルト
+  par = "sequential"        # デフォルト
 
   i = 1
   while i <= length(ARGS)
@@ -58,11 +59,13 @@ function parse_command_line_args()
                               Available: pbicgstab, pcg
         --precond PRECOND     Preconditioner type (default: jacobi)
                               Available: jacobi, gs, none
+        --par MODE            Parallelization mode (sequential | thread) [default: sequential]
         -h, --help            Show this help message and exit
 
       Examples:
         julia run_10steps_fullsize_test.jl
         julia run_10steps_fullsize_test.jl --solver pcg --precond gs
+        JULIA_NUM_THREADS=8 julia run_10steps_fullsize_test.jl --par thread
       """)
       exit(0)
     elseif ARGS[i] == "--solver"
@@ -93,12 +96,25 @@ function parse_command_line_args()
         error("Unknown preconditioner type: $(ARGS[i + 1]). Available: jacobi, gs, none")
       end
       i += 2
+    elseif ARGS[i] == "--par"
+      if i + 1 > length(ARGS)
+        error("--par requires an argument")
+      end
+      par_str = lowercase(ARGS[i + 1])
+      if par_str == "sequential"
+        par = "sequential"
+      elseif par_str == "thread"
+        par = "thread"
+      else
+        error("Unknown par mode: $(ARGS[i + 1]). Use 'sequential' or 'thread'")
+      end
+      i += 2
     else
       error("Unknown argument: $(ARGS[i])")
     end
   end
 
-  return solver_type, precond_type
+  return solver_type, precond_type, par
 end
 
 function ensure_single_thread()
@@ -204,11 +220,21 @@ function main()
   println("="^80)
   println("Project root: $PROJECT_ROOT")
   flush(stdout)
-  ensure_single_thread()
 
   # コマンドライン引数パース
-  solver_type, precond_type = parse_command_line_args()
-  println("\n[Configuration]")
+  solver_type, precond_type, par = parse_command_line_args()
+
+  # 並列化情報の表示
+  println()
+  println("="^80)
+  println("Julia parallel execution info:")
+  println("  Available threads: $(Threads.nthreads())")
+  println("  Parallelization mode: $(par)")
+  println("="^80)
+  println()
+  flush(stdout)
+
+  println("[Configuration]")
   println("  Solver: $solver_type")
   println("  Preconditioner: $precond_type")
   flush(stdout)
@@ -290,7 +316,8 @@ function main()
     adjoint_solver = solver_type,
     adjoint_smoother = precond_type,
     sensitivity_solver = solver_type,
-    sensitivity_smoother = precond_type
+    sensitivity_smoother = precond_type,
+    par = par
   )
 
   q_result, T_result, J_history = solve_cgm!(

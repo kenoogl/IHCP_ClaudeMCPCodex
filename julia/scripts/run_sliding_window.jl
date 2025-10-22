@@ -53,6 +53,7 @@ function parse_command_line_args()
   dt = DEFAULT_DT
   q_init_value = DEFAULT_Q_INIT
   dry_run = false
+  par = "sequential"
 
   i = 1
   while i <= length(ARGS)
@@ -70,12 +71,14 @@ function parse_command_line_args()
         --overlap N            Overlap between windows (steps)        [default: 17]
         --dt VALUE             Time step size in seconds              [default: 0.001]
         --q-init VALUE         Initial heat-flux guess (W/m^2)        [default: 0.0]
+        --par MODE             Parallelization mode (sequential | thread) [default: sequential]
         --dry-run              Show window configuration and exit (no computation)
         -h, --help             Show this help message and exit
 
       Examples:
         julia run_sliding_window.jl
         julia run_sliding_window.jl --cgm-iter 200 --solver pcg --precond gs
+        JULIA_NUM_THREADS=8 julia run_sliding_window.jl --par thread
       """)
       exit(0)
     elseif arg == "--solver"
@@ -128,6 +131,17 @@ function parse_command_line_args()
       i += 1
       i > length(ARGS) && error("--q-init requires an argument")
       q_init_value = parse(Float64, ARGS[i])
+    elseif arg == "--par"
+      i += 1
+      i > length(ARGS) && error("--par requires an argument")
+      par_str = lowercase(ARGS[i])
+      if par_str == "sequential"
+        par = "sequential"
+      elseif par_str == "thread"
+        par = "thread"
+      else
+        error("Unknown par mode: $(ARGS[i]). Use 'sequential' or 'thread'")
+      end
     elseif arg == "--dry-run"
       dry_run = true
     else
@@ -161,7 +175,8 @@ function parse_command_line_args()
     window_size = window_size,
     overlap = overlap,
     dt = dt,
-    q_init_value = q_init_value
+    q_init_value = q_init_value,
+    par = par
   )
 end
 
@@ -477,10 +492,19 @@ function main()
   println("Project root: $PROJECT_ROOT")
   flush(stdout)
 
-  ensure_single_thread()
   cfg = parse_command_line_args()
 
-  println("\n[Configuration]")
+  # 並列化情報の表示
+  println()
+  println("="^80)
+  println("Julia parallel execution info:")
+  println("  Available threads: $(Threads.nthreads())")
+  println("  Parallelization mode: $(cfg.par)")
+  println("="^80)
+  println()
+  flush(stdout)
+
+  println("[Configuration]")
   println("  Solver: $(cfg.solver_type)")
   println("  Preconditioner: $(cfg.precond_type)")
   println("  CGM max iter: $(cfg.cgm_iter)")
@@ -552,7 +576,8 @@ function main()
     adjoint_solver = cfg.solver_type,
     adjoint_smoother = cfg.precond_type,
     sensitivity_solver = cfg.solver_type,
-    sensitivity_smoother = cfg.precond_type
+    sensitivity_smoother = cfg.precond_type,
+    par = cfg.par
   )
 
   println("\n[4/5] Running sliding-window CGM")
