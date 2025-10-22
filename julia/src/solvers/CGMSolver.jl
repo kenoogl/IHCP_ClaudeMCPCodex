@@ -287,6 +287,9 @@ function solve_cgm!(
   adjoint_smoother = get(params, :adjoint_smoother, :gs)
   adjoint_solver = get(params, :adjoint_solver, :pbicgstab)
 
+  # 並列化パラメータ（paramsから取得、未指定の場合は関数引数のデフォルト値を使用）
+  par = get(params, :par, par)
+
   # Phase 1-E: 適応的収束判定パラメータ
   adaptive_tol = get(params, :adaptive_tol, false)
   tol_min_dhcp = T(get(params, :tol_min_dhcp, 1e-7))
