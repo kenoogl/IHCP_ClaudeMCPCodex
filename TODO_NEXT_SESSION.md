@@ -1,153 +1,129 @@
 # 次セッションへの引き継ぎ事項
 
-**作成日時**: 2025年10月23日 21:50
+**作成日時**: 2025年10月23日 22:30
 **ブランチ**: parallelization
-**Phase**: 5.2 basesize効果検証完了
-**最新レポート**: `phase5_2_basesize_investigation_report.md`
+**Phase**: 5.3 Python-Julia性能比較準備完了
+**最新コミット**: 716bb2f
 
 ---
 
-## 🎉 Phase 5.2 Basesize効果検証完了報告
+## 🎯 次セッションの作業: Phase 5.3 Python-Julia性能比較
 
-### ✅ 完了内容
-- **Step 2完了**: 10ステップフルサイズテスト（6パターン）
-- **Step 3完了**: スライディングウィンドウテスト（6パターン）
-- **衝撃的発見**: basesize=1で**180倍の性能劣化**を発見 ⚠️
-- **最適値確認**: basesize=1000（フルサイズ）、basesize=500（小ウィンドウ）
-- **レポート作成**: `phase5_2_basesize_investigation_report.md`
+### ✅ 前セッションで完了したこと
 
----
+**Phase 5.2 完全完了**:
+- basesize効果検証完了（12パターン測定）
+- basesize=1の致命的問題を発見（180倍遅化）
+- 最適basesize値確定（1000/500）
+- 包括的レポート作成・コミット完了
 
-## 📊 主要な検証結果
+### 📋 次セッションで実行すること
 
-### Step 2: 10ステップフルサイズテスト
+**Phase 5.3: Python版実行と性能比較**
 
-| 設定 | スレッド | basesize | 実行時間 | 状態 |
-|------|---------|----------|---------|------|
-| **最速** | 4 | **1000** | **19.45秒** | ✅ 最適 |
-| 良好 | 4 | 10000 | 28.66秒 | ✅ |
-| 良好 | 4 (seq) | 1000 | 32.04秒 | ✅ |
-| 良好 | 1 | 1000 | 44.57秒 | ✅ |
-| 遅い | 4 | 1 | 295.26秒 | ⚠️ 15倍遅い |
-| **最悪** | 1 | **1** | **8054.46秒** | ❌ **180倍遅い** |
+#### 1. Python版スライディングウィンドウ実行（推定30-60分）
 
-**衝撃的発見**: basesize=1 + Thread=1 で **134分** (実用不可能)
-
-### Step 3: スライディングウィンドウテスト（小ウィンドウ）
-
-| basesize | 並列モード | 実行時間 | 対最速比 |
-|----------|-----------|---------|----------|
-| **500** | thread | **34.34秒** | **1.00×** ✅ |
-| 100 | thread | 43.85秒 | 1.28× |
-| 1000 | thread | 50.30秒 | 1.46× |
-| 10000 | thread | 84.64秒 | 2.46× |
-| 1000 | sequential | 95.53秒 | 2.78× |
-| 10 | thread | 136.11秒 | 3.96× |
-
-**発見**: 小ウィンドウでは**basesize=500が最適** ⭐
-
----
-
-## 🔥 重要な発見と結論
-
-### 1. basesize=1は絶対に避けるべき ⚠️⚠️⚠️
-
-**Thread=1環境での壊滅的な性能劣化**:
-- 実行時間: 8054秒 (134分)
-- basesize=1000比で **180倍遅い**
-- 原因: タスクスケジューリングオーバーヘッドが支配的
-
-**Thread=4環境でも問題**:
-- 実行時間: 295秒
-- basesize=1000比で **15倍遅い**
-
-### 2. 推奨basesize値（確定）
-
-| 問題サイズ | 推奨basesize | 根拠 |
-|-----------|-------------|------|
-| **フルサイズ (N=160,000)** | **1000** | 19.45秒で最速 |
-| **小ウィンドウ** | **500** | 34.34秒で最速 |
-| **一般的な値** | **500-1000** | 安全かつ高速 |
-| **危険な値** | **1-100** | 性能劣化 |
-
-### 3. 実装への反映（現在の設定は適切） ✅
-
-```julia
-# julia/src/solvers/CommonSolver.jl (現在の実装)
-basesize = get(kwargs, :basesize, 1000)  # デフォルト1000
+**実行コマンド**:
+```bash
+NUMBA_NUM_THREADS=4 python python/scripts/run_sliding_window.py \
+  --nt 10 --cgm-iter 2 --window 5 --overlap 2 \
+  --output python_sliding_window_small_4threads_cgm2 \
+  2>&1 | tee shared/results/python_sliding_window_small_4threads_cgm2.log
 ```
 
-**評価**: ✅ デフォルト値1000は適切に設定済み
+**重要な比較条件**:
+
+| 項目 | Python版 | Julia版 |
+|------|---------|---------|
+| **スクリプト** | `python/scripts/run_sliding_window.py` | `julia/scripts/run_sliding_window.jl` |
+| **スレッド数** | `NUMBA_NUM_THREADS=4` | `JULIA_NUM_THREADS=4` |
+| **CGM反復回数** | **2回** ✅ | **2回** ✅ |
+| **並列粒度** | Numba自動 | basesize=500 |
+| **パラメータ** | `--nt 10 --window 5 --overlap 2` | 同左 |
+| **実行時間** | ？？？秒（測定予定） | **34.34秒**（既存） |
+
+**Julia版の既存結果**:
+- ファイル: `shared/results/step3_sliding_small_basesize500.log`
+- 実行時間: **34.34秒**
+- CGM時間: 32.75秒
+- CGM反復: 2回（各ウィンドウ）
+
+#### 2. 比較レポート作成（30分）
+
+**作成するレポート**: `docs/reports/phase5_3_python_julia_comparison.md`
+
+**比較項目**:
+1. **実行時間比較**
+   - Total runtime
+   - CGM solve time
+   - 高速化倍率（Julia/Python）
+
+2. **メモリ使用量**
+   - Python: メモリ監視システムの出力から抽出
+   - Julia: プロファイルデータ
+
+3. **並列化の違い**
+   - Python: Numba `@njit(parallel=True)` + `prange`（係数構築のみ）
+   - Julia: FLoops（全ループ + マトリクスフリーソルバー）
+
+4. **実装の違い**
+   - ソルバー: Python=SciPy CG（逐次） vs Julia=PBICGSTAB（並列）
+   - 並列範囲: Python=係数構築のみ vs Julia=広範囲
+
+#### 3. コミット・プッシュ（5分）
+
+```bash
+git add docs/reports/phase5_3_python_julia_comparison.md
+git add TODO_NEXT_SESSION.md
+git commit -m "docs: Phase 5.3完了 - Python-Julia性能比較レポート作成"
+git push origin parallelization
+```
 
 ---
 
-## 📝 次セッションの作業提案
+## ⚠️ 重要な注意事項
 
-### Option 1: Phase 5.3への移行 🚀
+### CGM反復回数の統一（必須）
 
-**目的**: Python版との性能比較
+**発見事項**: Julia版basesize=500の結果はCGM反復**2回**で実行されていた
 
-**作業内容**:
-1. Python版スライディングウィンドウ計算の実行
-2. Julia版との比較レポート作成
-3. 性能改善の総括
+- ❌ **間違い**: Python版を`--cgm-iter 3`で実行
+- ✅ **正しい**: Python版を`--cgm-iter 2`で実行（Julia版に合わせる）
 
-**推定時間**: 2-3時間
+**理由**: Julia版の既存結果（34.34秒）がCGM反復2回なので、Python版も2回で揃える必要がある
 
-### Option 2: Step 3大ウィンドウ測定（補足） 📊
+### 公平な比較のための条件
 
-**目的**: 大ウィンドウ(window=71)での最適basesize確認
+**統一された条件**:
+1. ✅ スレッド数: 4（環境変数で制御）
+2. ✅ CGM反復回数: 2回
+3. ✅ 問題サイズ: nt=10, window=5, overlap=2
+4. ✅ 統一インターフェース: `run_sliding_window.py` vs `run_sliding_window.jl`
 
-**測定パターン**:
-- basesize=500（小ウィンドウの最適値）
-- basesize=1000（フルサイズの最適値）
-- basesize=2000（大ウィンドウ用推定値）
+**異なる条件（正当な実装の差）**:
+1. 並列化手法: Numba vs FLoops
+2. 並列範囲: 係数構築のみ vs 全ループ+ソルバー
+3. ソルバー: SciPy CG（逐次） vs PBICGSTAB（並列、マトリクスフリー）
 
-**推定時間**: 1-1.5時間
-
-**注**: 既に小ウィンドウで十分なデータが得られているため、優先度は低い
-
-### 推奨: Option 1（Phase 5.3移行）
-
-理由:
-- basesize効果は十分に検証済み
-- 次のマイルストーンに進むべきタイミング
-- Python比較が全体の目標
+**レポートでの記載**:
+- 並列化範囲の違いを明記
+- ソルバーの違いを明記
+- これらは実装の差として正当に評価
 
 ---
 
 ## 📂 重要なファイル一覧
 
-### 新規作成（未コミット）
-- 📝 `docs/reports/phase5_2_basesize_investigation_report.md` ⭐ **最新**
+### Phase 5.2完了（コミット済み）
+- ✅ `docs/reports/phase5_2_basesize_investigation_report.md` (716bb2f)
+- ✅ `TODO_NEXT_SESSION.md` (716bb2f)
 
-### Phase 5.2関連（既存）
-- `docs/plans/phase5_2_real_world_validation_plan.md`
-- `docs/reports/phase5_2_step1_dhcp_basesize_validation.md`
-- `docs/reports/phase5_2_step2_fullsize_basesize_validation.md`
-- `docs/reports/phase5_2_step3_sliding_window_basesize_validation.md`
+### Phase 5.3で作成予定
+- 📝 `docs/reports/phase5_3_python_julia_comparison.md` (次セッションで作成)
 
-### 実行ログ（gitignore済み）
-
-#### Step 2ログ（6ファイル）
-```
-shared/results/step2_fullsize_basesize1.log            (295.26秒)
-shared/results/step2_fullsize_basesize1000.log         (19.45秒) ★
-shared/results/step2_fullsize_basesize10000.log        (28.66秒)
-shared/results/step2_fullsize_sequential_basesize1000.log (32.04秒)
-shared/results/step2_fullsize_thread1_basesize1.log    (8054.46秒) ❌
-shared/results/step2_fullsize_thread1_basesize1000.log (44.57秒)
-```
-
-#### Step 3ログ（6ファイル）
-```
-shared/results/step3_sliding_small_basesize10.log      (136.11秒)
-shared/results/step3_sliding_small_basesize100.log     (43.85秒)
-shared/results/step3_sliding_small_basesize500.log     (34.34秒) ★
-shared/results/step3_sliding_small_basesize1000.log    (50.30秒)
-shared/results/step3_sliding_small_basesize10000.log   (84.64秒)
-shared/results/step3_sliding_small_sequential.log      (95.53秒)
-```
+### 実行ログ
+- **Julia版（既存）**: `shared/results/step3_sliding_small_basesize500.log` (34.34秒)
+- **Python版（作成予定）**: `shared/results/python_sliding_window_small_4threads_cgm2.log`
 
 ---
 
@@ -155,120 +131,137 @@ shared/results/step3_sliding_small_sequential.log      (95.53秒)
 
 ### 完了したフェーズ
 - ✅ **Phase 5.1**: 並列化実装（FLoops導入）
-- ✅ **Phase 5.2**: basesize効果検証 ⭐ **本セッションで完了**
+- ✅ **Phase 5.2**: basesize効果検証
 
-### 次のフェーズ
-- 🔜 **Phase 5.3**: Python版との性能比較
+### 次のフェーズ（実行中）
+- 🔜 **Phase 5.3**: Python-Julia性能比較 ⭐ **次セッションで実行**
 - ⏳ **Phase 5.4**: 最終レポートと総括
 
 ### 全体進捗率
-**Phase 5: 50%完了**（Phase 5.1-5.2完了、Phase 5.3-5.4残り）
+**Phase 5: 60%完了** （Phase 5.1-5.2完了、Phase 5.3準備完了、実行待ち）
 
 ---
 
-## 💡 技術的知見のまとめ
-
-### basesize=1の問題メカニズム
-
-**タスクスケジューリングオーバーヘッド**:
-```
-格子点数: 160,000点
-basesize=1 → 160,000タスク生成
-→ タスク生成・スケジューリング・同期のコストが計算コストを上回る
-→ Thread=1では特に顕著（180倍遅化）
-```
-
-**適切なbasesize (1000)**:
-```
-格子点数: 160,000点
-basesize=1000 → 160タスク生成
-→ タスクとスレッド(4)の比が適切（40:1）
-→ スケジューリングコストと並列性のバランスが最適
-```
-
-### basesizeと性能のU字カーブ
-
-```
-実行時間
-  ↑
-8000秒 |                                    ● basesize=1, thread=1 (最悪)
-  |
-300秒  |                              ● basesize=1, thread=4
-  |
-100秒  |                        ● basesize=10
-  |                  ● sequential
-  |           ● basesize=10000
- 50秒 |     ● basesize=1000 (フルサイズ最適)
-  |   ★ basesize=500 (小ウィンドウ最適)
- 20秒 |_______________________________________________→ basesize
-       1    10   100   500  1000       10000
-       ←遅い  →  ← 最適範囲 →  ← 遅い →
-```
-
-### 問題サイズと最適basesizeの関係
-
-| 測定対象 | 問題サイズ | 最適basesize | 理由 |
-|---------|-----------|-------------|------|
-| DHCP単体 | 160,000点×1ステップ | 1000 | 単一タスクで効率的 |
-| CGM全体 | 160,000点×10ステップ | 1000 | 同上 |
-| スライディング小 | 160,000点×5ステップ | **500** | より細かい並列化が有効 |
-
-**仮説**: ウィンドウ分割により計算構造が変化し、最適basesizeも変化
-
----
-
-## 🚀 次セッション開始手順（Option 1推奨）
+## 🚀 次セッション開始手順
 
 ### 1. 状態確認（5分）
 ```bash
 git status
-git log --oneline -5
+git log --oneline -3
 cat TODO_NEXT_SESSION.md
-cat docs/reports/phase5_2_basesize_investigation_report.md
 ```
 
-### 2. レポートのコミット（5分）
+### 2. Python版スライディングウィンドウ実行（30-60分）
+
+**実行前チェック**:
 ```bash
-git add docs/reports/phase5_2_basesize_investigation_report.md
+# Numbaバージョン確認
+python -c "import numba; print(f'Numba: {numba.__version__}')"
+
+# スクリプト存在確認
+ls -la python/scripts/run_sliding_window.py
+```
+
+**実行**:
+```bash
+NUMBA_NUM_THREADS=4 python python/scripts/run_sliding_window.py \
+  --nt 10 --cgm-iter 2 --window 5 --overlap 2 \
+  --output python_sliding_window_small_4threads_cgm2 \
+  2>&1 | tee shared/results/python_sliding_window_small_4threads_cgm2.log
+```
+
+**完了確認**:
+```bash
+# ログファイル確認
+ls -lh shared/results/python_sliding_window_small_4threads_cgm2.log
+
+# 実行時間確認
+grep "Total runtime:" shared/results/python_sliding_window_small_4threads_cgm2.log
+
+# 結果ファイル確認
+ls -lh shared/results/python_sliding_window_small_4threads_cgm2.npz
+```
+
+### 3. 結果抽出（5分）
+
+**Python版**:
+```bash
+# 実行時間
+grep "Total runtime:" shared/results/python_sliding_window_small_4threads_cgm2.log
+
+# メモリ使用量
+grep "メモリ使用" shared/results/python_sliding_window_small_4threads_cgm2.log
+
+# 熱流束範囲
+grep "Heat-flux range:" shared/results/python_sliding_window_small_4threads_cgm2.log
+```
+
+**Julia版**:
+```bash
+# 実行時間（既存）
+grep "Total runtime:" shared/results/step3_sliding_small_basesize500.log
+# → 34.34秒
+
+# CGM時間
+grep "CGM elapsed time:" shared/results/step3_sliding_small_basesize500.log
+# → 32.75秒
+
+# 熱流束範囲
+grep "Heat flux range:" shared/results/step3_sliding_small_basesize500.log
+```
+
+### 4. 比較レポート作成（30分）
+
+**レポートテンプレート**:
+```markdown
+# Phase 5.3 Python-Julia性能比較レポート
+
+## 比較条件（公平性確保）
+- スレッド数: 4
+- CGM反復: 2回
+- 問題サイズ: nt=10, window=5, overlap=2
+
+## 実行時間比較
+| 版 | Total runtime | CGM time | 高速化倍率 |
+|----|--------------|----------|-----------|
+| Python | XXX秒 | - | 1.00× |
+| Julia | 34.34秒 | 32.75秒 | ???× |
+
+## 実装の違い
+1. 並列化範囲
+   - Python: 係数構築のみ
+   - Julia: 全ループ + マトリクスフリーソルバー
+
+2. ソルバー
+   - Python: SciPy CG（逐次）
+   - Julia: PBICGSTAB（並列、マトリクスフリー）
+
+## 結論
+[結果に基づいて記載]
+```
+
+### 5. コミット・プッシュ（5分）
+```bash
+git add docs/reports/phase5_3_python_julia_comparison.md
 git add TODO_NEXT_SESSION.md
-git commit -m "docs: Phase 5.2 basesize効果検証完了 - 最適値確認とbasesize=1の致命的問題を発見"
-```
-
-### 3. Phase 5.3への移行（2-3時間）
-
-#### Python版スライディングウィンドウ実行
-```bash
-cd python
-python original/IHCP_CGM_Sliding_Window_Calculation_ver2.py \
-  --nt 10 --cgm-iter 3 --window 5 --overlap 2 \
-  2>&1 | tee ../shared/results/python_sliding_window_small.log
-```
-
-#### Julia版との比較
-```bash
-# 既存のJulia版結果を利用
-# shared/results/step3_sliding_small_basesize500.log (34.34秒)
-```
-
-#### 比較レポート作成
-```bash
-# docs/reports/phase5_3_python_julia_comparison.md
+git add shared/results/python_sliding_window_small_4threads_cgm2.log
+git commit -m "docs: Phase 5.3完了 - Python-Julia性能比較（CGM反復2回で統一）"
+git push origin parallelization
 ```
 
 ---
 
-## 📊 データ品質保証（完全遵守済み）
+## 📊 期待される結果
 
-### レポート作成時の遵守事項
-1. ✅ **実測データのみ使用**: 全12パターン完全取得済み
-2. ✅ **完了確認済み**: 全ログに"Total runtime:"記録あり
-3. ✅ **検証済み**: ファイル存在、サイズ、内容を確認済み
-4. ✅ **推定値不使用**: すべて実測値のみでレポート作成
+### 仮説
+- Julia版がPython版より高速（並列化範囲が広いため）
+- 特にソルバー部分で差が顕著
+- メモリ効率も改善
 
-### 今セッションで遵守したルール
-- 全テスト完了まで待機してからレポート作成
-- 各テストの完了マーカー("Total runtime:")を確認
-- 不完全データでのレポート作成は一切なし
+### 予想される高速化倍率
+- 控えめな予想: 1.5-2倍
+- 楽観的予想: 2-3倍
+- （実際のデータで検証）
 
 ---
 
@@ -276,15 +269,14 @@ python original/IHCP_CGM_Sliding_Window_Calculation_ver2.py \
 
 ### 現在実行中のジョブ（すべて停止済み）
 以下のジョブはすでに停止済みです：
-- Python版スライディングウィンドウ（9844b2） - killed
-- Julia版大ウィンドウテスト（df1db7） - killed
-- その他テストジョブ（全部で11個） - completed または killed
+- Python版スライディングウィンドウ（9844b2） - killed（CGM反復3回で実行されていた - 不使用）
+- Julia版テストジョブ（10個以上） - completed または killed
 
-### ログファイルからの結果取得
-必要に応じて以下のログファイルで結果を確認可能：
-- `shared/results/step2_*.log` (6ファイル)
-- `shared/results/step3_*.log` (6ファイル)
+### 新セッションでの対応
+1. バックグラウンドジョブの状態は引き継がれない
+2. Python版を`NUMBA_NUM_THREADS=4`、`--cgm-iter 2`で新規実行
+3. Julia版は既存結果（basesize=500、CGM反復2回）を使用
 
 ---
 
-**Phase 5.2完了！次セッションはPhase 5.3（Python比較）から開始推奨！**
+**Phase 5.3準備完了！次セッションでPython版実行→比較レポート作成！** 🚀
