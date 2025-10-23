@@ -1608,8 +1608,8 @@ def global_CGM_time(T_init, Y_obs, q_init, dx, dy, dz, dz_b, dz_t, dt,
             print(f"  [中間データ保存] CGM反復{it}: {save_path}")
 
         # Step 7: search step size
-        # 感度を面積で割り戻してW/m²スケールに統一（Julia版と同様）
-        Sp = dT[1:, :, :, bottom_idx] / cell_area
+        # 感度は既にW/m²スケール（Julia版と同様、cell_areaで割らない）
+        Sp = dT[1:, :, :, bottom_idx]
         assert res_T.shape == Sp.shape, (res_T.shape, Sp.shape)
         numerator   = float(np.tensordot(res_T, Sp, axes=res_T.ndim))
         denominator = float(np.tensordot(Sp,  Sp,  axes=Sp.ndim))
