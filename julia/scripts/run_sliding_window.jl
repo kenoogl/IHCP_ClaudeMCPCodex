@@ -55,7 +55,6 @@ function parse_command_line_args()
   dry_run = false
   par = "thread"
   basesize = 1  # FLoops デフォルト（自動判定）
-  stride = 1    # 連続ブロック
 
   i = 1
   while i <= length(ARGS)
@@ -75,7 +74,6 @@ function parse_command_line_args()
         --q-init VALUE         Initial heat-flux guess (W/m^2)        [default: 0.0]
         --par MODE             Parallelization mode (sequential | thread) [default: thread]
         --basesize N           ThreadsBackend chunk size              [default: 1 (auto)]
-        --stride N             ThreadsBackend stride                  [default: 1]
         --dry-run              Show window configuration and exit (no computation)
         -h, --help             Show this help message and exit
 
@@ -150,10 +148,6 @@ function parse_command_line_args()
       i += 1
       i > length(ARGS) && error("--basesize requires an argument")
       basesize = parse(Int, ARGS[i])
-    elseif arg == "--stride"
-      i += 1
-      i > length(ARGS) && error("--stride requires an argument")
-      stride = parse(Int, ARGS[i])
     elseif arg == "--dry-run"
       dry_run = true
     else
@@ -189,8 +183,7 @@ function parse_command_line_args()
     dt = dt,
     q_init_value = q_init_value,
     par = par,
-    basesize = basesize,
-    stride = stride
+    basesize = basesize
   )
 end
 
@@ -508,12 +501,16 @@ function main()
 
   cfg = parse_command_line_args()
 
+  # Backend設定をグローバルに設定（Task-local storage）
+  IHCP_CGM.Commons.set_backend_config(basesize=cfg.basesize)
+
   # 並列化情報の表示
   println()
   println("="^80)
   println("Julia parallel execution info:")
   println("  Available threads: $(Threads.nthreads())")
   println("  Parallelization mode: $(cfg.par)")
+  println("  ThreadsBackend basesize: $(cfg.basesize)")
   println("="^80)
   println()
   flush(stdout)
@@ -592,8 +589,7 @@ function main()
     sensitivity_solver = cfg.solver_type,
     sensitivity_smoother = cfg.precond_type,
     par = cfg.par,
-    basesize = cfg.basesize,
-    stride = cfg.stride
+    basesize = cfg.basesize
   )
 
   println("\n[4/5] Running sliding-window CGM")

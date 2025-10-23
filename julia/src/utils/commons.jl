@@ -8,13 +8,13 @@ module Commons
 
 using FLoops
 
-export λf, WorkBuffers, get_backend,
+export λf, WorkBuffers, get_backend, set_backend_config, get_backend_config,
        BoundaryType, ISOTHERMAL, HEAT_FLUX, CONVECTION, FloatMin, reset_work_buffers!,
        myfill!, mycopy!
 
 # ゼロ除算回避用の小さな数値（BiCGSTAB法などで使用）
 const FloatMin = 1.0e-37
-      
+
 """
 Harmonic mean with mask correction (Heat3ds互換)
 @param a left value
@@ -34,24 +34,64 @@ end
 
 
 """
-並列動作バックエンドを返す
+Backend設定をTask-local storageに保存
 
-# キーワード引数
+Task-local storageを使用することで、スレッドセーフなグローバル設定を実現する。
+各タスク（≒各スレッド）で独立した設定を保持できる。
+
+# 引数
 - `basesize::Int`: チャンクサイズ（デフォルト: 1、FLoops自動判定）
-- `stride::Int`: メモリアクセスストライド（デフォルト: 1、連続ブロック）
 
 # 説明
 basesize: 各スレッドが一度に処理する最小反復回数。
          大きいほどオーバーヘッド削減、小さいほど負荷分散。
          推奨値: 5,000 ~ 20,000（問題サイズに依存）
 
-stride:  連続するスレッドの反復間隔。
-         1=連続ブロック（キャッシュ局所性◎）
-         大=インターリーブ（False Sharing回避）
+# 使用例
+```julia
+# メイン処理の開始時に一度だけ設定
+set_backend_config(basesize=10000)
+
+# 以降、全ての get_backend(par) で自動的に設定が適用される
+backend = get_backend("thread")  # basesize=10000が適用される
+```
 """
-function get_backend(par::String; basesize::Int=1, stride::Int=1)
+function set_backend_config(; basesize::Int=1)
+    task_local_storage(:backend_basesize, basesize)
+    return nothing
+end
+
+
+"""
+Backend設定をTask-local storageから取得
+
+設定が存在しない場合はデフォルト値（basesize=1）を返す。
+
+# 戻り値
+NamedTuple: (basesize=Int,)
+"""
+function get_backend_config()
+    basesize = get(task_local_storage(), :backend_basesize, 1)
+    return (basesize=basesize,)
+end
+
+
+"""
+並列動作バックエンドを返す
+
+Task-local storageから自動的に設定を取得する。
+set_backend_config()で事前に設定されていない場合はデフォルト値（basesize=1）を使用。
+
+# 引数
+- `par::String`: 並列化モード（"sequential" or "thread"）
+
+# 戻り値
+FLoopsバックエンドオブジェクト（SequentialEx or ThreadedEx）
+"""
+function get_backend(par::String)
     if par == "thread"
-        return ThreadedEx(basesize=basesize, stride=stride)
+        config = get_backend_config()
+        return ThreadedEx(basesize=config.basesize)
     else
         return SequentialEx()
     end
