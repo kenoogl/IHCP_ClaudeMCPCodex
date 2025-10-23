@@ -51,8 +51,10 @@ function PCG!(wk::WorkBuffers,
               maxItr::Int = 20_000,
               smoother::Symbol = :none,
               par::String = "sequential",
+              basesize::Int = 1,
+              stride::Int = 1,
               verbose::Bool=false) where {T <: AbstractFloat}
-    backend = get_backend(par)
+    backend = get_backend(par, basesize=basesize, stride=stride)
     SZ = size(wk.θ)
 
     # 初期残差を計算: r = b - Ax
@@ -204,6 +206,8 @@ function PBiCGSTAB!(wk::WorkBuffers,
                     maxItr::Int = 20_000,
                     smoother::Symbol = :none,
                     par::String = "sequential",
+                    basesize::Int = 1,
+                    stride::Int = 1,
                     verbose::Bool=false) where {T <: AbstractFloat}
     SZ = size(wk.θ)
     myfill!(wk.pcg_q, zero(T), par)

@@ -35,9 +35,26 @@ end
 
 """
 並列動作バックエンドを返す
+
+# キーワード引数
+- `basesize::Int`: チャンクサイズ（デフォルト: 1、FLoops自動判定）
+- `stride::Int`: メモリアクセスストライド（デフォルト: 1、連続ブロック）
+
+# 説明
+basesize: 各スレッドが一度に処理する最小反復回数。
+         大きいほどオーバーヘッド削減、小さいほど負荷分散。
+         推奨値: 5,000 ~ 20,000（問題サイズに依存）
+
+stride:  連続するスレッドの反復間隔。
+         1=連続ブロック（キャッシュ局所性◎）
+         大=インターリーブ（False Sharing回避）
 """
-function get_backend(par::String)
-    return (par == "thread") ? ThreadedEx() : SequentialEx()
+function get_backend(par::String; basesize::Int=1, stride::Int=1)
+    if par == "thread"
+        return ThreadedEx(basesize=basesize, stride=stride)
+    else
+        return SequentialEx()
+    end
 end
 
 

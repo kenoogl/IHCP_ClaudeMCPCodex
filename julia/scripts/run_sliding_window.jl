@@ -54,6 +54,8 @@ function parse_command_line_args()
   q_init_value = DEFAULT_Q_INIT
   dry_run = false
   par = "thread"
+  basesize = 1  # FLoops デフォルト（自動判定）
+  stride = 1    # 連続ブロック
 
   i = 1
   while i <= length(ARGS)
@@ -72,6 +74,8 @@ function parse_command_line_args()
         --dt VALUE             Time step size in seconds              [default: 0.001]
         --q-init VALUE         Initial heat-flux guess (W/m^2)        [default: 0.0]
         --par MODE             Parallelization mode (sequential | thread) [default: thread]
+        --basesize N           ThreadsBackend chunk size              [default: 1 (auto)]
+        --stride N             ThreadsBackend stride                  [default: 1]
         --dry-run              Show window configuration and exit (no computation)
         -h, --help             Show this help message and exit
 
@@ -142,6 +146,14 @@ function parse_command_line_args()
       else
         error("Unknown par mode: $(ARGS[i]). Use 'sequential' or 'thread'")
       end
+    elseif arg == "--basesize"
+      i += 1
+      i > length(ARGS) && error("--basesize requires an argument")
+      basesize = parse(Int, ARGS[i])
+    elseif arg == "--stride"
+      i += 1
+      i > length(ARGS) && error("--stride requires an argument")
+      stride = parse(Int, ARGS[i])
     elseif arg == "--dry-run"
       dry_run = true
     else
@@ -176,7 +188,9 @@ function parse_command_line_args()
     overlap = overlap,
     dt = dt,
     q_init_value = q_init_value,
-    par = par
+    par = par,
+    basesize = basesize,
+    stride = stride
   )
 end
 
@@ -577,7 +591,9 @@ function main()
     adjoint_smoother = cfg.precond_type,
     sensitivity_solver = cfg.solver_type,
     sensitivity_smoother = cfg.precond_type,
-    par = cfg.par
+    par = cfg.par,
+    basesize = cfg.basesize,
+    stride = cfg.stride
   )
 
   println("\n[4/5] Running sliding-window CGM")

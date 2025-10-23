@@ -289,6 +289,8 @@ function solve_cgm!(
 
   # 並列化パラメータ（paramsから取得、未指定の場合は関数引数のデフォルト値を使用）
   par = get(params, :par, par)
+  basesize = get(params, :basesize, 1)  # FLoops デフォルト
+  stride = get(params, :stride, 1)      # 連続ブロック
 
   # Phase 1-E: 適応的収束判定パラメータ
   adaptive_tol = get(params, :adaptive_tol, false)
