@@ -1387,18 +1387,26 @@ def multiple_time_step_solver_Adjoint(T_cal, Y_obs, nt, rho, cp_coeffs, k_coeffs
     lambda_field = np.empty_like(T_cal)
     lambda_field[-1] = 0
 
-    lambda_initial = lambda_field[-1]
-
-    x0 = lambda_initial.ravel(order = "F").copy()
+    # CG初期推定
+    x0 = np.zeros(ni * nj * nk, dtype=float)
     
     for t in range(nt-2, -1, -1):
-        
+
         lambda_initial = lambda_field[t+1]
-        
+
         cp, k = thermal_properties_calculator(T_cal[t], cp_coeffs, k_coeffs)
-        
+
+        # 最終ステップでは随伴初期値の底面に直接残差を注入（Julia版 apply_adjoint_initial_guess! の:residual戦略に対応）
+        if t == nt - 2:
+            lambda_guess = lambda_initial.copy()
+            lambda_guess[:, :, 0] = Y_obs[t+1] - T_cal[t+1][:, :, 0]
+            x0 = lambda_guess.ravel(order="F").copy()
+        else:
+            lambda_guess = lambda_initial
+
+        # 時間ステップt+1の残差を使用（Julia版と同様）
         a_w, a_e, a_s, a_n, a_b, a_t, a_p, b = coeffs_and_rhs_building_Adjoint(
-            lambda_initial, T_cal[t][:,:,0], Y_obs[t], rho, cp, k, dx, dy, dz, dz_b, dz_t, dt)
+            lambda_guess, T_cal[t+1][:,:,0], Y_obs[t+1], rho, cp, k, dx, dy, dz, dz_b, dz_t, dt)
         
         A_csr = assemble_A_Adjoint(ni, nj, nk, a_w, a_e, a_s, a_n, a_b, a_t, a_p)
 
