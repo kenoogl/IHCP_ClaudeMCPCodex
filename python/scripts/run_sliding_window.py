@@ -16,8 +16,8 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root / "python" / "original"))
 
-# オリジナルコードをインポート
-from IHCP_CGM_Sliding_Window_Calculation_ver2 import (
+# オリジナルコードをインポート（線形化版を使用）
+from IHCP_CGM_Sliding_Window_Calculation_ver2_linearized import (
     sliding_window_CGM_q_saving,
     dx, dy, dz, dz_b, dz_t,
     rho_coeffs, cp_coeffs, k_coeffs,
