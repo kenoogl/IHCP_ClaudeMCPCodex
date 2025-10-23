@@ -8,5 +8,5 @@ dt: 1.000000e-03
 q_init: 0.000000e+00
 q_min: -3.366810e+04
 q_max: 1.103352e+05
-cgm_elapsed: 32.14
-total_elapsed: 32.19
+cgm_elapsed: 32.75
+total_elapsed: 32.80

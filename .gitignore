@@ -235,3 +235,4 @@ julia/.juliaup/
 archive/results/**/*.npz
 archive/results/**/*.npy
 archive/results/**/*.png
+julia_depot/
