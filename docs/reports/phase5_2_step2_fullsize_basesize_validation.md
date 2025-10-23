@@ -44,7 +44,7 @@ Step 1のDHCP単体テストで得られた知見（basesize=1000が最適）が
 - **前処理**: Gauss-Seidel
 - **境界条件**: 5面断熱、1面分布境界条件
 
-### 実験パターン（5種類）
+### 実験パターン（6種類）
 
 | Test | Threads | Par mode | basesize | 説明 |
 |------|---------|----------|----------|------|
@@ -53,6 +53,7 @@ Step 1のDHCP単体テストで得られた知見（basesize=1000が最適）が
 | 3 | 4 | thread | 10000 | 大チャンクサイズ |
 | 4 | 1 | thread | 1000 | 単一スレッド + 最適basesize |
 | 5 | N/A | sequential | N/A | 逐次実行（並列化なし） |
+| 6 | 1 | thread | 1 | 最悪ケース（1スレッド + 最小チャンク） |
 
 ### 実装詳細
 - **スクリプト**: `julia/scripts/run_10steps_fullsize_test.jl`
@@ -65,15 +66,17 @@ Step 1のDHCP単体テストで得られた知見（basesize=1000が最適）が
 
 ### 総合実行時間
 
-| Test | Threads | Par mode | basesize | Total時間 | CGM時間 | 対baseline | 対sequential |
-|------|---------|----------|----------|----------|---------|------------|--------------|
-| 1 | 4 | thread | 1 | **295.3秒** | 292.5秒 | 1.00× | 9.22× |
-| **2** | **4** | **thread** | **1000** | **19.5秒** | **16.7秒** | **15.2×** | **1.64×** |
-| 3 | 4 | thread | 10000 | 28.7秒 | 26.4秒 | 10.3× | 1.12× |
-| 4 | 1 | thread | 1000 | 44.6秒 | 41.3秒 | 6.62× | 0.72× |
-| 5 | N/A | sequential | N/A | 32.0秒 | 29.4秒 | 9.22× | 1.00× |
+| Test | Threads | Par mode | basesize | Total時間 | CGM時間 | 対baseline | 対最速 |
+|------|---------|----------|----------|----------|---------|------------|--------|
+| 1 | 4 | thread | 1 | 295.3秒 | 292.5秒 | 1.00× | 15.2× |
+| **2** | **4** | **thread** | **1000** | **19.5秒** | **16.7秒** | **15.2×** | **1.00×** |
+| 3 | 4 | thread | 10000 | 28.7秒 | 26.4秒 | 10.3× | 1.47× |
+| 4 | 1 | thread | 1000 | 44.6秒 | 41.3秒 | 6.62× | 2.29× |
+| 5 | N/A | sequential | N/A | 32.0秒 | 29.4秒 | 9.22× | 1.64× |
+| 6 | 1 | thread | 1 | **8054秒** | 8052秒 | 0.037× | **413×** |
 
 **最速構成**: Test 2（4スレッド + basesize=1000）→ **19.5秒**
+**最悪構成**: Test 6（1スレッド + basesize=1）→ **8054秒（約2.2時間）** ⚠️
 
 ### 各ソルバーの詳細時間
 
@@ -117,6 +120,18 @@ Gradient solve time:     9.3秒 (nt=10, total_iters=91, avg=10.1)
 Sensitivity solve time:  8.2秒 (nt=10, total_iters=96, avg=10.7)
 Total CGM time:         29.4秒
 ```
+
+#### Test 6: 1thread, basesize=1（最悪ケース）⚠️
+```
+DHCP solve time:        2780.2秒 (nt=10, total_iters=105, avg=11.7)
+Gradient solve time:    2721.7秒 (nt=10, total_iters=91, avg=10.1)
+Sensitivity solve time: 2547.5秒 (nt=10, total_iters=96, avg=10.7)
+Total CGM time:         8052.0秒 (約2.2時間)
+```
+**驚異的な非効率性**:
+- Test 2（最速）の **413倍**の時間
+- Test 4（1thread, bs=1000）の **180倍**の時間
+- 単一スレッド + basesize=1の組み合わせは**実用不可能**
 
 ---
 
@@ -197,20 +212,39 @@ Max residual: 5.5157e+00 K
 - Phase 5.1で特定した最適値がCGM全体でも有効
 - DHCP単体（16.0×）とCGM全体（15.2×）で一貫した高速化率
 
-### 2. basesize=1の問題
-- 295.3秒（ベースライン）vs 19.5秒（最適） = **15.2倍の差**
-- 細かすぎるタスク分割によるオーバーヘッドが支配的
-- スレッド間の同期コストが計算コストを上回る
+### 2. basesize=1の致命的な問題
+**Test 6（1thread, bs=1）: 8054秒（約2.2時間）**
+- 最速構成（Test 2）の **413倍**の時間 ⚠️
+- 4thread + bs=1（Test 1）でも295秒→4スレッドで27倍改善
+- 1thread + bs=1（Test 6）は8054秒→**実用不可能レベル**
+
+**basesize=1の影響比較**:
+```
+4スレッド + bs=1:    295秒（4スレッドでオーバーヘッド軽減）
+1スレッド + bs=1:   8054秒（オーバーヘッドが全て顕在化）
+差:                 27.3倍
+
+→ 4スレッド環境でもbasesize=1は非効率だが、
+  1スレッド環境では完全に破綻する
+```
 
 ### 3. basesize最適化の本質
 **並列化の効率化、ではなく並列化の実現可能化**
 - basesize=1では並列化が逆効果（295秒 > 32秒 sequential）
+- 単一スレッドではさらに破綻（8054秒 >>> 44.6秒 最適化版）
 - 適切なチャンクサイズで初めて並列化が機能する
 
 ### 4. スケーラビリティ
 **1スレッド（44.6秒）→ 4スレッド（19.5秒）= 2.29倍**
 - 並列化効率: 57.2%
 - 実用上十分な並列化効果を達成
+
+### 5. 最悪ケースの教訓
+**Test 6が示すbasesize=1の本質**:
+- basesize=1はタスク分割が極端に細かい
+- 単一スレッドでもThreadedExのオーバーヘッドが全て発生
+- オーバーヘッド/計算時間 比が異常に大きい（約250倍）
+- **結論**: basesizeのデフォルト値は絶対に1であってはならない
 
 ---
 
@@ -279,11 +313,12 @@ Max residual: 5.5157e+00 K
 
 ### ログファイル一覧
 ```bash
-shared/results/step2_fullsize_basesize1.log       # Test 1
-shared/results/step2_fullsize_basesize1000.log    # Test 2
-shared/results/step2_fullsize_basesize10000.log   # Test 3
-shared/results/step2_fullsize_thread1_basesize1000.log  # Test 4
-shared/results/step2_fullsize_sequential_basesize1000.log  # Test 5
+shared/results/step2_fullsize_basesize1.log                   # Test 1
+shared/results/step2_fullsize_basesize1000.log                # Test 2
+shared/results/step2_fullsize_basesize10000.log               # Test 3
+shared/results/step2_fullsize_thread1_basesize1000.log        # Test 4
+shared/results/step2_fullsize_sequential_basesize1000.log     # Test 5
+shared/results/step2_fullsize_thread1_basesize1.log           # Test 6 ⚠️
 ```
 
 ### 実行コマンド例
