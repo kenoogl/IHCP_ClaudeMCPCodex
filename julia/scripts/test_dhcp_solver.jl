@@ -6,12 +6,13 @@ run_10steps_fullsize_test.jlから抽出したDHCPソルバーのみの基本テ
 コアソルバーの性能と精度を確認するための軽量テストスクリプト。
 
 Usage:
-  julia test_dhcp_solver.jl [--solver SOLVER] [--precond PRECOND] [--nt STEPS]
+  julia test_dhcp_solver.jl [--solver SOLVER] [--precond PRECOND] [--nt STEPS] [--basesize SIZE]
 
 Options:
   --solver SOLVER     Solver type: pbicgstab (default), pcg
   --precond PRECOND   Preconditioner type: diagonal (default), gs, none
   --nt STEPS          Number of time steps (default: 10)
+  --basesize SIZE     FLoops basesize parameter for parallelization (default: 1)
 """
 
 using Dates
@@ -21,6 +22,7 @@ using NPZ
 
 include("../src/IHCP_CGM.jl")
 using .IHCP_CGM
+using .IHCP_CGM.Commons: set_backend_config
 
 const BASE_DIR = @__DIR__
 const PROJECT_ROOT = normpath(joinpath(BASE_DIR, "..", ".."))
@@ -30,19 +32,21 @@ const PROJECT_ROOT = normpath(joinpath(BASE_DIR, "..", ".."))
 # ---------------------------------------------------------------------------
 
 """
-    parse_command_line_args() -> (solver_type, precond_type, nt)
+    parse_command_line_args() -> (solver_type, precond_type, nt, basesize)
 
-コマンドライン引数をパースしてソルバー、前処理、ステップ数を取得
+コマンドライン引数をパースしてソルバー、前処理、ステップ数、basesizeを取得
 
 Returns:
   solver_type: ソルバータイプ（Symbol: :pbicgstab, :pcg）
   precond_type: 前処理タイプ（Symbol: :diagonal, :gs, :none）
   nt: タイムステップ数（Int）
+  basesize: FLoops basesizeパラメータ（Int）
 """
 function parse_command_line_args()
   solver_type = :pbicgstab  # デフォルト
   precond_type = :diagonal  # デフォルト（Python版互換）
   nt = 10                   # デフォルト
+  basesize = 1              # デフォルト
 
   i = 1
   while i <= length(ARGS)
@@ -56,11 +60,13 @@ function parse_command_line_args()
         --precond PRECOND     Preconditioner type (default: diagonal)
                               Available: diagonal, gs, none
         --nt STEPS            Number of time steps (default: 10)
+        --basesize SIZE       FLoops basesize parameter (default: 1)
         -h, --help            Show this help message and exit
 
       Examples:
         julia test_dhcp_solver.jl
         julia test_dhcp_solver.jl --solver pcg --precond gs --nt 20
+        julia test_dhcp_solver.jl --solver pbicgstab --precond gs --basesize 10000
       """)
       exit(0)
     elseif ARGS[i] == "--solver"
@@ -100,12 +106,21 @@ function parse_command_line_args()
         error("--nt must be positive: $(ARGS[i + 1])")
       end
       i += 2
+    elseif ARGS[i] == "--basesize"
+      if i + 1 > length(ARGS)
+        error("--basesize requires an argument")
+      end
+      basesize = parse(Int, ARGS[i + 1])
+      if basesize < 1
+        error("--basesize must be positive: $(ARGS[i + 1])")
+      end
+      i += 2
     else
       error("Unknown argument: $(ARGS[i])")
     end
   end
 
-  return solver_type, precond_type, nt
+  return solver_type, precond_type, nt, basesize
 end
 
 function ensure_single_thread()
@@ -208,14 +223,19 @@ function main()
   println("="^80)
   println("Project root: $PROJECT_ROOT")
   flush(stdout)
-  ensure_single_thread()
 
   # コマンドライン引数パース
-  solver_type, precond_type, nt = parse_command_line_args()
+  solver_type, precond_type, nt, basesize = parse_command_line_args()
+
+  # Backend設定（並列化パラメータ）
+  set_backend_config(basesize=basesize)
+
   println("\n[Configuration]")
   println("  Solver: $solver_type")
   println("  Preconditioner: $precond_type")
   println("  Time steps: $nt")
+  println("  FLoops basesize: $basesize")
+  println("  Julia threads: $(Threads.nthreads())")
   flush(stdout)
 
   total_start = time()
