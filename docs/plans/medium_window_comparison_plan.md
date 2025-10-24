@@ -1,10 +1,11 @@
 # 中規模ウィンドウPython-Julia性能比較計画書（推奨版）
 
 **作成日**: 2025年10月24日
-**バージョン**: 1.0（推奨版）
+**バージョン**: 2.0（修正版）
 **ステータス**: 実行準備完了
-**目的**: 中規模ウィンドウ（nt=100, window=60, overlap=15）でのPython-Julia実装の性能と数値精度を比較検証する
+**目的**: 中規模ウィンドウ（nt=100, window=35, overlap=10）でのPython-Julia実装の性能と数値精度を比較検証する
 **関連**: Phase 5.2 Step 3 Phase 2の代替計画（現実的な実行時間）
+**修正履歴**: v2.0 - パラメータ検証により window=60→35, overlap=15→10に修正（2025-10-24）
 
 ---
 
@@ -16,14 +17,20 @@
 - **合計**: 約12-14時間（1日で完了可能）
 
 ### ✅ **適切なウィンドウ構成**
-- **ウィンドウ数**: 2個（適度なオーバーラップ）
+- **総ウィンドウ数**: 14個（主要5個 + 短いもの9個）
+- **主要ウィンドウ**: 5個（長さ10～35ステップ）
 - **カバー率**: 100%（全時間範囲をカバー）
-- **Window 1**: [0, 60]（60ステップ）
-- **Window 2**: [45, 100]（55ステップ、15ステップオーバーラップ）
+- **主要ウィンドウ詳細**:
+  - Window 1: [0, 35]（35ステップ）
+  - Window 2: [25, 60]（35ステップ、10ステップオーバーラップ）
+  - Window 3: [50, 85]（35ステップ、10ステップオーバーラップ）
+  - Window 4: [75, 99]（24ステップ、10ステップオーバーラップ）
+  - Window 5: [89, 99]（10ステップ、10ステップオーバーラップ）
+- **短いウィンドウ**: Window 6～14（長さ1～9ステップ、アルゴリズム仕様）
 
 ### ✅ **小→中のスケーラビリティ評価**
-- 小ウィンドウ: window=5 ✅ 完了
-- **中ウィンドウ**: window=60 ← 今回
+- 小ウィンドウ: window=5 ✅ 完了（主要4個/総5個）
+- **中ウィンドウ**: window=35 ← 今回（主要5個/総14個）
 - 大ウィンドウ: window=71 ← 将来
 
 ---
@@ -42,8 +49,8 @@
   - 問題: nt=10では不足、nt=100だと実行時間30-45時間
 
 **この計画の位置づけ**:
-- 中規模ウィンドウ（window=60, nt=100）で現実的な測定
-- 小→中のスケーラビリティ評価
+- 中規模ウィンドウ（window=35, nt=100）で現実的な測定
+- 小→中のスケーラビリティ評価（主要ウィンドウ: 4個→5個）
 - basesize最適化の完全検証
 
 ### 1.2 目的
@@ -71,11 +78,15 @@
   - nt = 100 ステップ
 
 スライディングウィンドウ（中規模）:
-  - window_size = 60 ステップ
-  - overlap = 15 ステップ
-  - ウィンドウ数: 2個
-  - Window 1: [0, 60] (60ステップ)
-  - Window 2: [45, 100] (55ステップ)
+  - window_size = 35 ステップ
+  - overlap = 10 ステップ
+  - 総ウィンドウ数: 14個（主要5個 + 短いもの9個）
+  - 主要ウィンドウ詳細:
+    - Window 1: [0, 35] (35ステップ)
+    - Window 2: [25, 60] (35ステップ)
+    - Window 3: [50, 85] (35ステップ)
+    - Window 4: [75, 99] (24ステップ)
+    - Window 5: [89, 99] (10ステップ)
 
 並列化:
   - スレッド数: 4
@@ -107,8 +118,8 @@ CGM反復数: 3回（標準設定）
 JULIA_NUM_THREADS=4 julia --project=julia \
   julia/scripts/run_sliding_window.jl \
   --nt 100 \
-  --window 60 \
-  --overlap 15 \
+  --window 35 \
+  --overlap 10 \
   --cgm-iter 3 \
   --solver pbicgstab \
   --precond gs \
@@ -124,8 +135,8 @@ JULIA_NUM_THREADS=4 julia --project=julia \
 JULIA_NUM_THREADS=4 julia --project=julia \
   julia/scripts/run_sliding_window.jl \
   --nt 100 \
-  --window 60 \
-  --overlap 15 \
+  --window 35 \
+  --overlap 10 \
   --cgm-iter 3 \
   --solver pbicgstab \
   --precond gs \
@@ -141,8 +152,8 @@ JULIA_NUM_THREADS=4 julia --project=julia \
 JULIA_NUM_THREADS=4 julia --project=julia \
   julia/scripts/run_sliding_window.jl \
   --nt 100 \
-  --window 60 \
-  --overlap 15 \
+  --window 35 \
+  --overlap 10 \
   --cgm-iter 3 \
   --solver pbicgstab \
   --precond gs \
@@ -167,8 +178,8 @@ export NUMBA_NUM_THREADS=4
 python3 python/scripts/run_sliding_window.py \
   --nt 100 \
   --cgm-iter 3 \
-  --window 60 \
-  --overlap 15 \
+  --window 35 \
+  --overlap 10 \
   --output python_medium_window_cgm3 \
   2>&1 | tee shared/results/python_medium_window_cgm3.log
 ```
@@ -181,8 +192,8 @@ python3 python/scripts/run_sliding_window.py \
 JULIA_NUM_THREADS=4 julia --project=julia \
   julia/scripts/run_sliding_window.jl \
   --nt 100 \
-  --window 60 \
-  --overlap 15 \
+  --window 35 \
+  --overlap 10 \
   --cgm-iter 3 \
   --solver pbicgstab \
   --precond gs \
@@ -377,19 +388,19 @@ JULIA_NUM_THREADS=4 julia --project=julia \
 ```bash
 # Test 1-1: basesize=500
 JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
-  --nt 100 --window 60 --overlap 15 --cgm-iter 3 \
+  --nt 100 --window 35 --overlap 10 --cgm-iter 3 \
   --solver pbicgstab --precond gs --basesize 500 \
   2>&1 | tee shared/results/medium_window_basesize500_cgm3.log
 
 # Test 1-2: basesize=1000
 JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
-  --nt 100 --window 60 --overlap 15 --cgm-iter 3 \
+  --nt 100 --window 35 --overlap 10 --cgm-iter 3 \
   --solver pbicgstab --precond gs --basesize 1000 \
   2>&1 | tee shared/results/medium_window_basesize1000_cgm3.log
 
 # Test 1-3: basesize=2000
 JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
-  --nt 100 --window 60 --overlap 15 --cgm-iter 3 \
+  --nt 100 --window 35 --overlap 10 --cgm-iter 3 \
   --solver pbicgstab --precond gs --basesize 2000 \
   2>&1 | tee shared/results/medium_window_basesize2000_cgm3.log
 ```
@@ -400,34 +411,36 @@ JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
 # Test 2-1: Python CGM 3回
 export NUMBA_NUM_THREADS=4
 python3 python/scripts/run_sliding_window.py \
-  --nt 100 --cgm-iter 3 --window 60 --overlap 15 \
+  --nt 100 --cgm-iter 3 --window 35 --overlap 10 \
   --output python_medium_window_cgm3 \
   2>&1 | tee shared/results/python_medium_window_cgm3.log
 
 # Test 2-2: Julia CGM 3回（最適basesize使用）
 JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
-  --nt 100 --window 60 --overlap 15 --cgm-iter 3 \
+  --nt 100 --window 35 --overlap 10 --cgm-iter 3 \
   --solver pbicgstab --precond gs --basesize <最適値> \
   2>&1 | tee shared/results/julia_medium_window_cgm3.log
 ```
 
 ---
 
-**計画書バージョン**: 1.0（推奨版）
+**計画書バージョン**: 2.0（修正版）
 **最終更新**: 2025年10月24日
 **作成者**: Claude Code
 **承認**: 未承認
 **ステータス**: 実行準備完了
 **推奨度**: ★★★★★（最推奨）
+**修正履歴**: v2.0 - スライディングウィンドウアルゴリズム検証により window=60→35, overlap=15→10に修正（2025-10-24）
 
 ---
 
 ## この計画が推奨される理由
 
 1. **現実的な実行時間**: 1日で完了可能（12-14時間）
-2. **適切なウィンドウ構成**: 2個のウィンドウで100%カバー
-3. **小→中のスケーラビリティ評価**: 段階的な性能評価が可能
+2. **適切なウィンドウ構成**: 主要5個のウィンドウで100%カバー（短いウィンドウ9個は自動生成）
+3. **小→中のスケーラビリティ評価**: 段階的な性能評価が可能（主要4個→5個）
 4. **Phase 5.2の実質完了**: 小+中ウィンドウで十分な知見を取得
 5. **次フェーズへの円滑な移行**: プロジェクト完了または性能改善へ
+6. **アルゴリズム検証済み**: window=35, overlap=10は実際に14個ウィンドウを生成し100%カバーすることを確認済み
 
 **この計画の採用を強く推奨します。**
