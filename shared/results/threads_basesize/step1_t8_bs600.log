@@ -1,0 +1,69 @@
+================================================================================
+DHCP（直接熱伝導問題）ソルバー単体テスト
+================================================================================
+Project root: /Users/Daily/Development/IHCP/TrialClaudeMCPCodex/
+
+[Configuration]
+  Solver: pbicgstab
+  Preconditioner: gs
+  Time steps: 10
+  FLoops basesize: 600
+  Julia threads: 8
+
+[1/5] Grid and material parameters
+  grid: ni=80, nj=100, nk=20
+  spacing: dx=1.200e-04 m, dy=1.671e-04 m
+  time steps: nt=10, dt=1.000e-03 s
+  rho (reference): 7823.493963 kg/m^3
+
+[2/5] Loading measurement data
+  loading measurement data from: /Users/Daily/Development/IHCP/TrialClaudeMCPCodex/shared/data/T_measure_700um_1ms.npy
+  measurement subset shape (Python order): (10, 80, 100)
+  load time: 1.13 s
+  initial temperature range: 550.11 ~ 587.98 K
+
+[3/5] 設定された熱流束パターン
+  q_test shape: (80, 100, 9)
+  q_test range: 0.0000e+00 ~ 0.0000e+00 W/m^2
+
+[4/5] Running DHCP solver
+============================================================
+Start DHCP direct solver
+============================================================
+格子: 80×100×20 (N=160000)
+時間ステップ: 10, dt=0.001s
+CG許容誤差: rtol=1.0e-6, maxiter=20000
+============================================================
+=== Boundary Conditions ===
+X-minus: Adiabatic
+X-plus : Adiabatic
+Y-minus: Adiabatic
+Y-plus : Adiabatic
+Z-minus: Adiabatic
+Z-plus : Distribution
+===================
+[t=2/10] converged: Iteration= 11 : Res_0= 0.3653872949668927 : time=0.9901890754699707
+[t=3/10] converged: Iteration= 12 : Res_0= 0.1702858807019508 : time=0.320235013961792
+[t=4/10] converged: Iteration= 12 : Res_0= 0.08601725030153162 : time=0.3200700283050537
+[t=5/10] converged: Iteration= 12 : Res_0= 0.04845825797187773 : time=0.362713098526001
+[t=6/10] converged: Iteration= 13 : Res_0= 0.03100245046664329 : time=0.3462240695953369
+[t=7/10] converged: Iteration= 12 : Res_0= 0.022395320446251168 : time=0.3182690143585205
+[t=8/10] converged: Iteration= 13 : Res_0= 0.017808263060461613 : time=0.35352110862731934
+[t=9/10] converged: Iteration= 12 : Res_0= 0.015142105995378755 : time=0.3304450511932373
+[t=10/10] converged: Iteration= 11 : Res_0= 0.013457612982861673 : time=0.30480504035949707
+============================================================
+DHCP直接ソルバー完了
+  最終温度範囲: 550.1138991727722 - 587.9753702807232 K
+============================================================
+  DHCP elapsed time: 4.98 s
+
+[5/5] Residual analysis
+  RMS residual: 2.9516e-01 K
+  Max residual: 2.1465e+00 K
+  Mean temperature: 572.20 K
+  Temperature range: 550.11 ~ 587.98 K
+
+Summary
+  Total runtime: 6.51 s
+  DHCP share: 76.5%
+================================================================================

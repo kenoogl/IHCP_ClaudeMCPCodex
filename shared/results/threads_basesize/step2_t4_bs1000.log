@@ -1,0 +1,137 @@
+================================================================================
+Julia 10-step full-size CGM validation
+================================================================================
+Project root: /Users/Daily/Development/IHCP/TrialClaudeMCPCodex/
+
+================================================================================
+Julia parallel execution info:
+  Available threads: 4
+  Parallelization mode: thread
+  FLoops basesize: 1000
+================================================================================
+
+[Configuration]
+  Solver: pbicgstab
+  Preconditioner: gs
+
+[1/5] Grid and material parameters
+  grid: ni=80, nj=100, nk=20
+  spacing: dx=1.200e-04 m, dy=1.671e-04 m
+  time steps: nt=10, dt=1.000e-03 s
+  rho (reference): 7823.493963 kg/m^3
+
+[2/5] Loading measurement data
+  loading measurement data from: /Users/Daily/Development/IHCP/TrialClaudeMCPCodex/shared/data/T_measure_700um_1ms.npy
+  measurement subset shape (Python order): (10, 80, 100)
+  load time: 1.26 s
+  initial temperature range: 550.11 ~ 587.98 K
+
+[3/5] Running CGM solver (single window, 1 iteration)
+
+=== CGM反復 0 ===
+============================================================
+Start DHCP direct solver
+============================================================
+格子: 80×100×20 (N=160000)
+時間ステップ: 10, dt=0.001s
+CG許容誤差: rtol=1.0e-6, maxiter=20000
+============================================================
+=== Boundary Conditions ===
+X-minus: Adiabatic
+X-plus : Adiabatic
+Y-minus: Adiabatic
+Y-plus : Adiabatic
+Z-minus: Adiabatic
+Z-plus : Distribution
+===================
+[t=2/10] converged: Iteration= 11 : Res_0= 0.3653872949668927 : time=1.0993340015411377
+[t=3/10] converged: Iteration= 12 : Res_0= 0.06875040022318332 : time=0.5047857761383057
+[t=4/10] converged: Iteration= 11 : Res_0= 0.16608553405581228 : time=0.48427295684814453
+[t=5/10] converged: Iteration= 12 : Res_0= 0.09356285208455918 : time=0.4923219680786133
+[t=6/10] converged: Iteration= 11 : Res_0= 0.18533955195413881 : time=0.45204591751098633
+[t=7/10] converged: Iteration= 12 : Res_0= 0.18844969085791072 : time=0.49993300437927246
+[t=8/10] converged: Iteration= 12 : Res_0= 0.1328687716967124 : time=0.4924309253692627
+[t=9/10] converged: Iteration= 12 : Res_0= 0.17215280442122682 : time=0.49334716796875
+[t=10/10] converged: Iteration= 12 : Res_0= 0.16237807051401634 : time=0.49682092666625977
+============================================================
+DHCP直接ソルバー完了
+  最終温度範囲: 550.1138991727722 - 587.9753702807232 K
+============================================================
+  DHCP solve time: 5.081 s (nt=10 steps, total_iters=105, avg=11.7)
+J = 2.79360e+04
+Adjoint求解開始（後退時間積分）
+  格子: 80×100×20, N=160000
+  時間ステップ: 10
+  CG: rtol=1.0e-8, maxiter=20000
+=== Boundary Conditions ===
+X-minus: Adiabatic
+X-plus : Adiabatic
+Y-minus: Adiabatic
+Y-plus : Adiabatic
+Z-minus: Distribution
+Z-plus : Adiabatic
+===================
+[t=9/10] converged: Iteration= 9 : Res_0= 0.6577944038822968 : time=0.43862104415893555
+[t=8/10] converged: Iteration= 11 : Res_0= 0.2216986346141938 : time=0.4552168846130371
+[t=7/10] converged: Iteration= 11 : Res_0= 0.09403782385110207 : time=0.4566810131072998
+[t=6/10] converged: Iteration= 11 : Res_0= 0.04984254081060782 : time=0.45267701148986816
+[t=5/10] converged: Iteration= 11 : Res_0= 0.03145375380215015 : time=0.453265905380249
+[t=4/10] converged: Iteration= 12 : Res_0= 0.022297804710917565 : time=0.4945869445800781
+[t=3/10] converged: Iteration= 13 : Res_0= 0.016998508126609444 : time=0.5395572185516357
+[t=2/10] converged: Iteration= 13 : Res_0= 0.013560817949307864 : time=0.5384020805358887
+[t=1/10] converged: Iteration= 12 : Res_0= 0.011138922802535154 : time=0.49382901191711426
+Adjoint求解完了
+  平均CG反復回数: 11.444444444444445
+  随伴場範囲: [-2.9174633475403122, 1.3670066812783892]
+  Gradient solve time: 4.816 s (nt=10 steps, total_iters=91, avg=10.1)
+============================================================
+Start Sensitivity solver
+============================================================
+格子: 80×100×20 (N=160000)
+時間ステップ: 10, dt=0.001s
+CG許容誤差: rtol=1.0e-8, maxiter=20000
+============================================================
+=== Boundary Conditions ===
+X-minus: Adiabatic
+X-plus : Adiabatic
+Y-minus: Adiabatic
+Y-plus : Adiabatic
+Z-minus: Adiabatic
+Z-plus : Distribution
+===================
+[t=2/10] converged: Iteration= 12 : Res_0= 8.959412839031638e-8 : time=0.5654277801513672
+[t=3/10] converged: Iteration= 11 : Res_0= 2.4144435493421326e-8 : time=0.454632043838501
+[t=4/10] converged: Iteration= 10 : Res_0= 2.2084271263175666e-8 : time=0.41312408447265625
+[t=5/10] converged: Iteration= 11 : Res_0= 2.0427324771257134e-8 : time=0.45266294479370117
+[t=6/10] converged: Iteration= 10 : Res_0= 1.8924515202270452e-8 : time=0.41220784187316895
+[t=7/10] converged: Iteration= 11 : Res_0= 1.7254116585335905e-8 : time=0.45330119132995605
+[t=8/10] converged: Iteration= 10 : Res_0= 1.50815852814796e-8 : time=0.4138209819793701
+[t=9/10] converged: Iteration= 11 : Res_0= 1.230925700295838e-8 : time=0.45671510696411133
+[t=10/10] converged: Iteration= 10 : Res_0= 9.411079985372414e-9 : time=0.41631484031677246
+============================================================
+Sensitivityソルバー完了
+  最終温度範囲: -9.068058386171689e-7 - 2.156297891023024e-6 K
+============================================================
+  Sensitivity solve time: 4.124 s (nt=10 steps, total_iters=96, avg=10.7)
+beta = 6.1129e+07, gamma = 0.0000e+00
+@ ___ Iter   0 ___ @
+J = 2.79360e+04, beta = 6.1129e+07, gamma = 0.0000e+00
+grad: min=-2.3869e-01, max=1.0055e-01, mean=-2.5620e-03
+dT:   min=-9.0681e-07, max=2.1563e-06, mean=1.8316e-08
+q:    min=-6.1465e+06, max=1.4591e+07, mean=1.5662e+05
+[停止] 最大反復数到達: iter=1 >= max_iter=1
+  CGM elapsed time: 16.60 s
+  iterations completed: 1
+
+[4/5] Residual analysis
+  RMS residual: 5.9093e-01 K
+  Max residual: 5.5157e+00 K
+  Heat flux range: -6.1465e+06 ~ 1.4591e+07 W/m^2
+
+[5/5] Saving outputs
+  saved bundle (.npz) → /Users/Daily/Development/IHCP/TrialClaudeMCPCodex/shared/results/julia_10steps_fullsize.npz
+
+Summary
+  Total runtime: 18.52 s
+  CGM share: 89.6%
+================================================================================
