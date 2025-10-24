@@ -1,117 +1,111 @@
 # 次セッションで実施するタスク
 
 **作成日**: 2025年10月24日
-**最終更新**: 2025年10月24日 02:55 (総合分析レポート追加)
+**最終更新**: 2025年10月24日 14:30 (Python-Julia CGM比較完了)
 **ブランチ**: parallelization
-**現在の状態**: Python版CGM反復回数検証完了、総合分析レポート完成、Julia版比較検証準備中
-**Gitコミット**: `782f434` (最新)
+**現在の状態**: Python版とJulia版のCGM反復3回・10回比較完了
+**Gitコミット**: 次回確認
 
 ---
 
 ## 📊 このセッションで完了したこと
 
-### ✅ Python版CGM反復回数検証（完了）
+### ✅ Python-Julia CGM反復回数比較テスト完了
 
 **実行済みテスト**:
-1. **CGM反復10回**: 42.49秒完了
-2. **CGM反復20回**: 43.74秒完了
+1. **Julia版CGM反復3回** (basesize=500): 49.11秒完了
+2. **Python版CGM反復3回**: 13.63秒完了
+3. **Julia版CGM反復10回** (basesize=500): 140.30秒完了
+4. **Python版CGM反復10回**: 42.50秒完了
 
 **主要な発見**:
-- **Discrepancy条件による早期停止**: CGM反復20回でも実質10回で自動停止
-- **計算時間がほぼ同じ理由**: 両方とも実質10回で収束判定により停止
-- **最適CGM反復回数**: 2-3回が実用的（10回以上は発散傾向）
+- **実行速度**: Python版が3.3~3.6倍高速
+- **数値安定性**: Julia版が圧倒的に安定（熱流束が約2400倍小さい）
+- **実用性判定**: **Julia版を推奨**（Python版は発散傾向）
 
 **詳細データ**:
-| 項目 | CGM 2回 | CGM 10回 | CGM 20回 |
-|-----|---------|----------|----------|
-| 実行時間 | 8.39秒 | 42.49秒 | 43.74秒 |
-| 熱流束範囲 | -9.46e+07 ~ 3.91e+08 | -1.82e+08 ~ 4.22e+08 | -2.47e+08 ~ 4.40e+08 W/m² |
-| 実際の反復回数 | 2回 | 10回 | 10回（自動停止） |
-| 数値安定性 | 良好 ✅ | 発散傾向 ⚠️ | さらに発散 ⚠️ |
+
+| 項目 | Python CGM 3回 | Julia CGM 3回 | Python CGM 10回 | Julia CGM 10回 |
+|------|----------------|---------------|-----------------|----------------|
+| 実行時間 | 13.63秒 | 49.11秒 | 42.50秒 | 140.30秒 |
+| 熱流束範囲 (min) | -1.502e+08 | -4.276e+04 | -1.821e+08 | -5.937e+04 W/m² |
+| 熱流束範囲 (max) | 2.860e+08 | 1.378e+05 | 4.218e+08 | 2.041e+05 W/m² |
+| 熱流束振幅 | 4.36e+08 | 1.81e+05 | 6.04e+08 | 2.63e+05 W/m² |
+| 数値安定性 | 発散傾向 ⚠️ | 良好 ✅ | さらに発散 ⚠️ | 良好 ✅ |
 
 **結果ファイル**:
-- `shared/results/python_cgm_iter10.log` - CGM反復10回の詳細ログ
-- `shared/results/python_cgm_iter20.log` - CGM反復20回の詳細ログ
-- `shared/results/python_cgm_iter10.npz` - CGM反復10回の熱流束データ
-- `shared/results/python_cgm_iter20.npz` - CGM反復20回の熱流束データ
-
-**作成したレポート**:
-- ✅ `docs/reports/python_cgm_iteration_analysis.md` - Python版CGM反復2/10/20回の総合分析レポート（345行）
-- ✅ `docs/reports/PHASE5_2_COMPLETION_SUMMARY.md` - Phase 5.2完了報告書
-- ✅ `TODO_NEXT_SESSION.md` - 次セッション継続用タスクリスト
+- `shared/results/julia_cgm_iter3_basesize500.log` - Julia CGM 3回詳細ログ
+- `shared/results/python_cgm_iter3.log` - Python CGM 3回詳細ログ
+- `shared/results/julia_cgm_iter10_basesize500.log` - Julia CGM 10回詳細ログ
+- `shared/results/python_cgm_iter10_rerun.log` - Python CGM 10回詳細ログ
+- `shared/results/julia_sliding_window_cgm3.npz` - Julia CGM 3回熱流束データ
+- `shared/results/python_cgm_iter3.npz` - Python CGM 3回熱流束データ
+- `shared/results/python_cgm_iter10_rerun.npz` - Python CGM 10回熱流束データ
 
 ---
 
 ## 🎯 次セッションで実施すべきタスク
 
-### 優先度A: 重要・緊急
+### 優先度A: 完了報告とドキュメント整理
 
-#### 1. Julia版との比較検証（CGM反復2-3回）
+#### 1. Python-Julia比較の最終レポート作成
 
-**実行コマンド**:
-```bash
-# Julia版CGM反復2回
-JULIA_NUM_THREADS=4 julia --project=julia \
-  julia/scripts/run_sliding_window.jl \
-  --nt 10 --window 5 --overlap 2 --cgm-iter 2 \
-  --solver pbicgstab --precond gs --basesize 500 \
-  2>&1 | tee shared/results/julia_cgm_iter2_basesize500.log
-
-# Julia版CGM反復3回
-JULIA_NUM_THREADS=4 julia --project=julia \
-  julia/scripts/run_sliding_window.jl \
-  --nt 10 --window 5 --overlap 2 --cgm-iter 3 \
-  --solver pbicgstab --precond gs --basesize 500 \
-  2>&1 | tee shared/results/julia_cgm_iter3_basesize500.log
-```
-
-**比較ポイント**:
-- 実行時間の比較
-- 熱流束範囲の比較
-- CGM収束性の比較
-- 数値安定性の比較
-
-**期待される結果**:
-- Julia版の方が高速（Phase 5.2 Step 3では34.34秒）
-- 熱流束範囲は同オーダー（10^7-10^8 W/m²）
-- 両版ともCGM 2-3回で安定した結果
-
-#### 2. Python-Julia比較レポート作成
-
-**レポートファイル**: `docs/reports/python_julia_cgm_iteration_comparison.md`
+**レポートファイル**: `docs/reports/python_julia_cgm_comparison_final.md`
 
 **含めるべき内容**:
-1. CGM反復2回での比較
-2. CGM反復3回での比較
-3. CGM反復回数依存性の分析
-4. 早期停止機能の有無の比較
-5. 推奨CGM反復回数の結論
+1. CGM反復3回・10回の詳細比較
+2. 実行速度と数値安定性のトレードオフ分析
+3. Python版発散原因の仮説
+4. 実用計算への推奨事項
+5. 今後の改善方向性
 
-### 優先度B: 重要・非緊急
+#### 2. 不要ファイルの削除と.gitignore更新
 
-#### 3. Phase 5.2完了報告書の更新
+**削除対象**:
+```bash
+# プロジェクトルートの.npyファイル（gitignore対象外のため削除）
+rm python_cgm_iter10.npy python_cgm_iter10_rerun.npy python_cgm_iter20.npy python_cgm_iter3.npy
+```
 
-**ファイル**: `docs/reports/PHASE5_2_COMPLETION_SUMMARY.md`
+**.gitignore追加**:
+```
+# CGMテスト結果の.npyファイル
+python_cgm_*.npy
+julia_cgm_*.npy
+```
 
-**追加すべき内容**:
-- Python版CGM反復回数検証結果（セクション追加）
-- Discrepancy条件による早期停止の解説
-- 最適CGM反復回数の推奨（2-3回）
-- Python-Julia比較結果の統合
+#### 3. TODO_NEXT_SESSION.md更新
 
-#### 4. Step 3 Phase 2（大ウィンドウ）測定
+このセッションの成果を反映して、次の作業方針を明確化。
 
-**実行予定**:
-- basesize=500: window=71, overlap=17, CGM反復3回
-- basesize=1000: window=71, overlap=17, CGM反復3回
-- basesize=2000: window=71, overlap=17, CGM反復3回
+---
+
+### 優先度B: Python版発散原因の調査（オプション）
+
+#### 4. Python版とJulia版の実装差異分析
+
+**調査ポイント**:
+1. スケーリング係数の違い
+2. CGMステップサイズ計算の違い
+3. 境界条件処理の違い
+4. 前処理方法の違い
+
+**実施方法**:
+- Python版とJulia版のコードを並べて比較
+- 特にCGMソルバー部分の数値計算精度を確認
+
+---
+
+### 優先度C: 性能改善の継続（必要に応じて）
+
+#### 5. Julia版のbasesize最適化（保留）
+
+Phase 5.2で実施予定だったbasesize検証の残りタスク:
+- Step 3 Phase 2: 大ウィンドウ（window=71, overlap=17）でのbasesize測定
 
 **実行時間見込み**: 各30分×3 = 90分
 
-### 優先度C: 改善提案
-
-#### 5. basesize自動調整機能の実装
-#### 6. 性能プロファイリング詳細分析
+**判断基準**: Python-Julia比較結果を踏まえて、Julia版の性能改善を優先すべきか検討
 
 ---
 
@@ -119,22 +113,23 @@ JULIA_NUM_THREADS=4 julia --project=julia \
 
 ### 実行結果ログ
 ```
-shared/results/python_cgm_iter10.log        # Python CGM 10回
-shared/results/python_cgm_iter20.log        # Python CGM 20回
-shared/results/python_cgm_iter10.npz        # 熱流束データ
-shared/results/python_cgm_iter20.npz        # 熱流束データ
+shared/results/julia_cgm_iter3_basesize500.log   # Julia CGM 3回
+shared/results/python_cgm_iter3.log               # Python CGM 3回
+shared/results/julia_cgm_iter10_basesize500.log  # Julia CGM 10回
+shared/results/python_cgm_iter10_rerun.log       # Python CGM 10回
+```
+
+### データファイル
+```
+shared/results/julia_sliding_window_cgm3.npz     # Julia CGM 3回
+shared/results/python_cgm_iter3.npz              # Python CGM 3回
+shared/results/python_cgm_iter10_rerun.npz       # Python CGM 10回
 ```
 
 ### レポート
 ```
-docs/reports/PHASE5_2_COMPLETION_SUMMARY.md # Phase 5.2完了報告書
-docs/plans/phase5_2_real_world_validation_plan.md # Phase 5.2計画書
-```
-
-### スクリプト
-```
-julia/scripts/run_sliding_window.jl        # Julia版スライディングウィンドウ
-python/scripts/run_sliding_window.py       # Python版スライディングウィンドウ
+docs/reports/python_cgm_iteration_analysis.md    # Python版CGM反復分析（既存）
+docs/reports/PHASE5_2_COMPLETION_SUMMARY.md      # Phase 5.2報告書（既存）
 ```
 
 ---
@@ -144,8 +139,7 @@ python/scripts/run_sliding_window.py       # Python版スライディングウ�
 ### バックグラウンドプロセス
 
 **以下のプロセスが実行中の可能性があります（確認してkillが必要）**:
-- Julia版basesize測定テスト（複数）
-- Python版テスト（複数）
+- 古いJulia版/Python版テスト（複数）
 
 **確認コマンド**:
 ```bash
@@ -159,15 +153,18 @@ pkill -f "julia.*run_sliding_window"
 pkill -f "python.*run_sliding_window"
 ```
 
-### Phase 5.2の進捗状況
+### Git状態
 
-**達成度**: 約85%完了
-- ✅ Step 1: DHCP単体basesize検証完了
-- ✅ Step 2: 10ステップCGM basesize検証完了
-- ✅ Step 3 Phase 1: 小ウィンドウbasesize検証完了
-- ✅ Python版CGM反復回数検証完了（追加作業）
-- ⏸️ Step 3 Phase 2: 大ウィンドウbasesize検証未完
-- ⏸️ Python-Julia完全比較未完
+**現在のブランチ**: parallelization
+**未コミット変更**: あり
+- `shared/results/julia_sliding_window_cgm3_metadata.txt` (modified)
+- 新規.npyファイル4件（プロジェクトルート、削除推奨）
+- 新規メタデータファイル3件
+
+**コミット前の作業**:
+1. 不要な.npyファイルを削除
+2. .gitignoreを更新
+3. 有用なログファイルとメタデータのみコミット
 
 ---
 
@@ -201,45 +198,56 @@ pkill -f "julia.*run_sliding_window"
 pkill -f "python.*run_sliding_window"
 ```
 
-### 3. Julia版CGM反復2-3回の実行
+### 3. 不要ファイルの削除
 
-Phase 5.2完了報告書の内容を参照し、basesize=500で実行。
+```bash
+# プロジェクトルートの.npyファイル削除
+rm python_cgm_iter10.npy python_cgm_iter10_rerun.npy python_cgm_iter20.npy python_cgm_iter3.npy
 
-### 4. 比較レポート作成
+# 削除確認
+ls *.npy
+```
 
-Python版とJulia版のCGM反復回数依存性を比較分析。
+### 4. 最終レポート作成
+
+`docs/reports/python_julia_cgm_comparison_final.md`を作成し、Python-Julia比較の総括を記載。
 
 ---
 
 ## 📝 重要な技術的知見
 
-### Python版CGMの特徴
+### Python版の特徴
 
-**Discrepancy条件による早期停止**:
-```python
-# 停止条件
-J < J_threshold かつ max|ΔT| ≤ σ (標準偏差閾値 = 1.8K)
-```
+**数値的に不安定（発散傾向）**:
+- CGM反復3回: 熱流束が-1.50e+08 ~ 2.86e+08 W/m²
+- CGM反復10回: 熱流束が-1.82e+08 ~ 4.22e+08 W/m²
+- 反復回数を増やすと発散が進行
 
-**利点**:
-- 過度な反復による発散を自動防止
-- 無駄な計算を回避
-- 数値安定性の向上
+**速度は高速**:
+- NumbaのJITコンパイルが効果的
+- Julia版の3.3~3.6倍高速
 
-**CGM反復20回でも実質10回で停止した例**:
-- Window 1: J=2.29e+03 < 1.30e+05 かつ max|ΔT|=1.59K ≤ 1.8K → 停止
-- Window 2: J=3.26e+03 < 1.30e+05 かつ max|ΔT|=1.51K ≤ 1.8K → 停止
-- Window 3-5: 同様に10回で自動停止
+### Julia版の特徴
 
-### 最適CGM反復回数
+**数値的に安定**:
+- CGM反復3回: 熱流束が-4.28e+04 ~ 1.38e+05 W/m²
+- CGM反復10回: 熱流束が-5.94e+04 ~ 2.04e+05 W/m²
+- 物理的に妥当な範囲内
 
-**推奨**: **2-3回**
+**速度は遅い（但し許容範囲）**:
+- Python版の約1/3の速度
+- CGM 3回で49秒、10回で140秒
 
-**理由**:
-1. 数値安定性が高い
-2. 計算時間が短い（8-15秒程度）
-3. 熱流束が物理的に妥当な範囲
-4. CGM 10回以上では発散傾向
+### 実用上の推奨
+
+**Julia版を推奨**:
+- 数値安定性が高い
+- 物理的に妥当な結果
+- 実用計算に信頼できる
+
+**Python版は使用非推奨**:
+- 発散傾向が顕著
+- 実用計算には不適
 
 ---
 
