@@ -1,112 +1,150 @@
 # 次セッションで実施するタスク
 
 **作成日**: 2025年10月24日
-**最終更新**: 2025年10月24日 16:00 (最終レポート完成、優先度A完了)
+**最終更新**: 2025年10月24日 19:00 (中規模ウィンドウ計画策定完了)
 **ブランチ**: parallelization
-**現在の状態**: Python-Julia CGM比較最終レポート完成
-**最新コミット**: 4c17fb4 "docs: Python-Julia CGM比較最終レポート完成"
+**現在の状態**: 中規模ウィンドウ比較計画策定完了、実行準備完了
+**最新コミット**: 未コミット（2つの計画書を新規作成）
 
 ---
 
 ## 📊 このセッションで完了したこと
 
-### ✅ 優先度A: 完了報告とドキュメント整理（全完了）
+### ✅ 実施内容
 
-**実施内容**:
-1. ✅ バックグラウンドプロセス確認とクリーンアップ完了
-2. ✅ 不要な.npyファイル削除確認（既に削除済み）
-3. ✅ .gitignore更新確認（既に更新済み）
-4. ✅ **Python-Julia CGM比較最終レポート作成完了**
-5. ✅ 変更をコミット完了
+1. ✅ **TODO_NEXT_SESSION.mdの確認**
+   - 前セッションの状況確認完了
+   - Python-Julia CGM比較最終レポート確認済み
 
-**作成されたファイル**:
-- `docs/reports/python_julia_cgm_comparison_final.md` (391行の詳細レポート)
-- コミット: `4c17fb4` "docs: Python-Julia CGM比較最終レポート完成"
+2. ✅ **未実施の性能測定項目の整理**
+   - Phase 5.2 Step 3 Phase 2（大ウィンドウ）が未完了と確認
+   - 性能改善提案書の未実施項目を整理
 
-### ✅ Python-Julia CGM反復回数比較テスト完了（前セッション）
+3. ✅ **大ウィンドウPython-Julia比較計画の策定**
+   - 計画書作成: `docs/plans/large_window_python_julia_comparison_plan.md`
+   - **重大な問題発見**: nt=10ではwindow=71に対して不足
+   - 修正版: nt=100に変更、実行時間30-45時間に増加
 
-**実行済みテスト**:
-1. **Julia版CGM反復3回** (basesize=500): 49.11秒完了
-2. **Python版CGM反復3回**: 13.63秒完了
-3. **Julia版CGM反復10回** (basesize=500): 140.30秒完了
-4. **Python版CGM反復10回**: 42.50秒完了
-
-**主要な発見**:
-- **実行速度**: Python版が3.3~3.6倍高速
-- **数値安定性**: Julia版が圧倒的に安定（熱流束が約2400倍小さい）
-- **実用性判定**: **Julia版を推奨**（Python版は発散傾向）
-
-**詳細データ**:
-
-| 項目 | Python CGM 3回 | Julia CGM 3回 | Python CGM 10回 | Julia CGM 10回 |
-|------|----------------|---------------|-----------------|----------------|
-| 実行時間 | 13.63秒 | 49.11秒 | 42.50秒 | 140.30秒 |
-| 熱流束範囲 (min) | -1.502e+08 | -4.276e+04 | -1.821e+08 | -5.937e+04 W/m² |
-| 熱流束範囲 (max) | 2.860e+08 | 1.378e+05 | 4.218e+08 | 2.041e+05 W/m² |
-| 熱流束振幅 | 4.36e+08 | 1.81e+05 | 6.04e+08 | 2.63e+05 W/m² |
-| 数値安定性 | 発散傾向 ⚠️ | 良好 ✅ | さらに発散 ⚠️ | 良好 ✅ |
-
-**結果ファイル**:
-- `shared/results/julia_cgm_iter3_basesize500.log` - Julia CGM 3回詳細ログ
-- `shared/results/python_cgm_iter3.log` - Python CGM 3回詳細ログ
-- `shared/results/julia_cgm_iter10_basesize500.log` - Julia CGM 10回詳細ログ
-- `shared/results/python_cgm_iter10_rerun.log` - Python CGM 10回詳細ログ
-- `shared/results/julia_sliding_window_cgm3.npz` - Julia CGM 3回熱流束データ
-- `shared/results/python_cgm_iter3.npz` - Python CGM 3回熱流束データ
-- `shared/results/python_cgm_iter10_rerun.npz` - Python CGM 10回熱流束データ
+4. ✅ **中規模ウィンドウ比較計画の策定（推奨版）**
+   - 計画書作成: `docs/plans/medium_window_comparison_plan.md` ⭐
+   - **最適パラメータ**: nt=100, window=60, overlap=15
+   - **ウィンドウ数**: 2個（100%カバー）
+   - **実行時間**: 12-14時間（現実的！）
 
 ---
 
 ## 🎯 次セッションで実施すべきタスク
 
-### 優先度A: プロジェクト完了確認（推奨）
+### 優先度A: 中規模ウィンドウ比較の実行（最推奨）
 
-#### 1. レポート確認と次の方向性決定
+#### 背景
 
-**確認すべきこと**:
-1. `docs/reports/python_julia_cgm_comparison_final.md` の内容確認
-2. Julia版の実用性判定の再確認
-3. プロジェクト全体の完成度確認
+中規模ウィンドウ計画（`docs/plans/medium_window_comparison_plan.md`）は以下の理由で最推奨：
 
-**決定すべきこと**:
-- プロジェクトを完了とするか
-- Julia版の性能改善を継続するか
-- 論文・報告書作成に進むか
+1. **現実的な実行時間**: 12-14時間（1日で完了可能）
+2. **適切なウィンドウ構成**: 2個のウィンドウで100%カバー
+3. **段階的評価**: 小（5）→中（60）→大（71）のスケーラビリティ評価
+4. **Phase 5.2の実質完了**: 小+中ウィンドウで十分な知見を取得
+
+#### 実行計画
+
+**Phase 1: Julia版basesize最適化**（5-6時間）
+
+```bash
+# Test 1-1: basesize=500
+JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
+  --nt 100 --window 60 --overlap 15 --cgm-iter 3 \
+  --solver pbicgstab --precond gs --basesize 500 \
+  2>&1 | tee shared/results/medium_window_basesize500_cgm3.log
+
+# Test 1-2: basesize=1000
+JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
+  --nt 100 --window 60 --overlap 15 --cgm-iter 3 \
+  --solver pbicgstab --precond gs --basesize 1000 \
+  2>&1 | tee shared/results/medium_window_basesize1000_cgm3.log
+
+# Test 1-3: basesize=2000
+JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
+  --nt 100 --window 60 --overlap 15 --cgm-iter 3 \
+  --solver pbicgstab --precond gs --basesize 2000 \
+  2>&1 | tee shared/results/medium_window_basesize2000_cgm3.log
+```
+
+**Phase 2: Python-Julia比較**（6-8時間）
+
+```bash
+# Python版
+export NUMBA_NUM_THREADS=4
+python3 python/scripts/run_sliding_window.py \
+  --nt 100 --cgm-iter 3 --window 60 --overlap 15 \
+  --output python_medium_window_cgm3 \
+  2>&1 | tee shared/results/python_medium_window_cgm3.log
+
+# Julia版（最適basesize使用）
+JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/run_sliding_window.jl \
+  --nt 100 --window 60 --overlap 15 --cgm-iter 3 \
+  --solver pbicgstab --precond gs --basesize <最適値> \
+  2>&1 | tee shared/results/julia_medium_window_cgm3.log
+```
+
+**期待される成果**:
+- 中規模ウィンドウでのbasesize最適値特定
+- Python-Julia完全比較（性能・数値安定性）
+- 小→中スケーラビリティ評価
+- **Phase 5.2の実質完了**
 
 ---
 
-### 優先度B: Python版発散原因の調査（オプション）
+### 優先度B: プロジェクト完了宣言（代替案）
 
-#### 4. Python版とJulia版の実装差異分析
+Phase 5.2を現状（85%完了）で終了し、プロジェクト完了とする選択肢：
 
-**調査ポイント**:
-1. スケーリング係数の違い
-2. CGMステップサイズ計算の違い
-3. 境界条件処理の違い
-4. 前処理方法の違い
+**理由**:
+- 小ウィンドウ測定完了済み
+- Python-Julia比較最終レポート完成
+- 主要な知見（Julia版推奨、Python版発散）は取得済み
 
-**実施方法**:
-- Python版とJulia版のコードを並べて比較
-- 特にCGMソルバー部分の数値計算精度を確認
+**次のアクション**:
+- 論文・報告書作成
+- 研究成果の公表
 
 ---
 
-### 優先度C: 性能改善の継続（必要に応じて）
+### 優先度C: 性能改善継続（Phase 1実装）
 
-#### 5. Julia版のbasesize最適化（保留）
+中規模ウィンドウ比較を省略し、性能改善に進む選択肢：
 
-Phase 5.2で実施予定だったbasesize検証の残りタスク:
-- Step 3 Phase 2: 大ウィンドウ（window=71, overlap=17）でのbasesize測定
+**提案1: 前処理改善**（最高優先度）
+- ILU(0)、マルチグリッド前処理の実装
+- 期待効果: CG反復30-50%削減
+- 実装期間: 2-3週間
 
-**実行時間見込み**: 各30分×3 = 90分
-
-**判断基準**: Python-Julia比較結果を踏まえて、Julia版の性能改善を優先すべきか検討
+**提案4: 初期推定値改善**
+- 前ステップ解利用、線形外挿
+- 期待効果: CG反復15-25%削減
+- 実装期間: 1週間
 
 ---
 
 ## 📁 重要なファイルの場所
 
-### 実行結果ログ
+### 新規作成された計画書（未コミット）
+
+```
+docs/plans/large_window_python_julia_comparison_plan.md   # 大ウィンドウ計画（修正版）
+docs/plans/medium_window_comparison_plan.md                # 中規模ウィンドウ計画（推奨版）⭐
+```
+
+### 既存の重要なレポート
+
+```
+docs/reports/python_julia_cgm_comparison_final.md         # Python-Julia比較最終レポート
+docs/reports/PHASE5_2_COMPLETION_SUMMARY.md                # Phase 5.2完了報告書（85%）
+docs/plans/performance_improvement_proposals.md             # 性能改善提案書
+```
+
+### 実行結果ログ（既存）
+
 ```
 shared/results/julia_cgm_iter3_basesize500.log   # Julia CGM 3回
 shared/results/python_cgm_iter3.log               # Python CGM 3回
@@ -114,52 +152,43 @@ shared/results/julia_cgm_iter10_basesize500.log  # Julia CGM 10回
 shared/results/python_cgm_iter10_rerun.log       # Python CGM 10回
 ```
 
-### データファイル
-```
-shared/results/julia_sliding_window_cgm3.npz     # Julia CGM 3回
-shared/results/python_cgm_iter3.npz              # Python CGM 3回
-shared/results/python_cgm_iter10_rerun.npz       # Python CGM 10回
-```
-
-### レポート
-```
-docs/reports/python_cgm_iteration_analysis.md    # Python版CGM反復分析（既存）
-docs/reports/PHASE5_2_COMPLETION_SUMMARY.md      # Phase 5.2報告書（既存）
-```
-
 ---
 
 ## 🔧 注意事項
 
-### バックグラウンドプロセス
-
-**以下のプロセスが実行中の可能性があります（確認してkillが必要）**:
-- 古いJulia版/Python版テスト（複数）
-
-**確認コマンド**:
-```bash
-ps aux | grep julia
-ps aux | grep python
-```
-
-**killが必要な場合**:
-```bash
-pkill -f "julia.*run_sliding_window"
-pkill -f "python.*run_sliding_window"
-```
-
 ### Git状態
 
 **現在のブランチ**: parallelization
-**未コミット変更**: あり
-- `shared/results/julia_sliding_window_cgm3_metadata.txt` (modified)
-- 新規.npyファイル4件（プロジェクトルート、削除推奨）
-- 新規メタデータファイル3件
+**未コミット変更**: 2ファイル（新規作成）
+- `docs/plans/large_window_python_julia_comparison_plan.md`
+- `docs/plans/medium_window_comparison_plan.md`
 
 **コミット前の作業**:
-1. 不要な.npyファイルを削除
-2. .gitignoreを更新
-3. 有用なログファイルとメタデータのみコミット
+1. 新規計画書をgit add
+2. 適切なコミットメッセージで commit
+3. リモートに push
+
+**推奨コミットメッセージ**:
+```
+docs: 中規模・大ウィンドウPython-Julia比較計画策定
+
+**新規作成**:
+- `large_window_python_julia_comparison_plan.md`: 大ウィンドウ計画（修正版、nt=100）
+- `medium_window_comparison_plan.md`: 中規模ウィンドウ計画（推奨版、nt=100, window=60）
+
+**主要な発見**:
+- 当初の大ウィンドウ計画（nt=10, window=71）は実行不可能と判明
+- nt=100に修正すると実行時間30-45時間に増加
+- 代替案として中規模ウィンドウ（window=60）を提案（12-14時間）
+
+**推奨事項**:
+- 中規模ウィンドウ計画の採用を最推奨（現実的な実行時間）
+- Phase 5.2の実質完了が可能
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+```
 
 ---
 
@@ -178,72 +207,106 @@ git log --oneline -5
 # ブランチ確認
 git branch
 
-# 最新の結果ファイル確認
-ls -lht shared/results/*.log | head -10
+# 未コミットファイル確認
+ls -lht docs/plans/*.md | head -5
 ```
 
-### 2. バックグラウンドプロセス確認
+### 2. 新規計画書の確認
 
 ```bash
-# 実行中プロセス確認
-ps aux | grep -E "(julia|python).*sliding_window"
+# 中規模ウィンドウ計画確認（推奨版）
+cat docs/plans/medium_window_comparison_plan.md
 
-# 必要に応じてkill
-pkill -f "julia.*run_sliding_window"
-pkill -f "python.*run_sliding_window"
+# 大ウィンドウ計画確認（参考）
+cat docs/plans/large_window_python_julia_comparison_plan.md
 ```
 
-### 3. 不要ファイルの削除
+### 3. 方針決定
 
-```bash
-# プロジェクトルートの.npyファイル削除
-rm python_cgm_iter10.npy python_cgm_iter10_rerun.npy python_cgm_iter20.npy python_cgm_iter3.npy
+以下から選択：
 
-# 削除確認
-ls *.npy
-```
+**オプション1（最推奨）**: 中規模ウィンドウ比較実行
+- Phase 1から開始（Julia basesize最適化、5-6時間）
+- Phase 2に進行（Python-Julia比較、6-8時間）
+- 合計12-14時間で Phase 5.2実質完了
 
-### 4. 最終レポート作成
+**オプション2**: プロジェクト完了宣言
+- Phase 5.2を85%完了として終了
+- 論文・報告書作成に進む
 
-`docs/reports/python_julia_cgm_comparison_final.md`を作成し、Python-Julia比較の総括を記載。
+**オプション3**: 性能改善継続
+- 前処理改善（提案1）から開始
+- 実装期間2-3週間
 
 ---
 
-## 📝 重要な技術的知見
+## 📝 重要な技術的知見（再確認）
 
-### Python版の特徴
+### Python-Julia比較結果
 
-**数値的に不安定（発散傾向）**:
-- CGM反復3回: 熱流束が-1.50e+08 ~ 2.86e+08 W/m²
-- CGM反復10回: 熱流束が-1.82e+08 ~ 4.22e+08 W/m²
-- 反復回数を増やすと発散が進行
+**実行速度**:
+- Python版が3.3~3.6倍高速
 
-**速度は高速**:
-- NumbaのJITコンパイルが効果的
-- Julia版の3.3~3.6倍高速
+**数値安定性**:
+- **Julia版が圧倒的に安定**（熱流束が約2400倍小さい）
+- Python版は発散傾向（熱流束10^8オーダー）
 
-### Julia版の特徴
+**最終結論**:
+- **Julia版を実用推奨** ✅
+- Python版は使用非推奨 ❌
 
-**数値的に安定**:
-- CGM反復3回: 熱流束が-4.28e+04 ~ 1.38e+05 W/m²
-- CGM反復10回: 熱流束が-5.94e+04 ~ 2.04e+05 W/m²
-- 物理的に妥当な範囲内
+### basesize最適化結果
 
-**速度は遅い（但し許容範囲）**:
-- Python版の約1/3の速度
-- CGM 3回で49秒、10回で140秒
+| 測定対象 | 最適basesize | 実行時間 |
+|---------|-------------|---------|
+| DHCP単体 (1ステップ) | 1000 | 6.7秒 |
+| CGM全体 (10ステップ) | 1000 | 19.5秒 |
+| 小ウィンドウ (window=5) | 500 | 34.34秒 |
 
-### 実用上の推奨
+**重要**: 最適basesizeは問題構造に依存
 
-**Julia版を推奨**:
-- 数値安定性が高い
-- 物理的に妥当な結果
-- 実用計算に信頼できる
+---
 
-**Python版は使用非推奨**:
-- 発散傾向が顕著
-- 実用計算には不適
+## 📊 プロジェクト全体の完成度
+
+### 完了項目
+
+- ✅ **Phase 1-6**: 505テスト全合格
+- ✅ **Phase 5.2 Step 1-3 Phase 1**: basesize最適化完了（85%）
+- ✅ **Python-Julia比較**: 小ウィンドウ（CGM 3回/10回）完了
+- ✅ **最終レポート**: Python-Julia比較最終レポート完成
+- ✅ **Python版CGMバグ修正**: 完了
+
+### 未完了項目
+
+- ⏸️ **Phase 5.2 Step 3 Phase 2**: 大ウィンドウ測定（85%→100%）
+- 🎯 **代替案**: 中規模ウィンドウ測定（推奨）
+- 📅 **将来**: 性能改善（Phase 1-3実装）
+
+---
+
+## 💡 次セッションでの推奨アクション
+
+### 最優先推奨（★★★★★）
+
+**中規模ウィンドウ比較計画の実行**
+
+1. 新規計画書をgitコミット・プッシュ
+2. Phase 1を開始（Julia basesize最適化、5-6時間）
+3. Phase 2に進行（Python-Julia比較、6-8時間）
+4. Phase 5.2完了レポート作成
+5. プロジェクト完了宣言
+
+**期待される成果**:
+- Phase 5.2の実質完了（小+中ウィンドウ測定完了）
+- 小→中スケーラビリティの完全評価
+- basesize最適化の完全検証
+- 次フェーズへの円滑な移行
+
+**実行可能性**: 1日（12-14時間）で完了可能 ✅
 
 ---
 
 **次セッション開始時は、このファイルを必ず最初に読んでください。**
+
+**推奨事項**: 中規模ウィンドウ比較計画の採用を強く推奨します。
