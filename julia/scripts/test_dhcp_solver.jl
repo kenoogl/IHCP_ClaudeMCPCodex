@@ -6,13 +6,27 @@ run_10steps_fullsize_test.jlから抽出したDHCPソルバーのみの基本テ
 コアソルバーの性能と精度を確認するための軽量テストスクリプト。
 
 Usage:
-  julia test_dhcp_solver.jl [--solver SOLVER] [--precond PRECOND] [--nt STEPS] [--basesize SIZE]
+  julia test_dhcp_solver.jl [OPTIONS]
 
 Options:
   --solver SOLVER     Solver type: pbicgstab (default), pcg
   --precond PRECOND   Preconditioner type: diagonal (default), gs, none
   --nt STEPS          Number of time steps (default: 10)
-  --basesize SIZE     FLoops basesize parameter for parallelization (default: 1)
+  --basesize SIZE     FLoops basesize parameter (default: 600)
+  --ni NI             X-direction grid count (default: 80)
+  --nj NJ             Y-direction grid count (default: 100)
+  --nk NK             Z-direction grid count (default: 20)
+  --synthetic         Enable synthetic test mode (no measurement data required)
+
+Examples:
+  # Default (measurement data mode)
+  julia test_dhcp_solver.jl
+
+  # Synthetic mode with custom grid size
+  julia test_dhcp_solver.jl --synthetic --ni 40 --nj 50 --nk 10
+
+  # Large-scale synthetic test
+  JULIA_NUM_THREADS=4 julia test_dhcp_solver.jl --synthetic --ni 160 --nj 200 --nk 40 --basesize 600
 """
 
 using Dates
@@ -32,21 +46,29 @@ const PROJECT_ROOT = normpath(joinpath(BASE_DIR, "..", ".."))
 # ---------------------------------------------------------------------------
 
 """
-    parse_command_line_args() -> (solver_type, precond_type, nt, basesize)
+    parse_command_line_args() -> (solver_type, precond_type, nt, basesize, ni, nj, nk, synthetic)
 
-コマンドライン引数をパースしてソルバー、前処理、ステップ数、basesizeを取得
+コマンドライン引数をパースしてソルバー、前処理、ステップ数、basesize、格子数、モードを取得
 
 Returns:
   solver_type: ソルバータイプ（Symbol: :pbicgstab, :pcg）
   precond_type: 前処理タイプ（Symbol: :diagonal, :gs, :none）
   nt: タイムステップ数（Int）
   basesize: FLoops basesizeパラメータ（Int）
+  ni, nj, nk: 格子数（Int）
+  synthetic: 合成テストモードフラグ（Bool）
 """
 function parse_command_line_args()
   solver_type = :pbicgstab  # デフォルト
   precond_type = :diagonal  # デフォルト（Python版互換）
   nt = 10                   # デフォルト
   basesize = 600            # 最適値（スレッド数×basesize最適化実験の結果）
+
+  # 新規追加: 格子数とモード
+  ni = 80
+  nj = 100
+  nk = 20
+  synthetic = false
 
   i = 1
   while i <= length(ARGS)
@@ -60,13 +82,18 @@ function parse_command_line_args()
         --precond PRECOND     Preconditioner type (default: diagonal)
                               Available: diagonal, gs, none
         --nt STEPS            Number of time steps (default: 10)
-        --basesize SIZE       FLoops basesize parameter (default: 1)
+        --basesize SIZE       FLoops basesize parameter (default: 600)
+        --ni NI               X-direction grid count (default: 80)
+        --nj NJ               Y-direction grid count (default: 100)
+        --nk NK               Z-direction grid count (default: 20)
+        --synthetic           Enable synthetic test mode (no measurement data)
         -h, --help            Show this help message and exit
 
       Examples:
         julia test_dhcp_solver.jl
         julia test_dhcp_solver.jl --solver pcg --precond gs --nt 20
-        julia test_dhcp_solver.jl --solver pbicgstab --precond gs --basesize 10000
+        julia test_dhcp_solver.jl --synthetic --ni 40 --nj 50 --nk 10
+        julia test_dhcp_solver.jl --solver pbicgstab --precond gs --basesize 600 --synthetic
       """)
       exit(0)
     elseif ARGS[i] == "--solver"
@@ -115,12 +142,42 @@ function parse_command_line_args()
         error("--basesize must be positive: $(ARGS[i + 1])")
       end
       i += 2
+    elseif ARGS[i] == "--ni"
+      if i + 1 > length(ARGS)
+        error("--ni requires an argument")
+      end
+      ni = parse(Int, ARGS[i + 1])
+      if ni < 1
+        error("--ni must be positive: $(ARGS[i + 1])")
+      end
+      i += 2
+    elseif ARGS[i] == "--nj"
+      if i + 1 > length(ARGS)
+        error("--nj requires an argument")
+      end
+      nj = parse(Int, ARGS[i + 1])
+      if nj < 1
+        error("--nj must be positive: $(ARGS[i + 1])")
+      end
+      i += 2
+    elseif ARGS[i] == "--nk"
+      if i + 1 > length(ARGS)
+        error("--nk requires an argument")
+      end
+      nk = parse(Int, ARGS[i + 1])
+      if nk < 1
+        error("--nk must be positive: $(ARGS[i + 1])")
+      end
+      i += 2
+    elseif ARGS[i] == "--synthetic"
+      synthetic = true
+      i += 1
     else
       error("Unknown argument: $(ARGS[i])")
     end
   end
 
-  return solver_type, precond_type, nt, basesize
+  return solver_type, precond_type, nt, basesize, ni, nj, nk, synthetic
 end
 
 function ensure_single_thread()
@@ -213,6 +270,111 @@ function build_initial_temperature(first_frame::AbstractArray{<:Real,2}, nk::Int
   return Array{Float64,3}(T_init)
 end
 
+"""
+    prepare_synthetic_test(ni, nj, nk, nt) -> (T_init, Y_obs)
+
+合成テストモード用の初期化
+
+# 引数
+- ni, nj, nk: 格子数
+- nt: タイムステップ数
+
+# 戻り値
+- T_init: 初期温度場 (ni, nj, nk) [K]
+- Y_obs: 観測データ（合成） (ni, nj, nt) [K]
+
+# 温度設定
+一様温度（T_base = 573.15K）
+"""
+function prepare_synthetic_test(ni::Int, nj::Int, nk::Int, nt::Int)
+  println("\n[2/5] Preparing synthetic test data")
+  flush(stdout)
+
+  # 一様温度
+  T_base = 573.15  # 300°C in Kelvin
+  T_init = fill(T_base, ni, nj, nk)
+  Y_obs = fill(T_base, ni, nj, nt)
+
+  println("  Mode: Synthetic test")
+  println(@sprintf("  Initial temperature: %.2f K (uniform)", T_base))
+  println(@sprintf("  Grid size: %d × %d × %d (N=%d)", ni, nj, nk, ni*nj*nk))
+  flush(stdout)
+
+  return T_init, Y_obs
+end
+
+"""
+    prepare_measurement_test(ni, nj, nk, nt) -> (T_init, Y_obs)
+
+測定データモード用の初期化（既存の処理を関数化）
+
+# サイズ検証
+測定データのサイズ（80×100）と一致する必要あり
+"""
+function prepare_measurement_test(ni::Int, nj::Int, nk::Int, nt::Int)
+  println("\n[2/5] Loading measurement data")
+  flush(stdout)
+
+  Y_obs_python, ni_file, nj_file = load_measurement_subset(nt)
+
+  # サイズ検証
+  if ni_file != ni || nj_file != nj
+    error("Measurement grid mismatch: file has $(ni_file)×$(nj_file), expected $(ni)×$(nj)")
+  end
+
+  # メモリレイアウト最適化 - (nt,ni,nj) → (ni,nj,nt)
+  Y_obs = permutedims(Y_obs_python, (2, 3, 1))
+  Y_obs_python = nothing
+  GC.gc()
+
+  T_init = build_initial_temperature(@view(Y_obs[:, :, 1]), nk)
+  println(@sprintf("  initial temperature range: %.2f ~ %.2f K", minimum(T_init), maximum(T_init)))
+  flush(stdout)
+
+  return T_init, Y_obs
+end
+
+"""
+    analyze_residuals(T_result, Y_obs, synthetic)
+
+残差分析（モード依存）
+
+# 合成モード
+- 温度統計のみ表示
+- 残差計算なし（Y_obsが意味を持たない）
+
+# 測定データモード
+- RMS残差、最大残差を計算
+- 測定データとの詳細比較
+"""
+function analyze_residuals(T_result::AbstractArray{<:Real,4},
+                          Y_obs::AbstractArray{<:Real,3},
+                          synthetic::Bool)
+  T_bottom = @view T_result[:, :, 1, :]  # (ni, nj, nt)
+
+  if synthetic
+    # 合成モード: 簡易分析
+    println("  Mode: Synthetic test")
+    println(@sprintf("  Mean temperature: %.2f K", mean(T_result)))
+    println(@sprintf("  Temperature range: %.2f ~ %.2f K", minimum(T_result), maximum(T_result)))
+    println(@sprintf("  Temperature change: %.4e K (max-min)", maximum(T_result) - minimum(T_result)))
+    println("  Note: No residual analysis (synthetic mode)")
+  else
+    # 測定データモード: 詳細分析
+    residual = T_bottom .- Y_obs
+    rms_error = sqrt(mean(residual .^ 2))
+    max_error = maximum(abs.(residual))
+    mean_temp = mean(T_result)
+
+    println("  Mode: Measurement data")
+    println(@sprintf("  RMS residual: %.4e K", rms_error))
+    println(@sprintf("  Max residual: %.4e K", max_error))
+    println(@sprintf("  Mean temperature: %.2f K", mean_temp))
+    println(@sprintf("  Temperature range: %.2f ~ %.2f K", minimum(T_result), maximum(T_result)))
+  end
+  flush(stdout)
+end
+
 # ---------------------------------------------------------------------------
 # Main execution
 # ---------------------------------------------------------------------------
@@ -224,8 +386,8 @@ function main()
   println("Project root: $PROJECT_ROOT")
   flush(stdout)
 
-  # コマンドライン引数パース
-  solver_type, precond_type, nt, basesize = parse_command_line_args()
+  # コマンドライン引数パース（拡張版）
+  solver_type, precond_type, nt, basesize, ni, nj, nk, synthetic = parse_command_line_args()
 
   # Backend設定（並列化パラメータ）
   set_backend_config(basesize=basesize)
@@ -234,15 +396,16 @@ function main()
   println("  Solver: $solver_type")
   println("  Preconditioner: $precond_type")
   println("  Time steps: $nt")
+  println("  Grid size: $ni × $nj × $nk (N=$(ni*nj*nk))")
   println("  FLoops basesize: $basesize")
   println("  Julia threads: $(Threads.nthreads())")
+  println("  Test mode: $(synthetic ? "Synthetic" : "Measurement data")")
   flush(stdout)
 
   total_start = time()
 
   # Problem definition -----------------------------------------------------
   dt = 1.0e-3
-  ni, nj, nk = 80, 100, 20
   dx = 0.12e-3
   dy = 0.12e-3 * sin(deg2rad(80.0)) / sin(deg2rad(45.0))
   Lz = 0.5e-3
@@ -261,20 +424,12 @@ function main()
   flush(stdout)
 
   # Input preparation ------------------------------------------------------
-  println("\n[2/5] Loading measurement data")
-  flush(stdout)
-  Y_obs_python, ni_file, nj_file = load_measurement_subset(nt)
-  if ni_file != ni || nj_file != nj
-    error("Measurement grid mismatch: file has $(ni_file)x$(nj_file), expected $(ni)x$(nj)")
+  # モード分岐（重要な変更点）
+  if synthetic
+    T_init, Y_obs = prepare_synthetic_test(ni, nj, nk, nt)
+  else
+    T_init, Y_obs = prepare_measurement_test(ni, nj, nk, nt)
   end
-
-  # メモリレイアウト最適化 - (nt,ni,nj) → (ni,nj,nt)
-  Y_obs = permutedims(Y_obs_python, (2, 3, 1))
-  Y_obs_python = nothing
-
-  T_init = build_initial_temperature(@view(Y_obs[:, :, 1]), nk)
-  println(@sprintf("  initial temperature range: %.2f ~ %.2f K", minimum(T_init), maximum(T_init)))
-  flush(stdout)
 
   # DHCP初期化
   work = WorkBuffers(ni + 2, nj + 2, nk + 2)
@@ -322,17 +477,7 @@ function main()
   # Residual diagnostics ---------------------------------------------------
   println("\n[5/5] Residual analysis")
   flush(stdout)
-  T_bottom = @view T_result[:, :, 1, :]  # (ni, nj, nt)
-  residual = T_bottom .- Y_obs
-  rms_error = sqrt(mean(residual .^ 2))
-  max_error = maximum(abs.(residual))
-  mean_temp = mean(T_result)
-
-  println(@sprintf("  RMS residual: %.4e K", rms_error))
-  println(@sprintf("  Max residual: %.4e K", max_error))
-  println(@sprintf("  Mean temperature: %.2f K", mean_temp))
-  println(@sprintf("  Temperature range: %.2f ~ %.2f K", minimum(T_result), maximum(T_result)))
-  flush(stdout)
+  analyze_residuals(T_result, Y_obs, synthetic)
 
   total_elapsed = time() - total_start
   println("\nSummary")
