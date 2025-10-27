@@ -46,7 +46,7 @@ function parse_command_line_args()
   solver_type = :pbicgstab  # デフォルト
   precond_type = :diagonal  # デフォルト（Python版互換）
   nt = 10                   # デフォルト
-  basesize = 1              # デフォルト
+  basesize = 600            # 最適値（スレッド数×basesize最適化実験の結果）
 
   i = 1
   while i <= length(ARGS)
