@@ -54,7 +54,7 @@ function parse_command_line_args()
   q_init_value = DEFAULT_Q_INIT
   dry_run = false
   par = "thread"
-  basesize = 1  # FLoops デフォルト（自動判定）
+  basesize = 600  # 最適値（スレッド数×basesize最適化実験の結果）
 
   i = 1
   while i <= length(ARGS)
@@ -73,7 +73,7 @@ function parse_command_line_args()
         --dt VALUE             Time step size in seconds              [default: 0.001]
         --q-init VALUE         Initial heat-flux guess (W/m^2)        [default: 0.0]
         --par MODE             Parallelization mode (sequential | thread) [default: thread]
-        --basesize N           ThreadsBackend chunk size              [default: 1 (auto)]
+        --basesize N           ThreadsBackend chunk size              [default: 600]
         --dry-run              Show window configuration and exit (no computation)
         -h, --help             Show this help message and exit
 

@@ -13,7 +13,7 @@ Usage:
 Options:
   --solver SOLVER     Solver type: pbicgstab (default), pcg
   --precond PRECOND   Preconditioner type: jacobi (default), gs, none
-  --basesize SIZE     FLoops basesize parameter for parallelization (default: 1)
+  --basesize SIZE     FLoops basesize parameter for parallelization (default: 600)
 """
 
 using Dates
@@ -51,7 +51,7 @@ function parse_command_line_args()
   solver_type = :pbicgstab  # デフォルト
   precond_type = :jacobi    # デフォルト
   par = "thread"            # デフォルト
-  basesize = 1              # デフォルト
+  basesize = 600            # 最適値（スレッド数×basesize最適化実験の結果）
 
   i = 1
   while i <= length(ARGS)
@@ -65,7 +65,7 @@ function parse_command_line_args()
         --precond PRECOND     Preconditioner type (default: jacobi)
                               Available: jacobi, gs, none
         --par MODE            Parallelization mode (sequential | thread) [default: thread]
-        --basesize SIZE       FLoops basesize parameter (default: 1)
+        --basesize SIZE       FLoops basesize parameter (default: 600)
         -h, --help            Show this help message and exit
 
       Examples:
