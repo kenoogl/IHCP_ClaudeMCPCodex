@@ -1,102 +1,142 @@
 # 次セッションでの作業TODO
 
 **最終更新**: 2025年10月27日
-**ブランチ**: basesize-consistency
-**状態**: test_dhcp_solver.jl可変格子サイズ対応完了 ✅
+**ブランチ**: basesize-consistency → main（マージ予定）
+**状態**: basesize最適化比較検証完了 ✅
 
 ---
 
 ## 今セッションで完了した作業 ✅
 
-### 1. test_dhcp_solver.jl可変格子サイズ対応実装完了
-- ✅ **Phase 1**: 実装完了（parse_command_line_args拡張、新関数追加）
-  - `--ni`, `--nj`, `--nk`, `--synthetic`オプション追加
-  - `prepare_synthetic_test()`, `prepare_measurement_test()`, `analyze_residuals()`関数追加
-  - main()関数のモード分岐実装
+### 1. basesize最適化の包括的検証（メイン成果）
+- ✅ **diagonal前処理での測定**
+  - 3つの問題サイズ（80×50×20、80×100×20、80×100×40）
+  - basesize: 400, 800, 1000, 2000
+  - 全サイズでbasesize=2000が最適と判明
+  - 最大26.6%の性能改善（N=320,000）
 
-- ✅ **Phase 2**: 互換性テスト成功
-  - デフォルト動作（測定データモード）: 正常動作
-  - RMS residual: 2.9516e-01 K
-  - DHCP時間: 15.88秒
+- ✅ **GS前処理での測定**
+  - 問題サイズ: 80×100×20 (N=160,000)
+  - basesize: 400, 800, 1000, 2000
+  - basesize=800が最適（4.73秒）
+  - basesize=1000で36.2%性能低下を確認
 
-- ✅ **Phase 3**: 合成モード基本テスト成功
-  - 格子サイズ: 80×100×20 (N=160,000)
-  - 初期温度: 573.15 K (一様)
-  - 温度変化: 1.9554e-11 K（期待通り、q=0）
-  - DHCP時間: 15.47秒
+- ✅ **包括的比較レポート作成**
+  - `docs/reports/basesize_optimization_comparison_report.md`
+  - 前処理による最適値の違いを解明
+  - 実運用での推奨設定を提示
 
-- ✅ **Phase 4**: 大規模問題テスト成功
-  - 格子サイズ: 160×200×40 (N=1,280,000、8倍サイズ)
-  - DHCP時間: 75.56秒（4スレッド）
-  - スケーリング比: 約4.89倍（並列化効果あり）
-  - メモリエラーなし
+### 2. 重要な発見
+- **前処理の計算負荷が最適basesizeを決定**
+  - 軽量前処理（diagonal）: basesize=2000
+  - 重量前処理（GS）: basesize=800
+  - 過大なbasesizeでは最大110%の性能劣化
 
-### 2. 前セッションの作業（参照用）
-- ✅ DHCP単体テストの再現とスケーラビリティ分析
-- ✅ nt依存性スケーラビリティ測定（nt=10, 50, 100）
-- ✅ ホットスタート効果の定量化（反復回数28%削減）
-- ✅ `docs/scripts/test_dhcp_solver_guide.md`, `docs/plans/test_dhcp_solver_grid_size_enhancement.md`作成
+- **デフォルト値（basesize=600）の妥当性を確認**
+  - 様々な条件で実用的な性能
+  - 汎用設定として適切
+
+### 3. 前回の作業（参照用）
+- ✅ test_dhcp_solver.jl可変格子サイズ対応実装完了
+- ✅ 大規模問題テスト成功（160×200×40、N=1,280,000）
 
 ---
 
-## 次セッションの作業候補（オプション）
+## 生成された成果物
 
-### オプション1: スケーラビリティ詳細測定
-問題サイズを変えて性能特性を詳細に評価する。
+### レポート
+- `docs/reports/basesize_optimization_comparison_report.md` ⭐ 今セッションのメイン成果
 
+### 測定スクリプト
+- `run_basesize_optimization.sh` - diagonal前処理、3サイズ測定
+- `run_basesize_default_size.sh` - diagonal前処理、デフォルトサイズ
+- `run_basesize_gs_precond.sh` - GS前処理、実測データ
+
+### 測定結果
+```
+shared/results/basesize_optimization/       # diagonal前処理12ケース
+shared/results/basesize_gs_precond/         # GS前処理4ケース
+shared/results/threads_basesize/step2_results.csv
+```
+
+---
+
+## 次セッションの作業候補
+
+### オプション1: スレッド数依存性の検証
+basesizeとスレッド数の相互作用を調査。
+
+**測定案**:
 ```bash
-# 複数サイズで測定
-for size in "40 50 10" "60 75 15" "80 100 20" "100 125 25" "120 150 30"
-do
-  ni=$(echo $size | awk '{print $1}')
-  nj=$(echo $size | awk '{print $2}')
-  nk=$(echo $size | awk '{print $3}')
-  N=$((ni * nj * nk))
-
-  JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/test_dhcp_solver.jl \
-    --ni $ni --nj $nj --nk $nk --nt 10 --synthetic --basesize 600 \
-    2>&1 | tee shared/results/scaling_N${N}.log
+# スレッド数1, 2, 4, 8でbasesize最適値を測定
+for threads in 1 2 4 8; do
+  for basesize in 400 800 1000 2000; do
+    JULIA_NUM_THREADS=$threads julia --project=julia \
+      julia/scripts/test_dhcp_solver.jl \
+      --ni 80 --nj 100 --nk 20 --synthetic --basesize $basesize
+  done
 done
 ```
 
-レポート作成: `docs/reports/dhcp_problem_size_scaling_report.md`
+**期待成果**:
+- basesize = f(threads, problem_size, precond) の関数化
+- 動的basesize選択アルゴリズムの設計
 
-### オプション2: 他のタスクに進む
-可変格子サイズ対応は完了したので、他の優先タスクに進む。
+### オプション2: 他のソルバーでの最適化
+Adjoint、Sensitivity、CGMソルバーでのbasesize最適化。
+
+### オプション3: 実用アプリケーションへの適用
+スライディングウィンドウ計算等の実用タスクで最適basesize設定を検証。
+
+### オプション4: 新規タスクに進む
+basesize最適化は十分に検証されたので、他の優先タスクに進む。
 
 ---
 
-## 使用例
+## 推奨設定まとめ
 
-### デフォルト（測定データモード）
-```bash
-julia --project=julia julia/scripts/test_dhcp_solver.jl
-```
+### 現在の推奨basesize
 
-### 合成モード（任意サイズ）
-```bash
-# 小規模テスト
-julia --project=julia julia/scripts/test_dhcp_solver.jl --synthetic --ni 40 --nj 50 --nk 10
+| 前処理 | 問題サイズ | 推奨basesize | 根拠 |
+|--------|-----------|-------------|------|
+| diagonal | N < 100,000 | 1000-2000 | 小規模でも高並列化可能 |
+| diagonal | N > 100,000 | 2000 | 大規模で最大効果 |
+| GS | N < 200,000 | 800 | バランスの取れた粒度 |
+| GS | N > 200,000 | 600-800 | 細かい粒度で負荷分散 |
 
-# 大規模テスト
-JULIA_NUM_THREADS=4 julia --project=julia julia/scripts/test_dhcp_solver.jl \
-  --synthetic --ni 160 --nj 200 --nk 40 --basesize 600
-```
+### デフォルト設定
+**basesize=600**: 汎用性が高く、様々な条件で実用的な性能を発揮
 
 ---
 
 ## 重要な留意事項 ⚠️
 
-### test_dhcp_solver.jlの特性
-- ⚠️ q=0（ゼロ熱流束）で計算
-- ✅ ソルバー性能テストとして有効
-- ❌ 物理的妥当性テストには不向き
+### basesizeチューニングのポイント
+1. **前処理の計算負荷を考慮**
+   - 軽量前処理: 大きいbasesize（1000-2000）
+   - 重量前処理: 中程度のbasesize（600-800）
 
-### 用途の使い分け
-- **性能テスト**: `test_dhcp_solver.jl`
-- **物理的検証**: `run_10steps_fullsize_test.jl`
-- **逆解析**: `run_sliding_window.jl`
+2. **過大なbasesizeのリスク**
+   - 並列化オーバーヘッドが支配的になる
+   - GS前処理で特に顕著（最大110%劣化）
+
+3. **問題サイズの影響**
+   - 大規模問題ほど最適化効果が大きい
+   - N=320,000で26.6%の性能改善
+
+---
+
+## 関連ドキュメント
+
+### 今セッション作成
+- `docs/reports/basesize_optimization_comparison_report.md` ⭐ 必読
+
+### 過去の関連レポート
+- `docs/reports/phase5_2_step1_dhcp_basesize_validation.md`（2025年10月23日）
+- `docs/scripts/test_dhcp_solver_guide.md`
 
 ---
 
 **最終更新**: 2025年10月27日
+**セッション総測定時間**: 約10分（16ケース）
+**主要成果**: 前処理による最適basesizeの違いを解明
