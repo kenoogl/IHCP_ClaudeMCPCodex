@@ -111,7 +111,8 @@ function solve_sliding_window_cgm(
 
   start_idx = 0  # 0始まり（Pythonと同じ）
   q_total = []   # Vector{Array{Float64,3}}型 CHECK: メモリ確保必要？？
-  prev_q_win = nothing
+  prev_q_tail = nothing
+  prev_q_edge = nothing
   prev_T_final = nothing
 
   windows_info = WindowInfo[]
@@ -139,28 +140,30 @@ function solve_sliding_window_cgm(
     println("\n--- ウィンドウ $(length(windows_info)+1): [$start_idx, $end_idx] (長さ=$max_L) ---")
 
     if !use_window_continuation
-      prev_q_win = nothing
+      prev_q_tail = nothing
+      prev_q_edge = nothing
     end
 
     # 初期熱流束の設定（Pythonオリジナル: 1583-1592行、メモリレイアウト最適化: Phase 2.2）
-    if isnothing(prev_q_win)
+    if isnothing(prev_q_tail)
       # 第1ウィンドウ: 一定値
       q_init_win = fill(q_init_value, (ni, nj, max_L))
       println("初期熱流束: 一定値 $q_init_value W/m²")
     else
       # 第2ウィンドウ以降: 前ウィンドウから継承
       q_init_win = zeros(Float64, ni, nj, max_L) # CHECK : 毎回確保している
-      L_overlap = min(overlap, max_L, size(prev_q_win, 3))
+      tail_len = size(prev_q_tail, 3)
+      L_overlap = min(overlap, max_L, tail_len)
 
       if L_overlap > 0
         # オーバーラップ部分: 前ウィンドウの最後L_overlapステップを継承
-        q_init_win[:, :, 1:L_overlap] = prev_q_win[:, :, end-L_overlap+1:end]
-        println("オーバーラップ継承: 前$(L_overlap)ステップ")
+        q_init_win[:, :, 1:L_overlap] = prev_q_tail[:, :, 1:L_overlap]
+        println("オーバーラップ継承: tail先頭から$(L_overlap)ステップ")
       end
 
       if L_overlap < max_L
         # 残り部分: 前ウィンドウの最終値で埋める
-        edge = prev_q_win[:, :, end]
+        edge = prev_q_edge
         for t in L_overlap+1:max_L
           q_init_win[:, :, t] = edge
         end
@@ -168,7 +171,7 @@ function solve_sliding_window_cgm(
       end
     end
 
-    if use_window_continuation && !isnothing(prev_T_final) && !isnothing(prev_q_win)
+    if use_window_continuation && !isnothing(prev_T_final) && !isnothing(prev_q_tail)
       println("初期温度場: 前ウィンドウの最終温度を継承")
     end
 
@@ -195,10 +198,14 @@ function solve_sliding_window_cgm(
       dt, rho, cp_coeffs, k_coeffs; params=cgm_params
     )
 
+    step = max(1, max_L - overlap)
     if use_window_continuation
-      prev_q_win = copy(q_win)
+      tail_start = min(step + 1, size(q_win, 3))
+      prev_q_tail = copy(q_win[:, :, tail_start:end])
+      prev_q_edge = copy(q_win[:, :, end])
     else
-      prev_q_win = nothing
+      prev_q_tail = nothing
+      prev_q_edge = nothing
     end
 
     # 結果の拼接（オーバーラップ平均化）（Pythonオリジナル: 1603-1612行、メモリレイアウト最適化: Phase 2.2）
@@ -236,7 +243,6 @@ function solve_sliding_window_cgm(
 
     # 温度場の継承
     # 次ウィンドウの開始時刻は start_idx + step なので、対応する温度を渡す
-    step = max(1, max_L - overlap)
     if use_window_continuation
       idx = min(step + 1, size(T_cal_win, 4))
       prev_T_final = copy(T_cal_win[:, :, :, idx])

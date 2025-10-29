@@ -290,7 +290,8 @@ function run_sliding_window!(
 
   q_global = zeros(Float64, ni, nj, total_flux_steps)
   prev_flux_end = 0  # 熱流束ステッチング用
-  prev_q_win = nothing
+  prev_q_tail = nothing
+  prev_q_edge = nothing
   current_T_start = copy(T_init)
   final_T = similar(T_init)
 
@@ -377,26 +378,35 @@ function run_sliding_window!(
     @views Y_obs_win = Y_obs[:, :, obs_start:obs_end]
 
     if !use_window_continuation
-      prev_q_win = nothing
+      prev_q_tail = nothing
+      prev_q_edge = nothing
     end
 
     q_init_win = zeros(Float64, ni, nj, max_L)
-    if window_id == 1 || prev_q_win === nothing
+    if window_id == 1 || prev_q_tail === nothing
       q_init_win .= q_init_value
       println(@sprintf("\n[Window %d] range=[%d,%d] length=%d", window_id, start_idx, end_idx, max_L))
       println(@sprintf("  initial heat flux: constant %.3e W/m^2", q_init_value))
     else
-      L_overlap = min(overlap, max_L, size(prev_q_win, 3))
+      tail_len = size(prev_q_tail, 3)
+      L_overlap = min(overlap, max_L, tail_len)
+      println(@sprintf("\n[Window %d] range=[%d,%d] length=%d", window_id, start_idx, end_idx, max_L))
+      println(@sprintf("  [継承確認] tail_len=%d, L_overlap=%d", tail_len, L_overlap))
       if L_overlap > 0
-        @views q_init_win[:, :, 1:L_overlap] .= prev_q_win[:, :, end-L_overlap+1:end]
+        @views q_init_win[:, :, 1:L_overlap] .= prev_q_tail[:, :, 1:L_overlap]
+        println(@sprintf("  [継承確認] prev_q_tail[1:%d] → q_init_win[1:%d]", L_overlap, L_overlap))
+        # デバッグ: 継承された値の範囲確認
+        inherited_min = minimum(prev_q_tail[:, :, 1:L_overlap])
+        inherited_max = maximum(prev_q_tail[:, :, 1:L_overlap])
+        println(@sprintf("  [継承確認] 継承値範囲: %.6e ~ %.6e W/m²", inherited_min, inherited_max))
       end
       if L_overlap < max_L
-        edge = @view prev_q_win[:, :, end]
+        edge = prev_q_edge
         for t in L_overlap+1:max_L
           @views q_init_win[:, :, t] .= edge
         end
+        println(@sprintf("  [継承確認] 残り部分[%d:%d]は前ウィンドウ最終値で埋める", L_overlap+1, max_L))
       end
-      println(@sprintf("\n[Window %d] range=[%d,%d] length=%d", window_id, start_idx, end_idx, max_L))
       println(@sprintf("  initial heat flux: inherited (overlap=%d)", L_overlap))
     end
 
@@ -445,11 +455,21 @@ function run_sliding_window!(
       @views q_global[:, :, assign_start:assign_end] .= q_win[:, :, overlap_steps+1:max_L]
     end
 
+    step = max(1, max_L - overlap)
+    if use_window_continuation
+      tail_start = min(step + 1, size(q_win, 3))
+      prev_q_tail = copy(q_win[:, :, tail_start:end])
+      prev_q_edge = copy(q_win[:, :, end])
+      println(@sprintf("  [継承] step=%d, tail_start=%d, tail_len=%d", step, tail_start, size(prev_q_tail, 3)))
+      println(@sprintf("  [継承] q_win範囲: t=%d~%d (global: %d~%d)", tail_start, size(q_win,3), start_idx+tail_start-1, start_idx+size(q_win,3)-1))
+    else
+      prev_q_tail = nothing
+      prev_q_edge = nothing
+    end
+
     prev_flux_end = max(prev_flux_end, flux_end)
-    prev_q_win = use_window_continuation ? copy(q_win) : nothing
 
     # 温度場継承: 次ウィンドウ開始時刻に対応する温度を使用
-    step = max(1, max_L - overlap)
     if use_window_continuation
       idx = min(step + 1, size(T_win, 4))
       @views current_T_start = copy(T_win[:, :, :, idx])
