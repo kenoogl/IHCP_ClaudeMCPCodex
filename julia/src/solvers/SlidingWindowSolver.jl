@@ -234,10 +234,17 @@ function solve_sliding_window_cgm(
       end
     end
 
-    # 温度場の継承（Pythonオリジナル: 1614行、メモリレイアウト最適化: Phase 2.2）
-    # solve_cgm!は(ni, nj, nk, nt)を返すので、最終時刻を取得
+    # 温度場の継承
+    # 次ウィンドウの開始時刻は start_idx + step なので、対応する温度を渡す
+    step = max(1, max_L - overlap)
     if use_window_continuation
-      prev_T_final = copy(T_cal_win[:, :, :, end])
+      idx = min(step + 1, size(T_cal_win, 4))
+      prev_T_final = copy(T_cal_win[:, :, :, idx])
+
+      # 診断プリント（検証用）
+      T_mean = sum(prev_T_final) / length(prev_T_final)
+      println("  [診断] step=$step, idx=$idx, T_cal_win_size=$(size(T_cal_win)), T_mean=$(round(T_mean, digits=2)) K")
+      println("  [診断] 次ウィンドウ開始時刻: $(start_idx + step) (全体時刻)")
     else
       prev_T_final = nothing
     end
@@ -256,8 +263,7 @@ function solve_sliding_window_cgm(
 
     println("CGM反復数: $(length(J_hist)), 最終J: $(J_hist[end])")
 
-    # インデックス進行（Pythonオリジナル: 1619-1620行）
-    step = max(1, max_L - overlap)
+    # インデックス進行（Pythonオリジナル: 1619-1620行、stepを再利用）
     start_idx += step
   end
 

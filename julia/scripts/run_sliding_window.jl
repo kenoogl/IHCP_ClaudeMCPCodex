@@ -437,7 +437,11 @@ function run_sliding_window!(
 
     prev_flux_end = max(prev_flux_end, flux_end)
     prev_q_win = copy(q_win)
-    @views current_T_start = copy(T_win[:, :, :, end])
+
+    # 温度場継承: 次ウィンドウ開始時刻に対応する温度を使用
+    step = max(1, max_L - overlap)
+    idx = min(step + 1, size(T_win, 4))
+    @views current_T_start = copy(T_win[:, :, :, idx])
     final_T .= current_T_start
 
     q_min = minimum(q_win)
@@ -461,8 +465,7 @@ function run_sliding_window!(
     push!(window_q_max, q_max)
     push!(window_histories, collect(J_hist))
 
-    # Python版 (1652-1653行): step = max(1, max_L - overlap); start_idx += step
-    step = max(1, max_L - overlap)
+    # インデックス進行（stepを再利用）
     start_idx += step
     window_id += 1
   end
