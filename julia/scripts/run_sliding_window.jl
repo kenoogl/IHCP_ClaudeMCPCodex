@@ -55,6 +55,7 @@ function parse_command_line_args()
   dry_run = false
   par = "thread"
   basesize = 600  # 最適値（スレッド数×basesize最適化実験の結果）
+  use_window_continuation = true
 
   i = 1
   while i <= length(ARGS)
@@ -74,6 +75,7 @@ function parse_command_line_args()
         --q-init VALUE         Initial heat-flux guess (W/m^2)        [default: 0.0]
         --par MODE             Parallelization mode (sequential | thread) [default: thread]
         --basesize N           ThreadsBackend chunk size              [default: 600]
+        --no-window-continuation  Disable carrying over solutions between windows
         --dry-run              Show window configuration and exit (no computation)
         -h, --help             Show this help message and exit
 
@@ -148,6 +150,8 @@ function parse_command_line_args()
       i += 1
       i > length(ARGS) && error("--basesize requires an argument")
       basesize = parse(Int, ARGS[i])
+    elseif arg == "--no-window-continuation"
+      use_window_continuation = false
     elseif arg == "--dry-run"
       dry_run = true
     else
@@ -183,7 +187,8 @@ function parse_command_line_args()
     dt = dt,
     q_init_value = q_init_value,
     par = par,
-    basesize = basesize
+    basesize = basesize,
+    use_window_continuation = use_window_continuation
   )
 end
 
@@ -275,6 +280,7 @@ function run_sliding_window!(
   window_size::Int,
   overlap::Int,
   q_init_value::Float64,
+  use_window_continuation::Bool,
   cgm_params::NamedTuple,
   dry_run::Bool = false
 )
@@ -370,6 +376,10 @@ function run_sliding_window!(
 
     @views Y_obs_win = Y_obs[:, :, obs_start:obs_end]
 
+    if !use_window_continuation
+      prev_q_win = nothing
+    end
+
     q_init_win = zeros(Float64, ni, nj, max_L)
     if window_id == 1 || prev_q_win === nothing
       q_init_win .= q_init_value
@@ -391,7 +401,7 @@ function run_sliding_window!(
     end
 
     # Prepare temperature initial condition
-    T_start = copy(current_T_start)
+    T_start = use_window_continuation ? copy(current_T_start) : copy(T_init)
 
     window_time_start = time()
     q_win, T_win, J_hist = solve_cgm!(
@@ -436,12 +446,16 @@ function run_sliding_window!(
     end
 
     prev_flux_end = max(prev_flux_end, flux_end)
-    prev_q_win = copy(q_win)
+    prev_q_win = use_window_continuation ? copy(q_win) : nothing
 
     # 温度場継承: 次ウィンドウ開始時刻に対応する温度を使用
     step = max(1, max_L - overlap)
-    idx = min(step + 1, size(T_win, 4))
-    @views current_T_start = copy(T_win[:, :, :, idx])
+    if use_window_continuation
+      idx = min(step + 1, size(T_win, 4))
+      @views current_T_start = copy(T_win[:, :, :, idx])
+    else
+      current_T_start = copy(T_init)
+    end
     final_T .= current_T_start
 
     q_min = minimum(q_win)
@@ -525,6 +539,7 @@ function main()
   println("  nt: $(cfg.nt)")
   println("  window size: $(cfg.window_size)")
   println("  overlap: $(cfg.overlap)")
+  println("  window continuation: $(cfg.use_window_continuation)")
   println(@sprintf("  dt: %.3e s", cfg.dt))
   println(@sprintf("  q_init: %.3e W/m^2", cfg.q_init_value))
   flush(stdout)
@@ -582,7 +597,7 @@ function main()
     P = 10,
     eta = 1.0e-4,
     beta_max = 1.0e8,
-    verbose = false,
+    verbose = true,
     dhcp_extrapolation = :quadratic,
     adjoint_residual_scale = 0.5,
     dhcp_solver = cfg.solver_type,
@@ -612,6 +627,7 @@ function main()
     cfg.window_size,
     cfg.overlap,
     cfg.q_init_value,
+    cfg.use_window_continuation,
     cgm_params,
     cfg.dry_run
   )
@@ -645,6 +661,7 @@ function main()
     "overlap" => cfg.overlap,
     "cgm_max_iter" => cfg.cgm_iter,
     "q_init_value" => cfg.q_init_value,
+    "use_window_continuation" => cfg.use_window_continuation,
     "window_ids" => collect(summary.window_ids),
     "window_start_idxs" => collect(summary.window_starts),
     "window_end_idxs" => collect(summary.window_ends),
@@ -671,6 +688,7 @@ function main()
     println(io, "nt: $(cfg.nt)")
     println(io, "window_size: $(cfg.window_size)")
     println(io, "overlap: $(cfg.overlap)")
+    println(io, "use_window_continuation: $(cfg.use_window_continuation)")
     println(io, @sprintf("dt: %.6e", cfg.dt))
     println(io, @sprintf("q_init: %.6e", cfg.q_init_value))
     println(io, @sprintf("q_min: %.6e", q_range[1]))
