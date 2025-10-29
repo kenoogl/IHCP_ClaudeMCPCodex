@@ -760,9 +760,8 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
     oneT = one(T)    # ループ外で事前計算
 
     # 加重Jacobi法を5回反復
+    # 並列実行時のレースコンディション対策：2バッファ方式
     for _ in 1:PRECONDITIONER_SWEEPS
-      mycopy!(scratch, xx, par)
-
       @floop backend for k in 2:SZ[3]-1, j in 2:SZ[2]-1, i in 2:SZ[1]-1
         dz_k = ΔZ[k]
         λ0 = λ[i,j,k]
@@ -798,12 +797,13 @@ function jacobi_preconditioner!(xx::AbstractArray{T,3},
                           conv_xp + conv_xm + conv_yp + conv_ym + conv_zp + conv_zm + a_p_0)*m0
 
         # 隣接項: 熱伝導項のみ（対流項は除外）
-        ss = ( cond_xp * scratch[i+1,j  ,k  ] + cond_xm * scratch[i-1,j  ,k  ]
-             + cond_yp * scratch[i  ,j+1,k  ] + cond_ym * scratch[i  ,j-1,k  ]
-             + cond_zp * scratch[i  ,j  ,k+1] + cond_zm * scratch[i  ,j  ,k-1] )
+        # 並列実行対策：xxから読み取り（不変）、scratchに書き込み
+        ss = ( cond_xp * xx[i+1,j  ,k  ] + cond_xm * xx[i-1,j  ,k  ]
+             + cond_yp * xx[i  ,j+1,k  ] + cond_ym * xx[i  ,j-1,k  ]
+             + cond_zp * xx[i  ,j  ,k+1] + cond_zm * xx[i  ,j  ,k-1] )
 
         # A*x の計算（正しい符号）: A*x = dd*x - ss
-        Ax = dd * scratch[i,j,k] - ss
+        Ax = dd * xx[i,j,k] - ss
         rhs = bb[i,j,k]
         diag = max(dd, float_min_T)
         scratch[i,j,k] = xx[i,j,k] + ω * (rhs - Ax) / diag

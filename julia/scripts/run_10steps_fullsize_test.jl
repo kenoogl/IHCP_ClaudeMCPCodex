@@ -8,11 +8,12 @@ full window (nt = 10), and saves heat-flux and temperature results in a
 Python-friendly ``.npz`` bundle for downstream comparison.
 
 Usage:
-  julia run_10steps_fullsize_test.jl [--solver SOLVER] [--precond PRECOND]
+  julia run_10steps_fullsize_test.jl [--solver SOLVER] [--precond PRECOND] [--basesize SIZE]
 
 Options:
   --solver SOLVER     Solver type: pbicgstab (default), pcg
   --precond PRECOND   Preconditioner type: jacobi (default), gs, none
+  --basesize SIZE     FLoops basesize parameter for parallelization (default: 600)
 """
 
 using Dates
@@ -22,6 +23,7 @@ using NPZ
 
 include("../src/IHCP_CGM.jl")
 using .IHCP_CGM
+using .IHCP_CGM.Commons: set_backend_config
 
 const BASE_DIR = @__DIR__
 const PROJECT_ROOT = normpath(joinpath(BASE_DIR, "..", ".."))
@@ -35,17 +37,21 @@ const DT = 1.0e-3
 # ---------------------------------------------------------------------------
 
 """
-    parse_command_line_args() -> (solver_type, precond_type)
+    parse_command_line_args() -> (solver_type, precond_type, par, basesize)
 
-コマンドライン引数をパースしてソルバーと前処理の設定を取得
+コマンドライン引数をパースしてソルバー、前処理、並列化、basesizeの設定を取得
 
 Returns:
   solver_type: ソルバータイプ（Symbol: :pbicgstab, :pcg）
   precond_type: 前処理タイプ（Symbol: :jacobi, :gs, :none）
+  par: 並列化モード（String: "thread", "sequential"）
+  basesize: FLoops basesizeパラメータ（Int）
 """
 function parse_command_line_args()
   solver_type = :pbicgstab  # デフォルト
   precond_type = :jacobi    # デフォルト
+  par = "thread"            # デフォルト
+  basesize = 600            # 最適値（スレッド数×basesize最適化実験の結果）
 
   i = 1
   while i <= length(ARGS)
@@ -58,11 +64,15 @@ function parse_command_line_args()
                               Available: pbicgstab, pcg
         --precond PRECOND     Preconditioner type (default: jacobi)
                               Available: jacobi, gs, none
+        --par MODE            Parallelization mode (sequential | thread) [default: thread]
+        --basesize SIZE       FLoops basesize parameter (default: 600)
         -h, --help            Show this help message and exit
 
       Examples:
         julia run_10steps_fullsize_test.jl
         julia run_10steps_fullsize_test.jl --solver pcg --precond gs
+        JULIA_NUM_THREADS=4 julia run_10steps_fullsize_test.jl --basesize 1000
+        JULIA_NUM_THREADS=8 julia run_10steps_fullsize_test.jl --par thread --basesize 10000
       """)
       exit(0)
     elseif ARGS[i] == "--solver"
@@ -93,12 +103,34 @@ function parse_command_line_args()
         error("Unknown preconditioner type: $(ARGS[i + 1]). Available: jacobi, gs, none")
       end
       i += 2
+    elseif ARGS[i] == "--par"
+      if i + 1 > length(ARGS)
+        error("--par requires an argument")
+      end
+      par_str = lowercase(ARGS[i + 1])
+      if par_str == "sequential"
+        par = "sequential"
+      elseif par_str == "thread"
+        par = "thread"
+      else
+        error("Unknown par mode: $(ARGS[i + 1]). Use 'sequential' or 'thread'")
+      end
+      i += 2
+    elseif ARGS[i] == "--basesize"
+      if i + 1 > length(ARGS)
+        error("--basesize requires an argument")
+      end
+      basesize = parse(Int, ARGS[i + 1])
+      if basesize < 1
+        error("--basesize must be positive: $(ARGS[i + 1])")
+      end
+      i += 2
     else
       error("Unknown argument: $(ARGS[i])")
     end
   end
 
-  return solver_type, precond_type
+  return solver_type, precond_type, par, basesize
 end
 
 function ensure_single_thread()
@@ -204,11 +236,25 @@ function main()
   println("="^80)
   println("Project root: $PROJECT_ROOT")
   flush(stdout)
-  ensure_single_thread()
 
   # コマンドライン引数パース
-  solver_type, precond_type = parse_command_line_args()
-  println("\n[Configuration]")
+  solver_type, precond_type, par, basesize = parse_command_line_args()
+
+  # Backend設定（並列化パラメータ）
+  set_backend_config(basesize=basesize)
+
+  # 並列化情報の表示
+  println()
+  println("="^80)
+  println("Julia parallel execution info:")
+  println("  Available threads: $(Threads.nthreads())")
+  println("  Parallelization mode: $(par)")
+  println("  FLoops basesize: $(basesize)")
+  println("="^80)
+  println()
+  flush(stdout)
+
+  println("[Configuration]")
   println("  Solver: $solver_type")
   println("  Preconditioner: $precond_type")
   flush(stdout)
@@ -290,7 +336,8 @@ function main()
     adjoint_solver = solver_type,
     adjoint_smoother = precond_type,
     sensitivity_solver = solver_type,
-    sensitivity_smoother = precond_type
+    sensitivity_smoother = precond_type,
+    par = par
   )
 
   q_result, T_result, J_history = solve_cgm!(

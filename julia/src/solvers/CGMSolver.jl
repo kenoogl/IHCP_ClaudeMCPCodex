@@ -118,7 +118,7 @@ function compute_gradient!(
   rtol::T=T(1e-8),
   maxiter::Int=20000,
   verbose::Bool=false,
-  par::String="sequential",
+  par::String="thread",
   gradient_buffer::Union{Nothing,Array{T,3}}=nothing,
   adjoint_buffer::Union{Nothing,Array{T,4}}=nothing,
   iter_buffer::Union{Nothing,Vector{Int}}=nothing,
@@ -257,7 +257,7 @@ function solve_cgm!(
   cp_coeffs::Vector{Float64},
   k_coeffs::Vector{Float64};
   params::NamedTuple=(;),
-  par::String="sequential",
+  par::String="thread",
   save_intermediate::Bool=false,
   output_dir::String="shared/results"
 ) where {T <: AbstractFloat}
@@ -286,6 +286,9 @@ function solve_cgm!(
   adjoint_residual_scale = T(get(params, :adjoint_residual_scale, 1.0))
   adjoint_smoother = get(params, :adjoint_smoother, :gs)
   adjoint_solver = get(params, :adjoint_solver, :pbicgstab)
+
+  # 並列化パラメータ（paramsから取得、未指定の場合は関数引数のデフォルト値を使用）
+  par = get(params, :par, par)
 
   # Phase 1-E: 適応的収束判定パラメータ
   adaptive_tol = get(params, :adaptive_tol, false)

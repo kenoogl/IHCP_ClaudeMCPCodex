@@ -1,0 +1,12 @@
+nt30_bs400
+nt30_bs500
+nt30_bs600
+nt30_bs700
+nt50_bs400
+nt50_bs500
+nt50_bs600
+nt50_bs700
+nt100_bs400
+nt100_bs500
+nt100_bs600
+nt100_bs700

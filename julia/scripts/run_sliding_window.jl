@@ -53,6 +53,9 @@ function parse_command_line_args()
   dt = DEFAULT_DT
   q_init_value = DEFAULT_Q_INIT
   dry_run = false
+  par = "thread"
+  basesize = 600  # 最適値（スレッド数×basesize最適化実験の結果）
+  use_window_continuation = true
 
   i = 1
   while i <= length(ARGS)
@@ -70,12 +73,16 @@ function parse_command_line_args()
         --overlap N            Overlap between windows (steps)        [default: 17]
         --dt VALUE             Time step size in seconds              [default: 0.001]
         --q-init VALUE         Initial heat-flux guess (W/m^2)        [default: 0.0]
+        --par MODE             Parallelization mode (sequential | thread) [default: thread]
+        --basesize N           ThreadsBackend chunk size              [default: 600]
+        --no-window-continuation  Disable carrying over solutions between windows
         --dry-run              Show window configuration and exit (no computation)
         -h, --help             Show this help message and exit
 
       Examples:
         julia run_sliding_window.jl
         julia run_sliding_window.jl --cgm-iter 200 --solver pcg --precond gs
+        JULIA_NUM_THREADS=8 julia run_sliding_window.jl --par thread
       """)
       exit(0)
     elseif arg == "--solver"
@@ -128,6 +135,23 @@ function parse_command_line_args()
       i += 1
       i > length(ARGS) && error("--q-init requires an argument")
       q_init_value = parse(Float64, ARGS[i])
+    elseif arg == "--par"
+      i += 1
+      i > length(ARGS) && error("--par requires an argument")
+      par_str = lowercase(ARGS[i])
+      if par_str == "sequential"
+        par = "sequential"
+      elseif par_str == "thread"
+        par = "thread"
+      else
+        error("Unknown par mode: $(ARGS[i]). Use 'sequential' or 'thread'")
+      end
+    elseif arg == "--basesize"
+      i += 1
+      i > length(ARGS) && error("--basesize requires an argument")
+      basesize = parse(Int, ARGS[i])
+    elseif arg == "--no-window-continuation"
+      use_window_continuation = false
     elseif arg == "--dry-run"
       dry_run = true
     else
@@ -161,7 +185,10 @@ function parse_command_line_args()
     window_size = window_size,
     overlap = overlap,
     dt = dt,
-    q_init_value = q_init_value
+    q_init_value = q_init_value,
+    par = par,
+    basesize = basesize,
+    use_window_continuation = use_window_continuation
   )
 end
 
@@ -253,6 +280,7 @@ function run_sliding_window!(
   window_size::Int,
   overlap::Int,
   q_init_value::Float64,
+  use_window_continuation::Bool,
   cgm_params::NamedTuple,
   dry_run::Bool = false
 )
@@ -262,7 +290,8 @@ function run_sliding_window!(
 
   q_global = zeros(Float64, ni, nj, total_flux_steps)
   prev_flux_end = 0  # 熱流束ステッチング用
-  prev_q_win = nothing
+  prev_q_tail = nothing
+  prev_q_edge = nothing
   current_T_start = copy(T_init)
   final_T = similar(T_init)
 
@@ -348,28 +377,41 @@ function run_sliding_window!(
 
     @views Y_obs_win = Y_obs[:, :, obs_start:obs_end]
 
+    if !use_window_continuation
+      prev_q_tail = nothing
+      prev_q_edge = nothing
+    end
+
     q_init_win = zeros(Float64, ni, nj, max_L)
-    if window_id == 1 || prev_q_win === nothing
+    if window_id == 1 || prev_q_tail === nothing
       q_init_win .= q_init_value
       println(@sprintf("\n[Window %d] range=[%d,%d] length=%d", window_id, start_idx, end_idx, max_L))
       println(@sprintf("  initial heat flux: constant %.3e W/m^2", q_init_value))
     else
-      L_overlap = min(overlap, max_L, size(prev_q_win, 3))
+      tail_len = size(prev_q_tail, 3)
+      L_overlap = min(overlap, max_L, tail_len)
+      println(@sprintf("\n[Window %d] range=[%d,%d] length=%d", window_id, start_idx, end_idx, max_L))
+      println(@sprintf("  [継承確認] tail_len=%d, L_overlap=%d", tail_len, L_overlap))
       if L_overlap > 0
-        @views q_init_win[:, :, 1:L_overlap] .= prev_q_win[:, :, end-L_overlap+1:end]
+        @views q_init_win[:, :, 1:L_overlap] .= prev_q_tail[:, :, 1:L_overlap]
+        println(@sprintf("  [継承確認] prev_q_tail[1:%d] → q_init_win[1:%d]", L_overlap, L_overlap))
+        # デバッグ: 継承された値の範囲確認
+        inherited_min = minimum(prev_q_tail[:, :, 1:L_overlap])
+        inherited_max = maximum(prev_q_tail[:, :, 1:L_overlap])
+        println(@sprintf("  [継承確認] 継承値範囲: %.6e ~ %.6e W/m²", inherited_min, inherited_max))
       end
       if L_overlap < max_L
-        edge = @view prev_q_win[:, :, end]
+        edge = prev_q_edge
         for t in L_overlap+1:max_L
           @views q_init_win[:, :, t] .= edge
         end
+        println(@sprintf("  [継承確認] 残り部分[%d:%d]は前ウィンドウ最終値で埋める", L_overlap+1, max_L))
       end
-      println(@sprintf("\n[Window %d] range=[%d,%d] length=%d", window_id, start_idx, end_idx, max_L))
       println(@sprintf("  initial heat flux: inherited (overlap=%d)", L_overlap))
     end
 
     # Prepare temperature initial condition
-    T_start = copy(current_T_start)
+    T_start = use_window_continuation ? copy(current_T_start) : copy(T_init)
 
     window_time_start = time()
     q_win, T_win, J_hist = solve_cgm!(
@@ -413,9 +455,27 @@ function run_sliding_window!(
       @views q_global[:, :, assign_start:assign_end] .= q_win[:, :, overlap_steps+1:max_L]
     end
 
+    step = max(1, max_L - overlap)
+    if use_window_continuation
+      tail_start = min(step + 1, size(q_win, 3))
+      prev_q_tail = copy(q_win[:, :, tail_start:end])
+      prev_q_edge = copy(q_win[:, :, end])
+      println(@sprintf("  [継承] step=%d, tail_start=%d, tail_len=%d", step, tail_start, size(prev_q_tail, 3)))
+      println(@sprintf("  [継承] q_win範囲: t=%d~%d (global: %d~%d)", tail_start, size(q_win,3), start_idx+tail_start-1, start_idx+size(q_win,3)-1))
+    else
+      prev_q_tail = nothing
+      prev_q_edge = nothing
+    end
+
     prev_flux_end = max(prev_flux_end, flux_end)
-    prev_q_win = copy(q_win)
-    @views current_T_start = copy(T_win[:, :, :, end])
+
+    # 温度場継承: 次ウィンドウ開始時刻に対応する温度を使用
+    if use_window_continuation
+      idx = min(step + 1, size(T_win, 4))
+      @views current_T_start = copy(T_win[:, :, :, idx])
+    else
+      current_T_start = copy(T_init)
+    end
     final_T .= current_T_start
 
     q_min = minimum(q_win)
@@ -439,8 +499,7 @@ function run_sliding_window!(
     push!(window_q_max, q_max)
     push!(window_histories, collect(J_hist))
 
-    # Python版 (1652-1653行): step = max(1, max_L - overlap); start_idx += step
-    step = max(1, max_L - overlap)
+    # インデックス進行（stepを再利用）
     start_idx += step
     window_id += 1
   end
@@ -477,16 +536,30 @@ function main()
   println("Project root: $PROJECT_ROOT")
   flush(stdout)
 
-  ensure_single_thread()
   cfg = parse_command_line_args()
 
-  println("\n[Configuration]")
+  # Backend設定をグローバルに設定（Task-local storage）
+  IHCP_CGM.Commons.set_backend_config(basesize=cfg.basesize)
+
+  # 並列化情報の表示
+  println()
+  println("="^80)
+  println("Julia parallel execution info:")
+  println("  Available threads: $(Threads.nthreads())")
+  println("  Parallelization mode: $(cfg.par)")
+  println("  ThreadsBackend basesize: $(cfg.basesize)")
+  println("="^80)
+  println()
+  flush(stdout)
+
+  println("[Configuration]")
   println("  Solver: $(cfg.solver_type)")
   println("  Preconditioner: $(cfg.precond_type)")
   println("  CGM max iter: $(cfg.cgm_iter)")
   println("  nt: $(cfg.nt)")
   println("  window size: $(cfg.window_size)")
   println("  overlap: $(cfg.overlap)")
+  println("  window continuation: $(cfg.use_window_continuation)")
   println(@sprintf("  dt: %.3e s", cfg.dt))
   println(@sprintf("  q_init: %.3e W/m^2", cfg.q_init_value))
   flush(stdout)
@@ -544,7 +617,7 @@ function main()
     P = 10,
     eta = 1.0e-4,
     beta_max = 1.0e8,
-    verbose = false,
+    verbose = true,
     dhcp_extrapolation = :quadratic,
     adjoint_residual_scale = 0.5,
     dhcp_solver = cfg.solver_type,
@@ -552,7 +625,9 @@ function main()
     adjoint_solver = cfg.solver_type,
     adjoint_smoother = cfg.precond_type,
     sensitivity_solver = cfg.solver_type,
-    sensitivity_smoother = cfg.precond_type
+    sensitivity_smoother = cfg.precond_type,
+    par = cfg.par,
+    basesize = cfg.basesize
   )
 
   println("\n[4/5] Running sliding-window CGM")
@@ -572,6 +647,7 @@ function main()
     cfg.window_size,
     cfg.overlap,
     cfg.q_init_value,
+    cfg.use_window_continuation,
     cgm_params,
     cfg.dry_run
   )
@@ -605,6 +681,7 @@ function main()
     "overlap" => cfg.overlap,
     "cgm_max_iter" => cfg.cgm_iter,
     "q_init_value" => cfg.q_init_value,
+    "use_window_continuation" => cfg.use_window_continuation,
     "window_ids" => collect(summary.window_ids),
     "window_start_idxs" => collect(summary.window_starts),
     "window_end_idxs" => collect(summary.window_ends),
@@ -631,6 +708,7 @@ function main()
     println(io, "nt: $(cfg.nt)")
     println(io, "window_size: $(cfg.window_size)")
     println(io, "overlap: $(cfg.overlap)")
+    println(io, "use_window_continuation: $(cfg.use_window_continuation)")
     println(io, @sprintf("dt: %.6e", cfg.dt))
     println(io, @sprintf("q_init: %.6e", cfg.q_init_value))
     println(io, @sprintf("q_min: %.6e", q_range[1]))

@@ -102,7 +102,8 @@ function solve_sliding_window_cgm(
   maxiter_dhcp::Int=20000,
   rtol_adjoint::Float64=1e-8,
   maxiter_adjoint::Int=20000,
-  use_window_continuation::Bool=true
+  use_window_continuation::Bool=true,
+  par::String="thread"
 )
 
   ni, nj, nt = size(Y_obs)  # メモリレイアウト最適化: Phase 2.2
@@ -110,7 +111,8 @@ function solve_sliding_window_cgm(
 
   start_idx = 0  # 0始まり（Pythonと同じ）
   q_total = []   # Vector{Array{Float64,3}}型 CHECK: メモリ確保必要？？
-  prev_q_win = nothing
+  prev_q_tail = nothing
+  prev_q_edge = nothing
   prev_T_final = nothing
 
   windows_info = WindowInfo[]
@@ -138,28 +140,30 @@ function solve_sliding_window_cgm(
     println("\n--- ウィンドウ $(length(windows_info)+1): [$start_idx, $end_idx] (長さ=$max_L) ---")
 
     if !use_window_continuation
-      prev_q_win = nothing
+      prev_q_tail = nothing
+      prev_q_edge = nothing
     end
 
     # 初期熱流束の設定（Pythonオリジナル: 1583-1592行、メモリレイアウト最適化: Phase 2.2）
-    if isnothing(prev_q_win)
+    if isnothing(prev_q_tail)
       # 第1ウィンドウ: 一定値
       q_init_win = fill(q_init_value, (ni, nj, max_L))
       println("初期熱流束: 一定値 $q_init_value W/m²")
     else
       # 第2ウィンドウ以降: 前ウィンドウから継承
       q_init_win = zeros(Float64, ni, nj, max_L) # CHECK : 毎回確保している
-      L_overlap = min(overlap, max_L, size(prev_q_win, 3))
+      tail_len = size(prev_q_tail, 3)
+      L_overlap = min(overlap, max_L, tail_len)
 
       if L_overlap > 0
         # オーバーラップ部分: 前ウィンドウの最後L_overlapステップを継承
-        q_init_win[:, :, 1:L_overlap] = prev_q_win[:, :, end-L_overlap+1:end]
-        println("オーバーラップ継承: 前$(L_overlap)ステップ")
+        q_init_win[:, :, 1:L_overlap] = prev_q_tail[:, :, 1:L_overlap]
+        println("オーバーラップ継承: tail先頭から$(L_overlap)ステップ")
       end
 
       if L_overlap < max_L
         # 残り部分: 前ウィンドウの最終値で埋める
-        edge = prev_q_win[:, :, end]
+        edge = prev_q_edge
         for t in L_overlap+1:max_L
           q_init_win[:, :, t] = edge
         end
@@ -167,7 +171,7 @@ function solve_sliding_window_cgm(
       end
     end
 
-    if use_window_continuation && !isnothing(prev_T_final) && !isnothing(prev_q_win)
+    if use_window_continuation && !isnothing(prev_T_final) && !isnothing(prev_q_tail)
       println("初期温度場: 前ウィンドウの最終温度を継承")
     end
 
@@ -185,7 +189,8 @@ function solve_sliding_window_cgm(
       rtol_dhcp=rtol_dhcp,
       maxiter_dhcp=maxiter_dhcp,
       rtol_adjoint=rtol_adjoint,
-      maxiter_adjoint=maxiter_adjoint
+      maxiter_adjoint=maxiter_adjoint,
+      par=par
     )
     q_win, T_cal_win, J_hist = solve_cgm!(
       T_init_window, Y_obs_win, q_init_win, work,
@@ -193,10 +198,14 @@ function solve_sliding_window_cgm(
       dt, rho, cp_coeffs, k_coeffs; params=cgm_params
     )
 
+    step = max(1, max_L - overlap)
     if use_window_continuation
-      prev_q_win = copy(q_win)
+      tail_start = min(step + 1, size(q_win, 3))
+      prev_q_tail = copy(q_win[:, :, tail_start:end])
+      prev_q_edge = copy(q_win[:, :, end])
     else
-      prev_q_win = nothing
+      prev_q_tail = nothing
+      prev_q_edge = nothing
     end
 
     # 結果の拼接（オーバーラップ平均化）（Pythonオリジナル: 1603-1612行、メモリレイアウト最適化: Phase 2.2）
@@ -232,10 +241,16 @@ function solve_sliding_window_cgm(
       end
     end
 
-    # 温度場の継承（Pythonオリジナル: 1614行、メモリレイアウト最適化: Phase 2.2）
-    # solve_cgm!は(ni, nj, nk, nt)を返すので、最終時刻を取得
+    # 温度場の継承
+    # 次ウィンドウの開始時刻は start_idx + step なので、対応する温度を渡す
     if use_window_continuation
-      prev_T_final = copy(T_cal_win[:, :, :, end])
+      idx = min(step + 1, size(T_cal_win, 4))
+      prev_T_final = copy(T_cal_win[:, :, :, idx])
+
+      # 診断プリント（検証用）
+      T_mean = sum(prev_T_final) / length(prev_T_final)
+      println("  [診断] step=$step, idx=$idx, T_cal_win_size=$(size(T_cal_win)), T_mean=$(round(T_mean, digits=2)) K")
+      println("  [診断] 次ウィンドウ開始時刻: $(start_idx + step) (全体時刻)")
     else
       prev_T_final = nothing
     end
@@ -254,8 +269,7 @@ function solve_sliding_window_cgm(
 
     println("CGM反復数: $(length(J_hist)), 最終J: $(J_hist[end])")
 
-    # インデックス進行（Pythonオリジナル: 1619-1620行）
-    step = max(1, max_L - overlap)
+    # インデックス進行（Pythonオリジナル: 1619-1620行、stepを再利用）
     start_idx += step
   end
 

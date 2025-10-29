@@ -1,0 +1,16 @@
+nt,basesize,threads,dhcp_time,total_time,solver,precond
+10,400,4,5.06,7.38,pbicgstab,gs
+10,500,4,4.91,6.57,pbicgstab,gs
+10,600,4,4.88,6.64,pbicgstab,gs
+30,400,4,10.5,13.02,pbicgstab,gs
+30,500,4,9.94,11.82,pbicgstab,gs
+30,600,4,9.77,12.24,pbicgstab,gs
+30,700,4,9.55,11.1,pbicgstab,gs
+50,400,4,14.59,16.13,pbicgstab,gs
+50,500,4,13.86,15.4,pbicgstab,gs
+50,600,4,13.64,15.17,pbicgstab,gs
+50,700,4,13.71,15.22,pbicgstab,gs
+100,400,4,25.5,27.04,pbicgstab,gs
+100,500,4,24.37,25.93,pbicgstab,gs
+100,600,4,23.93,25.46,pbicgstab,gs
+100,700,4,23.93,25.45,pbicgstab,gs

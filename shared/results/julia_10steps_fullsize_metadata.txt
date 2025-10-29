@@ -1,2 +1,2 @@
 solver_type: pbicgstab
-precond_type: gs
+precond_type: jacobi

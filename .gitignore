@@ -235,3 +235,8 @@ julia/.juliaup/
 archive/results/**/*.npz
 archive/results/**/*.npy
 archive/results/**/*.png
+julia_depot/
+
+# CGMテスト結果の.npyファイル
+python_cgm_*.npy
+julia_cgm_*.npy
