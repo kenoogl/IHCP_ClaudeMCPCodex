@@ -66,10 +66,12 @@ docs/
 - [タイムステップ推定レポート（詳細）](reports/benchmarks/timestep_estimation_report.md)
 
 ### 検証
+- [Julia版 vs Python版 DHCP計算性能・精度比較レポート（2025-10-30）](reports/julia_python_dhcp_comparison_report_20251030.md) ⭐ **最新**
 - [Python/Julia比較検証レポート](reports/validation/python_julia_comparison_report.md)
 - [完全一致検証 最終結果サマリー](../shared/results/validation/FINAL_VERIFICATION_SUMMARY.md) ⭐
 - [完全一致検証 詳細レポート](../shared/results/validation/exact_match_comparison_report.md)
 - [完全一致検証 実行手順書](../shared/results/validation/README_EXACT_MATCH.md)
+- `python/validation/test_dhcp_solver.py` – DHCP単体ソルバーをPython CG実装で実行する新規検証スクリプト
 
 ### その他
 - [Phase A1 メインエントリーポイント実装レポート](reports/Phase_A1_Main_Entry_Point_Implementation_Report.md)
